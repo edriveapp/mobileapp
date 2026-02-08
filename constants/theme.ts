@@ -10,7 +10,7 @@ export const COLORS = {
   primaryLight: '#E8F5E9', // Light Green background for tags
   secondary: '#FFD700', // Gold accent
   background: '#FFFFFF',
-  surface: '#F5F7FA',
+  surface: '#E5E7EB',
   text: '#1A1A1A',
   textSecondary: '#666666',
   white: '#FFFFFF',
@@ -29,25 +29,28 @@ export const SPACING = {
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'poppins_500medium',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'poppins_500medium',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'poppins_500medium',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'poppins_500medium',
+    sans: 'Poppins_500Medium',
+    serif: 'Poppins_500Medium',
+    rounded: 'Poppins_400Regular',
+    mono: 'Poppins_500Medium',
   },
-  default: {
-    sans: 'poppins_500medium',
-    serif: 'poppins_500medium',
-    rounded: 'poppins_400medium',
-    mono: 'poppins_500medium',
+  android: {
+    sans: 'Poppins_500Medium',
+    serif: 'Poppins_500Medium',
+    rounded: 'Poppins_400Regular',
+    mono: 'Poppins_500Medium',
   },
   web: {
-    sans: "poppins_500medium",
-    serif: "poppins_500medium",
-    rounded: "poppins_500medium",
-    mono: "poppins_500medium",
+    sans: 'Poppins_500Medium',
+    serif: 'Poppins_500Medium',
+    rounded: 'Poppins_400Regular',
+    mono: 'Poppins_500Medium',
+  },
+  default: {
+    sans: 'Poppins_500Medium',
+    serif: 'Poppins_500Medium',
+    rounded: 'Poppins_400Regular',
+    mono: 'Poppins_500Medium',
   },
 });
+

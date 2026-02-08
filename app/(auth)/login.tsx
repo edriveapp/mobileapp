@@ -5,6 +5,7 @@ import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View, StatusBar, Platform } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 
 export default function LoginScreen() {
     const router = useRouter();
@@ -43,7 +44,7 @@ export default function LoginScreen() {
                     <Text style={styles.tagText}>Welcome Back</Text>
                 </View>
                 <TouchableOpacity style={styles.helpButton}>
-                    <IconSymbol name="headphones" size={16} color={COLORS.text} />
+                   <Feather name="headphones" size={14} color="black" />
                     <Text style={styles.helpText}>Help</Text>
                 </TouchableOpacity>
             </View>
@@ -134,7 +135,7 @@ const styles = StyleSheet.create({
     },
     tag: {
         backgroundColor: '#BDF7DB',
-        paddingHorizontal: 20,
+        paddingHorizontal: 17,
         paddingVertical: 6,
         borderRadius: 13,
     },
@@ -148,13 +149,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        paddingHorizontal: 16,
-        paddingVertical: 5,
+        paddingHorizontal: 13,
+        paddingVertical: 4,
         backgroundColor: '#E5E7EB',
-        borderRadius: 13,
+        borderRadius: 12,
     },
     helpText: {
-        fontSize: 13,
+        fontSize: 12,
         color: COLORS.text,
         fontWeight: '500',
         fontFamily: Fonts.rounded,
@@ -164,8 +165,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
     },
     title: {
-        fontSize: 32,
-        fontWeight: '600',
+        fontSize: 27,
+        fontWeight: '400',
         color: '#000000',
         fontFamily: Fonts.rounded,
         marginBottom: 8,
@@ -203,18 +204,18 @@ const styles = StyleSheet.create({
     },
     input: {
         flex: 1,
-        fontSize: 16,
+        fontSize: 13,
         color: COLORS.text,
         fontFamily: Fonts.rounded,
     },
     forgotPassword: {
         alignSelf: 'flex-end',
-        marginTop: 12,
+        marginTop: 13,
     },
     forgotPasswordText: {
         color: '#000000',
-        fontSize: 15,
-        fontWeight: '500',
+        fontSize: 13,
+        fontWeight: '600',
         fontFamily: Fonts.rounded,
     },
     button: {
@@ -227,7 +228,7 @@ const styles = StyleSheet.create({
     },
     buttonText: {
         color: COLORS.white,
-        fontSize: 18,
+        fontSize: 15,
         fontWeight: '400',
         fontFamily: Fonts.rounded,
     },
@@ -239,13 +240,13 @@ const styles = StyleSheet.create({
     },
     footerText: {
         color: '#9CA3AF',
-        fontSize: 13,
+        fontSize: 12,
         fontFamily: Fonts.rounded,
     },
     link: {
         color: COLORS.primary,
         fontWeight: '500',
-        fontSize: 14,
+        fontSize: 13,
         fontFamily: Fonts.rounded,
         textDecorationLine: 'underline',
     },

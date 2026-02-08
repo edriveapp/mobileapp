@@ -6,6 +6,7 @@ import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 
 export default function SignupScreen() {
     const router = useRouter();
@@ -45,13 +46,13 @@ export default function SignupScreen() {
                         <Text style={styles.tagText}>Create an account</Text>
                     </View>
                     <TouchableOpacity style={styles.helpButton}>
-                        <IconSymbol name="headphones" size={18} color={COLORS.text} />
+                        <Feather name="headphones" size={14} color="black" />
                         <Text style={styles.helpText}>Help</Text>
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.content}>
-                    <Text style={styles.title}>Create a {isDriver ? 'driver' : 'edrive'} account</Text>
+                    <Text style={styles.title}>Create an {isDriver ? 'driver' : 'edrive'} account</Text>
                     <View style={styles.subtitleRow}>
                         <Text style={styles.subtitle}>I have an edrive account? </Text>
                         <Link href="/(auth)/login" asChild>
@@ -133,12 +134,7 @@ export default function SignupScreen() {
                         </View>
                     </View>
 
-                    <View style={styles.roleContainer}>
-                        <Text style={styles.roleLabel}>Are you a driver? </Text>
-                        <TouchableOpacity onPress={() => setIsDriver(!isDriver)}>
-                            <Text style={styles.roleLink}>Create account</Text>
-                        </TouchableOpacity>
-                    </View>
+                    
 
                     <TouchableOpacity
                         style={styles.button}
@@ -167,53 +163,56 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.background,
+        backgroundColor: '#ffff',
         paddingHorizontal: SPACING.m,
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: SPACING.l,
+        marginTop: 42,
         paddingBottom: SPACING.m,
     },
     tag: {
-        backgroundColor: COLORS.primaryLight,
-        paddingHorizontal: SPACING.m,
+        backgroundColor: '#bdf7db',
+        paddingHorizontal: 20,
         paddingVertical: 6,
-        borderRadius: 12,
+        borderRadius: 13,
     },
     tagText: {
         color: COLORS.primary,
         fontSize: 12,
-        fontWeight: '600',
+        fontWeight: '500',
         fontFamily: Fonts.rounded,
     },
     helpButton: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        padding: 6,
         backgroundColor: COLORS.surface,
         borderRadius: 12,
         borderWidth: 1,
         borderColor: COLORS.border,
+        paddingVertical: 4,
+        paddingHorizontal: 13,
     },
     helpText: {
         fontSize: 12,
         color: COLORS.text,
-        fontWeight: '600',
+        fontWeight: '500',
+        fontFamily: Fonts.rounded,
     },
     content: {
         flex: 1,
-        paddingBottom: SPACING.xl,
+        paddingBottom: 20,
     },
     title: {
-        fontSize: 28,
-        fontWeight: 'bold',
+        fontSize: 27,
+        fontWeight: '400',
         color: COLORS.text,
         fontFamily: Fonts.rounded,
-        marginBottom: SPACING.xs,
+        marginBottom: 8,
+        letterSpacing: -1.0,
     },
     subtitleRow: {
         flexDirection: 'row',
@@ -222,13 +221,16 @@ const styles = StyleSheet.create({
     },
     subtitle: {
         fontSize: 14,
-        color: COLORS.textSecondary,
+        color: '#9CA3AF',
+        letterSpacing: -0.5,
         fontFamily: Fonts.rounded,
+        fontWeight: '400',
+        lineHeight: 18,
     },
     subtitleLink: {
         fontSize: 14,
         color: COLORS.primary,
-        fontWeight: 'bold',
+        fontWeight: '500',
         textDecorationLine: 'underline',
     },
     inputContainer: {
@@ -236,9 +238,9 @@ const styles = StyleSheet.create({
     },
     label: {
         fontSize: 14,
-        fontWeight: 'bold',
+        fontWeight: '400',
         color: COLORS.text,
-        marginBottom: SPACING.s,
+        marginBottom: 3,
         fontFamily: Fonts.rounded,
     },
     inputWrapper: {
@@ -249,11 +251,11 @@ const styles = StyleSheet.create({
         borderColor: COLORS.border,
         borderRadius: 12,
         paddingHorizontal: SPACING.m,
-        height: 56,
+        height: 45,
     },
     input: {
         flex: 1,
-        fontSize: 16,
+        fontSize: 13,
         color: COLORS.text,
         fontFamily: Fonts.rounded,
     },
@@ -274,11 +276,11 @@ const styles = StyleSheet.create({
     },
     button: {
         backgroundColor: COLORS.primary,
-        height: 56,
-        borderRadius: 28,
+        height: 42,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: SPACING.l,
+        marginTop: 80,
     },
     buttonText: {
         color: COLORS.white,
@@ -289,11 +291,11 @@ const styles = StyleSheet.create({
     footer: {
         flexDirection: 'row',
         justifyContent: 'center',
-        marginTop: SPACING.xl,
+        marginTop: 13,
     },
     footerText: {
         color: COLORS.textSecondary,
-        fontSize: 14,
+        fontSize: 13,
     },
     link: {
         color: COLORS.primary,

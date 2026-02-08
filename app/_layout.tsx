@@ -13,10 +13,11 @@ import { useAuthStore } from './stores/authStore';
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded] = useFonts({
-    poppins_400regular: Poppins_400Regular,
-    poppins_500medium: Poppins_500Medium,
-  });
+const [loaded] = useFonts({
+  Poppins_400Regular,
+  Poppins_500Medium,
+});
+
 
   const colorScheme = useColorScheme();
   const { isAuthenticated, hasFinishedSplash } = useAuthStore();

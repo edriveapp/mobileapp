@@ -15,7 +15,7 @@ const { width, height } = Dimensions.get('window');
 let Logo: React.FC<{ width?: number; height?: number }> | null = null;
 
 try {
-    Logo = require('@/assets/images/splash.svg').default;
+    Logo = require('@/assets/icons/splash.svg').default;
 } catch (error) {
     console.log('SVG loading error:', error);
 }
