@@ -82,7 +82,7 @@ export default function LoginScreen() {
                             <IconSymbol 
                                 name={showPassword ? "eye" : "eye.slash"} 
                                 size={20} 
-                                color="#9CA3AF" 
+                                color="#141414ff" 
                             />
                         </TouchableOpacity>
                     </View>
@@ -119,7 +119,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F8F9FA',
+        backgroundColor: '#ffffffff',
         paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
         
     },
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 7,
+        marginTop: 10,
         paddingBottom: 24,
         paddingHorizontal: 20,
         
@@ -165,37 +165,40 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 32,
-        fontWeight: '700',
+        fontWeight: '600',
         color: '#000000',
         fontFamily: Fonts.rounded,
         marginBottom: 8,
-        letterSpacing: -0.5,
+        letterSpacing: -1.0,
     },
     subtitle: {
-        fontSize: 16,
+        fontSize: 14,
         color: '#9CA3AF',
+        letterSpacing: -0.5,
         fontFamily: Fonts.rounded,
+        fontWeight: '500',
         marginBottom: 38,
         lineHeight: 22,
     },
     inputContainer: {
-        marginBottom: 25,
+        marginBottom: 18,
     },
     label: {
         fontSize: 16,
-        fontWeight: '600',
+        fontWeight: '400',
         color: '#000000',
-        marginBottom: 12,
+        marginBottom: 3     ,
         fontFamily: Fonts.rounded,
     },
     inputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: COLORS.white,
-        borderWidth: 1,
+        borderWidth: 0.5,
         borderColor: '#b49f9fff',
-        borderRadius: 16,
-        paddingHorizontal: 16,
+        borderRadius: 12,
+        paddingHorizontal: 10,
+        
         height: 45,
     },
     input: {
@@ -216,11 +219,11 @@ const styles = StyleSheet.create({
     },
     button: {
         backgroundColor: COLORS.primary,
-        height: 50,
+        height: 42,
         borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: 180,
+        marginTop: 260,
     },
     buttonText: {
         color: COLORS.white,
@@ -242,7 +245,7 @@ const styles = StyleSheet.create({
     link: {
         color: COLORS.primary,
         fontWeight: '500',
-        fontSize: 15,
+        fontSize: 14,
         fontFamily: Fonts.rounded,
         textDecorationLine: 'underline',
     },

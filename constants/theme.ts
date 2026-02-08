@@ -41,7 +41,7 @@ export const Fonts = Platform.select({
   default: {
     sans: 'poppins_500medium',
     serif: 'poppins_500medium',
-    rounded: 'poppins_500medium',
+    rounded: 'poppins_400medium',
     mono: 'poppins_500medium',
   },
   web: {
