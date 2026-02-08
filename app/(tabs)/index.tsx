@@ -1,11 +1,11 @@
+import { LocationService } from '@/app/services/locationService';
+import { useAuthStore } from '@/app/stores/authStore';
+import { useTripStore } from '@/app/stores/tripStore';
+import { Trip } from '@/app/types';
+import { COLORS, SPACING } from '@/constants/theme';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { COLORS, SPACING } from '../constants/theme';
-import { LocationService } from '../services/locationService';
-import { useAuthStore } from '../stores/authStore';
-import { useTripStore } from '../stores/tripStore';
-import { Trip } from '../types';
 
 export default function HomeScreen() {
   const router = useRouter();

@@ -1,10 +1,11 @@
+import { AuthService } from '@/app/services/authService';
+import { useAuthStore } from '@/app/stores/authStore';
+import { UserRole } from '@/app/types';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { COLORS, SPACING } from '../constants/theme';
-import { AuthService } from '../services/authService';
-import { useAuthStore } from '../stores/authStore';
-import { UserRole } from '../types';
+import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function SignupScreen() {
     const router = useRouter();
@@ -37,75 +38,129 @@ export default function SignupScreen() {
     };
 
     return (
-        <View style={styles.container}>
-            <View style={styles.content}>
-                <Text style={styles.title}>Create Account</Text>
-                <Text style={styles.subtitle}>{isDriver ? 'Sign up as a Driver' : 'Sign up as a Rider'}</Text>
-
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Full Name</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Enter your full name"
-                        value={name}
-                        onChangeText={setName}
-                    />
+        <SafeAreaView style={styles.container}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.header}>
+                    <View style={styles.tag}>
+                        <Text style={styles.tagText}>Create an account</Text>
+                    </View>
+                    <TouchableOpacity style={styles.helpButton}>
+                        <IconSymbol name="headphones" size={18} color={COLORS.text} />
+                        <Text style={styles.helpText}>Help</Text>
+                    </TouchableOpacity>
                 </View>
 
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Email Address</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Enter your email"
-                        value={email}
-                        onChangeText={setEmail}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                    />
-                </View>
+                <View style={styles.content}>
+                    <Text style={styles.title}>Create a {isDriver ? 'driver' : 'edrive'} account</Text>
+                    <View style={styles.subtitleRow}>
+                        <Text style={styles.subtitle}>I have an edrive account? </Text>
+                        <Link href="/(auth)/login" asChild>
+                            <TouchableOpacity>
+                                <Text style={styles.subtitleLink}>Login</Text>
+                            </TouchableOpacity>
+                        </Link>
+                    </View>
 
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Password</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Create a password"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry
-                    />
-                </View>
+                    <View style={styles.inputContainer}>
+                        <Text style={styles.label}>Full Name</Text>
+                        <View style={styles.inputWrapper}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Enter your full name"
+                                placeholderTextColor={COLORS.textSecondary}
+                                value={name}
+                                onChangeText={setName}
+                            />
+                        </View>
+                    </View>
 
-                <View style={styles.roleContainer}>
-                    <Text style={styles.label}>Are you a Driver?</Text>
-                    <Switch
-                        value={isDriver}
-                        onValueChange={setIsDriver}
-                        trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                    />
-                </View>
+                    <View style={styles.inputContainer}>
+                        <Text style={styles.label}>Phone Number</Text>
+                        <View style={styles.inputWrapper}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="+234 701 234 5671"
+                                placeholderTextColor={COLORS.textSecondary}
+                                keyboardType="phone-pad"
+                            />
+                        </View>
+                    </View>
 
-                <TouchableOpacity
-                    style={styles.button}
-                    onPress={handleSignup}
-                    disabled={isLoading}
-                >
-                    {isLoading ? (
-                        <ActivityIndicator color={COLORS.white} />
-                    ) : (
-                        <Text style={styles.buttonText}>Sign Up</Text>
-                    )}
-                </TouchableOpacity>
+                    <View style={styles.inputContainer}>
+                        <Text style={styles.label}>Email Address</Text>
+                        <View style={styles.inputWrapper}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Enter your email address"
+                                placeholderTextColor={COLORS.textSecondary}
+                                value={email}
+                                onChangeText={setEmail}
+                                autoCapitalize="none"
+                                keyboardType="email-address"
+                            />
+                        </View>
+                    </View>
 
-                <View style={styles.footer}>
-                    <Text style={styles.footerText}>Already have an account? </Text>
-                    <Link href="/(auth)/login" asChild>
-                        <TouchableOpacity>
-                            <Text style={styles.link}>Log in</Text>
+                    <View style={styles.inputContainer}>
+                        <Text style={styles.label}>Password</Text>
+                        <View style={styles.inputWrapper}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Enter your password"
+                                placeholderTextColor={COLORS.textSecondary}
+                                value={password}
+                                onChangeText={setPassword}
+                                secureTextEntry
+                            />
+                            <TouchableOpacity>
+                                <IconSymbol name="eye.slash" size={20} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    <View style={styles.inputContainer}>
+                        <Text style={styles.label}>Confirm Password</Text>
+                        <View style={styles.inputWrapper}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Enter Password Again"
+                                placeholderTextColor={COLORS.textSecondary}
+                                secureTextEntry
+                            />
+                            <TouchableOpacity>
+                                <IconSymbol name="eye.slash" size={20} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    <View style={styles.roleContainer}>
+                        <Text style={styles.roleLabel}>Are you a driver? </Text>
+                        <TouchableOpacity onPress={() => setIsDriver(!isDriver)}>
+                            <Text style={styles.roleLink}>Create account</Text>
                         </TouchableOpacity>
-                    </Link>
+                    </View>
+
+                    <TouchableOpacity
+                        style={styles.button}
+                        onPress={handleSignup}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <ActivityIndicator color={COLORS.white} />
+                        ) : (
+                            <Text style={styles.buttonText}>Sign Up</Text>
+                        )}
+                    </TouchableOpacity>
+
+                    <View style={styles.footer}>
+                        <Text style={styles.footerText}>Are you a driver? </Text>
+                        <TouchableOpacity onPress={() => setIsDriver(!isDriver)}>
+                            <Text style={styles.link}>Create account</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            </View>
-        </View>
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 
@@ -113,69 +168,137 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,
-        justifyContent: 'center',
-        padding: SPACING.l,
+        paddingHorizontal: SPACING.m,
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: SPACING.l,
+        paddingBottom: SPACING.m,
+    },
+    tag: {
+        backgroundColor: COLORS.primaryLight,
+        paddingHorizontal: SPACING.m,
+        paddingVertical: 6,
+        borderRadius: 12,
+    },
+    tagText: {
+        color: COLORS.primary,
+        fontSize: 12,
+        fontWeight: '600',
+        fontFamily: Fonts.rounded,
+    },
+    helpButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        padding: 6,
+        backgroundColor: COLORS.surface,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    helpText: {
+        fontSize: 12,
+        color: COLORS.text,
+        fontWeight: '600',
     },
     content: {
-        width: '100%',
+        flex: 1,
+        paddingBottom: SPACING.xl,
     },
     title: {
-        fontSize: 32,
+        fontSize: 28,
         fontWeight: 'bold',
-        color: COLORS.primary,
-        marginBottom: SPACING.s,
+        color: COLORS.text,
+        fontFamily: Fonts.rounded,
+        marginBottom: SPACING.xs,
+    },
+    subtitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: SPACING.xl,
     },
     subtitle: {
-        fontSize: 16,
+        fontSize: 14,
         color: COLORS.textSecondary,
-        marginBottom: SPACING.xl,
+        fontFamily: Fonts.rounded,
+    },
+    subtitleLink: {
+        fontSize: 14,
+        color: COLORS.primary,
+        fontWeight: 'bold',
+        textDecorationLine: 'underline',
     },
     inputContainer: {
         marginBottom: SPACING.m,
     },
     label: {
         fontSize: 14,
-        fontWeight: '600',
+        fontWeight: 'bold',
         color: COLORS.text,
-        marginBottom: SPACING.xs,
+        marginBottom: SPACING.s,
+        fontFamily: Fonts.rounded,
     },
-    input: {
-        backgroundColor: COLORS.surface,
+    inputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.white,
         borderWidth: 1,
         borderColor: COLORS.border,
-        borderRadius: 8,
-        padding: SPACING.m,
+        borderRadius: 12,
+        paddingHorizontal: SPACING.m,
+        height: 56,
+    },
+    input: {
+        flex: 1,
         fontSize: 16,
+        color: COLORS.text,
+        fontFamily: Fonts.rounded,
     },
     roleContainer: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: SPACING.l,
-        marginTop: SPACING.s,
+        marginTop: SPACING.m,
+    },
+    roleLabel: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+    },
+    roleLink: {
+        fontSize: 14,
+        color: COLORS.primary,
+        fontWeight: 'bold',
+        textDecorationLine: 'underline',
     },
     button: {
         backgroundColor: COLORS.primary,
-        padding: SPACING.m,
-        borderRadius: 8,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: 'center',
         alignItems: 'center',
-        marginTop: SPACING.s,
+        marginTop: SPACING.l,
     },
     buttonText: {
         color: COLORS.white,
         fontSize: 16,
         fontWeight: 'bold',
+        fontFamily: Fonts.rounded,
     },
     footer: {
         flexDirection: 'row',
         justifyContent: 'center',
-        marginTop: SPACING.l,
+        marginTop: SPACING.xl,
     },
     footerText: {
         color: COLORS.textSecondary,
+        fontSize: 14,
     },
     link: {
         color: COLORS.primary,
         fontWeight: 'bold',
+        fontSize: 14,
+        textDecorationLine: 'underline',
     },
 });

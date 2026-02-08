@@ -1,5 +1,6 @@
 export const COLORS = {
     primary: '#105234', // Deep Green
+    primaryLight: '#E8F5E9', // Light Green background for tags
     secondary: '#FFD700', // Gold accent
     background: '#FFFFFF',
     surface: '#F5F7FA',

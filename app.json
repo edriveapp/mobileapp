@@ -4,8 +4,8 @@
     "slug": "edrivemobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "edrivemobile",
+    "icon": "./assets/images/logo.png",
+    "scheme": "edrive",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
