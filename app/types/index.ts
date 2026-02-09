@@ -22,3 +22,25 @@ export interface Trip {
   riders: string[]; // riderIds
   status: 'scheduled' | 'active' | 'completed' | 'cancelled';
 }
+
+export interface DriverOnboardingData {
+  fullName: string;
+  phoneNumber: string;
+  dateOfBirth: string;
+  address: string;
+  licenseNumber: string;
+  licenseExpiry: string;
+}
+
+export interface VehicleData {
+  type: string; // sedan, SUV, van, etc.
+  make: string;
+  model: string;
+  year: string;
+  plateNumber: string;
+}
+
+export interface OnboardingDocuments {
+  licenseImageUri: string | null;
+  vehiclePhotos: string[]; // array of image URIs
+}

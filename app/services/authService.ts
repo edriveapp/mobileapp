@@ -18,7 +18,7 @@ export const AuthService = {
         };
     },
 
-    signup: async (name: string, email: string, role: 'driver' | 'rider'): Promise<User> => {
+    signup: async (name: string, email: string, phoneNumber: string, role: 'driver' | 'rider'): Promise<User> => {
         await delay(1500); // Simulate API call
 
         return {
@@ -26,7 +26,7 @@ export const AuthService = {
             name,
             email,
             role,
-            phoneNumber: '',
+            phoneNumber,
             isVerified: false,
         };
     },

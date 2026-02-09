@@ -3,10 +3,10 @@ import { useAuthStore } from '@/app/stores/authStore';
 import { UserRole } from '@/app/types';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
+import Feather from '@expo/vector-icons/Feather';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
 
 export default function SignupScreen() {
     const router = useRouter();
@@ -16,11 +16,12 @@ export default function SignupScreen() {
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
     const [password, setPassword] = useState('');
     const [isDriver, setIsDriver] = useState(false);
 
     const handleSignup = async () => {
-        if (!name || !email || !password) {
+        if (!name || !email || !phoneNumber || !password) {
             Alert.alert('Error', 'Please fill in all fields');
             return;
         }
@@ -28,9 +29,13 @@ export default function SignupScreen() {
         setLoading(true);
         try {
             const role: UserRole = isDriver ? 'driver' : 'rider';
-            const user = await AuthService.signup(name, email, role);
+            const user = await AuthService.signup(name, email, phoneNumber, role);
             login(user); // Auto login after signup
-            router.replace('/(tabs)');
+            if (role === 'driver') {
+                router.replace('/(driver)');
+            } else {
+                router.replace('/(tabs)');
+            }
         } catch (error) {
             Alert.alert('Error', 'Signup failed. Please try again.');
         } finally {
@@ -83,6 +88,8 @@ export default function SignupScreen() {
                                 placeholder="+234 701 234 5671"
                                 placeholderTextColor={COLORS.textSecondary}
                                 keyboardType="phone-pad"
+                                value={phoneNumber}
+                                onChangeText={setPhoneNumber}
                             />
                         </View>
                     </View>
@@ -134,7 +141,7 @@ export default function SignupScreen() {
                         </View>
                     </View>
 
-                    
+
 
                     <TouchableOpacity
                         style={styles.button}

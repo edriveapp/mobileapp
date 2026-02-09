@@ -13,14 +13,14 @@ import { useAuthStore } from './stores/authStore';
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-const [loaded] = useFonts({
-  Poppins_400Regular,
-  Poppins_500Medium,
-});
+  const [loaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_500Medium,
+  });
 
 
   const colorScheme = useColorScheme();
-  const { isAuthenticated, hasFinishedSplash } = useAuthStore();
+  const { isAuthenticated, hasFinishedSplash, user } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
 
@@ -38,7 +38,11 @@ const [loaded] = useFonts({
     if (!isAuthenticated && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
-      router.replace('/(tabs)');
+      if (user?.role === 'driver') {
+        router.replace('/(driver)');
+      } else {
+        router.replace('/(tabs)');
+      }
     }
   }, [isAuthenticated, segments, loaded, hasFinishedSplash]);
 
