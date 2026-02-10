@@ -33,24 +33,32 @@ export const Fonts = Platform.select({
     serif: 'Poppins_500Medium',
     rounded: 'Poppins_400Regular',
     mono: 'Poppins_500Medium',
+    bold: 'Poppins_700Bold',
+    semibold: 'Poppins_600SemiBold',
   },
   android: {
     sans: 'Poppins_500Medium',
     serif: 'Poppins_500Medium',
     rounded: 'Poppins_400Regular',
     mono: 'Poppins_500Medium',
+    bold: 'Poppins_700Bold',
+    semibold: 'Poppins_600SemiBold',
   },
   web: {
     sans: 'Poppins_500Medium',
     serif: 'Poppins_500Medium',
     rounded: 'Poppins_400Regular',
     mono: 'Poppins_500Medium',
+    bold: 'Poppins_700Bold',  
+    semibold: 'Poppins_600SemiBold',
   },
   default: {
     sans: 'Poppins_500Medium',
     serif: 'Poppins_500Medium',
     rounded: 'Poppins_400Regular',
     mono: 'Poppins_500Medium',
+    bold: 'Poppins_700Bold',
+    semibold: 'Poppins_600SemiBold',
   },
 });
 

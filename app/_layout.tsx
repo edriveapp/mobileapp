@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Poppins_400Regular, Poppins_500Medium, useFonts } from '@expo-google-fonts/poppins';
+import { Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, useFonts } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from './components/AnimatedSplashScreen';
 import { useAuthStore } from './stores/authStore';
@@ -15,7 +15,9 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [loaded] = useFonts({
     Poppins_400Regular,
-    Poppins_500Medium,
+    Poppins_500Medium,  
+    Poppins_600SemiBold,
+    Poppins_700Bold,
   });
 
 
