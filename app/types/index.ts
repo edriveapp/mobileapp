@@ -21,6 +21,15 @@ export interface Trip {
   availableSeats: number;
   riders: string[]; // riderIds
   status: 'scheduled' | 'active' | 'completed' | 'cancelled';
+  // New Fields
+  vehicle?: string;
+  preferences?: {
+    ac: boolean;
+    luggage: boolean;
+    smoking: boolean;
+  };
+  autoAccept?: boolean;
+  description?: string;
 }
 
 export interface DriverOnboardingData {

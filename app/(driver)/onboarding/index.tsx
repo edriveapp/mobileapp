@@ -1,4 +1,5 @@
 import { useDriverStore } from '@/app/stores/driverStore';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -70,9 +71,15 @@ export default function DriverOnboardingScreen() {
     <View style={styles.container}>
       {/* Header with Progress */}
       <View style={styles.header}>
-        <Text style={styles.stepIndicator}>
-          Step {currentStep + 1} of {TOTAL_STEPS}
-        </Text>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol name="chevron.left" size={28} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.stepIndicator}>
+            Step {currentStep + 1} of {TOTAL_STEPS}
+          </Text>
+          <View style={{ width: 28 }} /> {/* Spacer for centering */}
+        </View>
         <View style={styles.progressBarContainer}>
           <View style={[styles.progressBar, { width: `${progressPercentage}%` }]} />
         </View>
@@ -127,6 +134,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+
   header: {
     paddingHorizontal: SPACING.l,
     paddingTop: SPACING.xl,
@@ -135,10 +143,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.m,
+  },
+  backButton: {
+    padding: 4,
+    marginLeft: -4, // alignment correction
+  },
   stepIndicator: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    marginBottom: SPACING.s,
     fontFamily: Fonts?.sans || 'System',
   },
   progressBarContainer: {

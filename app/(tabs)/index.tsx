@@ -1,14 +1,17 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, FlatList, TextInput, 
-  Dimensions, Animated, Easing, Keyboard, Platform, Pressable, SafeAreaView 
+  Dimensions, Animated, Easing, Keyboard, Platform, Pressable 
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
+import { StatusBar } from 'expo-status-bar';
 
-// Imports
+// 1. IMPORT USE SAFE AREA INSETS
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import JoinRideView from '../components/joinride'; 
 import { LocationService } from '@/app/services/locationService';
 import { useTripStore } from '@/app/stores/tripStore';
@@ -31,7 +34,6 @@ const TopDownCar = () => (
   </Svg>
 );
 
-// Mock Drivers
 const NEARBY_DRIVERS = [
   { id: 'd1', coords: { latitude: 4.8156, longitude: 7.0498 }, heading: 45 },
   { id: 'd2', coords: { latitude: 4.8120, longitude: 7.0550 }, heading: 180 },
@@ -42,6 +44,9 @@ export default function HomeScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
   const { trips, fetchTrips } = useTripStore();
+  
+  // 2. GET SAFE AREA INSETS
+  const insets = useSafeAreaInsets();
 
   // Animation State
   const sheetHeight = useRef(new Animated.Value(SHEET_COLLAPSED_HEIGHT)).current;
@@ -58,27 +63,20 @@ export default function HomeScreen() {
     loadLocationData();
   }, []);
 
-const loadLocationData = async () => {
-    // 1. Get Coordinates & Animate Map
+  const loadLocationData = async () => {
     const coords = await LocationService.getCurrentCoordinates();
-    
     if (coords) {
       const newRegion = {
         ...coords,
         latitudeDelta: 0.015,
         longitudeDelta: 0.015,
       };
-      
       setCurrentRegion(newRegion);
-      // This line makes the map smoothly "fly" to the location over 1 second (1000ms)
       mapRef.current?.animateToRegion(newRegion, 1000);
     }
 
-    // 2. Get readable location state (e.g., "Rivers State")
     const stateName = await LocationService.getCurrentState();
     setLocationState(stateName);
-    
-    // 3. Get Emergency Numbers for that state
     setEmergencyContacts(LocationService.getEmergencyNumbers(stateName));
   };
 
@@ -124,6 +122,8 @@ const loadLocationData = async () => {
 
   return (
     <View style={styles.container}>
+      <StatusBar style="dark" />
+      
       {/* 1. MAP */}
       <MapView
         ref={mapRef}
@@ -147,25 +147,26 @@ const loadLocationData = async () => {
         ))}
       </MapView>
 
-      {/* 2. TOP OVERLAY (Restored Location Pill & Menu) */}
+      {/* 2. TOP OVERLAY */}
       {!isExpanded && (
         <>
-          <SafeAreaView style={styles.topOverlay}>
+          {/* 3. APPLY INSETS TO TOP OVERLAY: Replaced SafeAreaView with View + dynamic style */}
+          <View style={[styles.topOverlay, { top: insets.top + 10 }]}>
             <View style={styles.topRow}>
-              {/* Menu Button (To open side menu) */}
+              {/* Menu Button */}
               <TouchableOpacity style={styles.roundButton} onPress={() => setMenuVisible(true)}>
                  <Ionicons name="menu" size={24} color="black" />
               </TouchableOpacity>
-
-              {/* Location Pill (Restored) */}
+              
+              {/* Location Pill */}
               <TouchableOpacity style={styles.locationPill} onPress={loadLocationData}>
                 <Ionicons name="location-sharp" size={16} color="black" />
                 <Text style={styles.locationPillText}>{locationState}</Text>
               </TouchableOpacity>
             </View>
-          </SafeAreaView>
+          </View>
 
-          {/* FAB (Restored) */}
+          {/* FAB */}
           <TouchableOpacity style={styles.fab} onPress={loadLocationData}>
             <Ionicons name="locate" size={24} color="black" />
           </TouchableOpacity>
@@ -174,7 +175,7 @@ const loadLocationData = async () => {
 
       {/* 3. SIDE MENU MODAL */}
       {menuVisible && (
-        <Pressable style={styles.menuBackdrop} onPress={() => setMenuVisible(false)}>
+        <Pressable style={[styles.menuBackdrop, { paddingTop: insets.top }]} onPress={() => setMenuVisible(false)}>
           <View style={styles.sideMenuContainer}>
             <View style={styles.menuHeader}>
               <Text style={styles.menuTitle}>Safety & Support</Text>
@@ -252,10 +253,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   map: { ...StyleSheet.absoluteFillObject, height: height * 0.6 },
   
-  // --- RESTORED TOP STYLES ---
+  // --- UPDATED OVERLAY STYLE ---
+  // Note: 'top' is now handled dynamically in the component
   topOverlay: { 
     position: 'absolute', 
-    top: Platform.OS === 'android' ? 40 : 0, 
     left: 0, 
     right: 0, 
     zIndex: 10 
@@ -265,7 +266,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between', 
     alignItems: 'center',
     paddingHorizontal: SPACING.m, 
-    paddingTop: SPACING.s 
   },
   roundButton: { 
     width: 40, height: 40, borderRadius: 20, 
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, elevation: 4 
   },
   locationPillText: { 
-    fontWeight: '700', marginLeft: 8, fontSize: 14, 
+    fontWeight: '600', marginLeft: 8, fontSize: 14, 
     fontFamily: Fonts.rounded 
   },
   fab: { 
@@ -295,14 +295,15 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.3)',
     zIndex: 30,
-    justifyContent: 'flex-start',
+    justifyContent: 'flex-start', 
+    // Padding top handled inline with insets
   },
   sideMenuContainer: {
     width: '75%',
     height: '100%',
     backgroundColor: 'white',
     padding: SPACING.l,
-    paddingTop: 60,
+    paddingTop: 20, // Reduced slightly as backdrop handles safe area
     shadowColor: '#000', shadowOffset: { width: 2, height: 0 },
     shadowOpacity: 0.3, shadowRadius: 10, elevation: 10,
   },

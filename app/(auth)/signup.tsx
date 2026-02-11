@@ -1,4 +1,3 @@
-import { AuthService } from '@/app/services/authService';
 import { useAuthStore } from '@/app/stores/authStore';
 import { UserRole } from '@/app/types';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -26,21 +25,19 @@ export default function SignupScreen() {
             return;
         }
 
-        setLoading(true);
-        try {
-            const role: UserRole = isDriver ? 'driver' : 'rider';
-            const user = await AuthService.signup(name, email, phoneNumber, role);
-            login(user); // Auto login after signup
-            if (role === 'driver') {
-                router.replace('/(driver)');
-            } else {
-                router.replace('/(tabs)');
+        const role: UserRole = isDriver ? 'driver' : 'rider';
+
+        // Redirect to OTP verification with user details
+        router.push({
+            pathname: '/(auth)/otp',
+            params: {
+                name,
+                email,
+                phoneNumber,
+                password,
+                role
             }
-        } catch (error) {
-            Alert.alert('Error', 'Signup failed. Please try again.');
-        } finally {
-            setLoading(false);
-        }
+        });
     };
 
     return (

@@ -11,16 +11,19 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+// 1. IMPORT SafeAreaView from the correct library
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '@/app/stores/authStore';
+import { useDriverStore } from '@/app/stores/driverStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
-export default function ProfileScreen() {
+export default function SettingsScreen() {
     const router = useRouter();
     const { logout, user } = useAuthStore();
+    const driverStore = useDriverStore(); 
 
-    // Toggle States (Mock)
+    // Toggle States
     const [pushNotifications, setPushNotifications] = useState(true);
     const [emailNotifications, setEmailNotifications] = useState(true);
     const [biometrics, setBiometrics] = useState(false);
@@ -82,55 +85,38 @@ export default function ProfileScreen() {
         </TouchableOpacity>
     );
 
-    if (!user) return null;
-
     return (
+        // 2. USE THE edges prop to ensure top padding
         <SafeAreaView style={styles.container} edges={['top']}>
             <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
 
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>My Profile</Text>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                    <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Settings</Text>
+                <View style={{ width: 24 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
 
-                {/* Avatar Section */}
-                <View style={styles.avatarContainer}>
-                    <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{user.name?.charAt(0) || 'U'}</Text>
-                    </View>
-                    <Text style={styles.userName}>{user.name}</Text>
-                    <Text style={styles.userEmail}>{user.email}</Text>
-                    <View style={styles.roleBadge}>
-                        <Ionicons name="person" size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
-                        <Text style={styles.roleText}>Rider Account</Text>
-                    </View>
-                </View>
-
-                {/* Account Section */}
+                {/* Profile Section */}
                 <View style={styles.section}>
                     <Text style={styles.sectionHeader}>ACCOUNT</Text>
                     <View style={styles.sectionBody}>
                         <SettingItem
                             icon="person-outline"
                             title="Personal Information"
-                            subtitle={user.phoneNumber || '+234 800 000 0000'} // Mock phone if missing
-                        // onPress={() => router.push('/(rider)/profile-details')}
+                            subtitle={user?.name}
+                            onPress={() => router.push('/(driver)/onboarding')} 
                         />
                         <View style={styles.divider} />
                         <SettingItem
-                            icon="card-outline"
-                            title="Payment Methods"
-                            subtitle="Visa **4242"
-                        // onPress={() => router.push('/(rider)/payments')}
-                        />
-                        <View style={styles.divider} />
-                        <SettingItem
-                            icon="location-outline"
-                            title="Saved Places"
-                            subtitle="Home, Work"
-                        // onPress={() => router.push('/(rider)/saved-places')}
+                            icon="document-text-outline"
+                            title="Vehicle & Documents"
+                            subtitle="License, Vehicle Info"
+                            onPress={() => router.push('/(driver)/onboarding')}
                         />
                     </View>
                 </View>
@@ -206,69 +192,18 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center', // Center title
+        justifyContent: 'space-between',
         paddingHorizontal: SPACING.l,
         paddingVertical: SPACING.m,
-        backgroundColor: COLORS.white,
+        backgroundColor: COLORS.white, // Changed to match SafeAreaView bg usually
         borderBottomWidth: 1,
         borderBottomColor: COLORS.border,
     },
+    backButton: { padding: 4 },
     headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text, fontFamily: Fonts.bold },
 
     content: { padding: SPACING.l, paddingBottom: 40 },
 
-    // Avatar Styles
-    avatarContainer: {
-        alignItems: 'center',
-        marginBottom: SPACING.xl,
-        marginTop: SPACING.s,
-    },
-    avatar: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: COLORS.primary, // Edrive Green
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: SPACING.s,
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 4,
-    },
-    avatarText: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: '#fff',
-    },
-    userName: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: COLORS.text,
-        marginBottom: 2,
-        fontFamily: Fonts.bold,
-    },
-    userEmail: {
-        fontSize: 14,
-        color: COLORS.textSecondary,
-        marginBottom: SPACING.s,
-    },
-    roleBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#E8F5E9', // Light green bg
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 12,
-    },
-    roleText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: COLORS.primary,
-    },
-
-    // Section Styles
     section: { marginBottom: SPACING.xl },
     sectionHeader: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 8, marginLeft: 4, letterSpacing: 1 },
     sectionBody: { backgroundColor: COLORS.white, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },

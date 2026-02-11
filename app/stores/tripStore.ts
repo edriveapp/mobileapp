@@ -7,7 +7,7 @@ interface TripState {
     selectedTrip: Trip | null;
     isLoading: boolean;
     userJoinedTripIds: string[];
-    
+
     fetchTrips: () => Promise<void>;
     createTrip: (trip: Omit<Trip, 'id' | 'riders' | 'availableSeats' | 'status'>) => void;
     joinTrip: (tripId: string, userId: string) => Promise<void>;
@@ -28,6 +28,9 @@ const INITIAL_TRIPS: Trip[] = [
         availableSeats: 3,
         riders: [],
         status: 'scheduled',
+        vehicle: 'Toyota Sienna',
+        preferences: { ac: true, luggage: true, smoking: false },
+        autoAccept: true,
     },
     {
         id: 'trip-2',
@@ -41,6 +44,9 @@ const INITIAL_TRIPS: Trip[] = [
         availableSeats: 1,
         riders: [],
         status: 'scheduled',
+        vehicle: 'Toyota Corolla',
+        preferences: { ac: false, luggage: true, smoking: false },
+        autoAccept: false,
     },
 ];
 
@@ -58,6 +64,9 @@ const TRENDING_TRIPS: Trip[] = [
         availableSeats: 4,
         riders: [],
         status: 'scheduled',
+        vehicle: 'Toyota Camry',
+        preferences: { ac: true, luggage: true, smoking: false },
+        autoAccept: true,
     },
     {
         id: 'trend-2',
@@ -71,6 +80,9 @@ const TRENDING_TRIPS: Trip[] = [
         availableSeats: 12,
         riders: [],
         status: 'scheduled',
+        vehicle: 'Toyota Coaster Bus',
+        preferences: { ac: true, luggage: true, smoking: false },
+        autoAccept: false,
     },
     {
         id: 'trend-3',
@@ -84,6 +96,9 @@ const TRENDING_TRIPS: Trip[] = [
         availableSeats: 2,
         riders: [],
         status: 'scheduled',
+        vehicle: 'Toyota Sienna',
+        preferences: { ac: true, luggage: true, smoking: false },
+        autoAccept: true,
     },
 ];
 
@@ -100,11 +115,11 @@ export const useTripStore = create<TripState>((set, get) => ({
         set({ isLoading: true });
         // Simulate API delay
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        
+
         // In a real app, you would fetch both standard and trending trips here
         // const response = await api.getTrips();
         // set({ trips: response.all, trendingTrips: response.trending });
-        
+
         set({ isLoading: false });
     },
 
@@ -122,11 +137,11 @@ export const useTripStore = create<TripState>((set, get) => ({
 
     joinTrip: async (tripId: string, userId: string) => {
         const { trips, trendingTrips, userJoinedTripIds } = get();
-        
+
         // Check both lists
         let isTrending = false;
         let tripIndex = trips.findIndex((t) => t.id === tripId);
-        
+
         if (tripIndex === -1) {
             tripIndex = trendingTrips.findIndex((t) => t.id === tripId);
             isTrending = true;
