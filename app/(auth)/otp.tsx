@@ -214,8 +214,10 @@ const styles = StyleSheet.create({
         borderColor: '#ccc', // Lighter border color for squares
         borderRadius: 12,
         fontSize: 24,
+        paddingVertical:0,
         textAlign: 'center',
         padding: 10,
+        textAlignVertical: 'center',
         backgroundColor: COLORS.white,
         fontFamily: Fonts.rounded,
         color: COLORS.text,

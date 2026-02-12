@@ -12,8 +12,8 @@ import { StatusBar } from 'expo-status-bar';
 
 // Mock Data for "Where to Go" Suggestions (Horizontal Slider)
 const SUGGESTED_DESTINATIONS = [
-    { id: '1', name: 'Lagos', image: 'https://images.unsplash.com/photo-1595758298782-b13cda6cf89d?q=80&w=200' },
-    { id: '2', name: 'Abuja', image: 'https://images.unsplash.com/photo-1598337777823-3b6105307223?q=80&w=200' },
+    { id: '1', name: 'Lagos', image: 'https://images.unsplash.com/photo-1719314073622-9399d167725b?q=80&w=200' },
+    { id: '2', name: 'Abuja', image: 'https://images.unsplash.com/photo-1721642472312-cd30e9bd7cac?q=80&w=200' },
     { id: '3', name: 'Owerri', image: 'https://images.unsplash.com/photo-1616012623377-50b2847c207e?q=80&w=200' },
     { id: '4', name: 'Uyo', image: 'https://images.unsplash.com/photo-1598556885317-0685933610d4?q=80&w=200' },
 ];
@@ -175,9 +175,10 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         fontSize: 24,
-        fontWeight: 'bold',
+        
+        textAlign: 'center',
         color: COLORS.text,
-        fontFamily: Fonts.bold,
+        fontFamily: Fonts.semibold,
     },
     listContent: {
         paddingBottom: SPACING.xl,

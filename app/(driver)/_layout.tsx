@@ -67,6 +67,16 @@ export default function DriverLayout() {
       />
 
       <Tabs.Screen
+        name="maps"
+        options={{
+          title: 'Map',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="map-outline" size={24} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="onboarding"
         options={{
           href: null,
