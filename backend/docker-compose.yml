@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  # PostgreSQL with PostGIS
+  postgres:
+    image: postgis/postgis:15-3.3
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: edrive
+      POSTGRES_PASSWORD: edrive_password
+      POSTGRES_DB: edrive_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - edrive-network
+
+  # Redis for Caching & PubSub
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - edrive-network
+
+  # OSRM (Open Source Routing Machine)
+  # Note: Requires a pre-processed .osrm file in ./osrm-data
+  # For first run, you need to download a map (e.g., nigeria-latest.osm.pbf) and process it.
+  osrm:
+    image: osrm/osrm-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm-data:/data
+    command: osrm-routed --algorithm mld /data/nigeria-latest.osrm
+    networks:
+      - edrive-network
+    restart: on-failure
+
+networks:
+  edrive-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
