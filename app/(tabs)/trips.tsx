@@ -1,384 +1,403 @@
-import { useAuthStore } from '@/app/stores/authStore';
-import { useTripStore } from '@/app/stores/tripStore';
-import { Trip } from '@/app/types';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { COLORS, SPACING, Fonts } from '@/constants/theme';
-import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native';
-// 1. Import Safe Area & Status Bar
+import { 
+  View, 
+  Text, 
+  FlatList, 
+  StyleSheet, 
+  TouchableOpacity, 
+  RefreshControl, 
+  Image,
+  Dimensions
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 
-// Mock Data for "Where to Go" Suggestions (Horizontal Slider)
+// Services & Stores
+import { useTripStore } from '@/app/stores/tripStore';
+import { useAuthStore } from '@/app/stores/authStore'; // Assuming this exists based on snippet 1
+import { Trip } from '@/app/types';
+
+// Constants & UI
+import { COLORS, SPACING, Fonts } from '@/constants/theme';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Ionicons } from '@expo/vector-icons';
+
+// --- MOCK DATA FOR DISCOVERY ---
 const SUGGESTED_DESTINATIONS = [
-    { id: '1', name: 'Lagos', image: 'https://images.unsplash.com/photo-1719314073622-9399d167725b?q=80&w=200' },
-    { id: '2', name: 'Abuja', image: 'https://images.unsplash.com/photo-1721642472312-cd30e9bd7cac?q=80&w=200' },
-    { id: '3', name: 'Owerri', image: 'https://images.unsplash.com/photo-1616012623377-50b2847c207e?q=80&w=200' },
-    { id: '4', name: 'Uyo', image: 'https://images.unsplash.com/photo-1598556885317-0685933610d4?q=80&w=200' },
+  { id: '1', name: 'Lagos', image: 'https://images.unsplash.com/photo-1719314073622-9399d167725b?q=80&w=200' },
+  { id: '2', name: 'Abuja', image: 'https://images.unsplash.com/photo-1721642472312-cd30e9bd7cac?q=80&w=200' },
+  { id: '3', name: 'Owerri', image: 'https://images.unsplash.com/photo-1616012623377-50b2847c207e?q=80&w=200' },
+  { id: '4', name: 'Uyo', image: 'https://images.unsplash.com/photo-1598556885317-0685933610d4?q=80&w=200' },
 ];
+const DATE_FILTERS = ['All', 'Today', 'Tomorrow', 'Sat', 'Sun'];
 
 export default function TripsScreen() {
-    const router = useRouter();
-    const { trips, fetchTrips, isLoading } = useTripStore();
-    const { user } = useAuthStore();
-    const [selectedDateFilter, setSelectedDateFilter] = useState('All');
+  const router = useRouter();
+  
+  // --- STATE MANAGEMENT ---
+  // Main View Mode: 'EXPLORE' (Snippet 2) or 'MY_TRIPS' (Snippet 1)
+  const [viewMode, setViewMode] = useState<'EXPLORE' | 'MY_TRIPS'>('EXPLORE');
+  
+  // Snippet 1 State (My Trips Sub-tabs)
+  const [myTripsTab, setMyTripsTab] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
+  
+  // Snippet 2 State (Filters)
+  const [selectedDateFilter, setSelectedDateFilter] = useState('All');
 
-    useEffect(() => {
-        fetchTrips();
-    }, []);
+  // --- STORE DATA ---
+  const { 
+    trips,          // Available public trips
+    activeTrips,    // User's booked active trips
+    history,        // User's booked past trips
+    fetchTrips,     // Fetch public
+    fetchMyTrips,   // Fetch user specific
+    isLoading 
+  } = useTripStore();
 
-    // Mock Date Filters
-    const dateFilters = ['All', 'Today', 'Tomorrow', 'Sat', 'Sun'];
+  const { user } = useAuthStore();
 
-    const renderDateFilter = ({ item }: { item: string }) => (
-        <TouchableOpacity
-            style={[
-                styles.dateFilterChip,
-                selectedDateFilter === item && styles.dateFilterChipSelected
-            ]}
-            onPress={() => setSelectedDateFilter(item)}
-        >
-            <Text style={[
-                styles.dateFilterText,
-                selectedDateFilter === item && styles.dateFilterTextSelected
-            ]}>{item}</Text>
-        </TouchableOpacity>
-    );
+  // Initial Fetch
+  useEffect(() => {
+    fetchTrips();
+    fetchMyTrips();
+  }, []);
 
-    const renderSuggestionItem = ({ item }: { item: { id: string, name: string, image: string } }) => (
-        <TouchableOpacity style={styles.suggestionCard} onPress={() => console.log(`Search for ${item.name}`)}>
-            <Image source={{ uri: item.image }} style={styles.suggestionImage} />
-            <View style={styles.suggestionOverlay}>
-                <Text style={styles.suggestionText}>{item.name}</Text>
-            </View>
-        </TouchableOpacity>
-    );
+  const handleRefresh = () => {
+    if (viewMode === 'EXPLORE') fetchTrips();
+    else fetchMyTrips();
+  };
 
-    const renderTripItem = ({ item }: { item: Trip }) => (
-        <TouchableOpacity
-            style={styles.tripCard}
-            onPress={() => router.push(`/trip-details/${item.id}`)}
-        >
-            {/* Driver Tip / Note Section */}
-            <View style={styles.driverTipContainer}>
-                <IconSymbol name="bubble.left.and.bubble.right.fill" size={12} color={COLORS.primary} />
-                <Text style={styles.driverTipText} numberOfLines={1}>
-                    "Leaving strictly by {item.time}. AC is working perfectly."
-                </Text>
-            </View>
+  // --- RENDERERS: EXPLORE TAB (Snippet 2 Logic) ---
+  
+  const renderSuggestionItem = ({ item }: { item: typeof SUGGESTED_DESTINATIONS[0] }) => (
+    <TouchableOpacity style={styles.suggestionCard} onPress={() => console.log(`Search for ${item.name}`)}>
+      <Image source={{ uri: item.image }} style={styles.suggestionImage} />
+      <View style={styles.suggestionOverlay}>
+        <Text style={styles.suggestionText}>{item.name}</Text>
+      </View>
+    </TouchableOpacity>
+  );
 
-            <View style={styles.tripHeader}>
-                <View style={styles.routeContainer}>
-                    <Text style={styles.tripRouteOrigin}>{item.origin}</Text>
-                    <View style={styles.routeLineContainer}>
-                         <View style={styles.routeDot} />
-                         <View style={styles.routeLine} />
-                         <View style={[styles.routeDot, { backgroundColor: COLORS.primary }]} />
-                    </View>
-                    <Text style={styles.tripRouteDest}>{item.destination}</Text>
-                </View>
-                <Text style={styles.tripPrice}>₦{item.price.toLocaleString()}</Text>
-            </View>
+  const renderDateFilter = ({ item }: { item: string }) => (
+    <TouchableOpacity
+      style={[styles.chip, selectedDateFilter === item && styles.chipSelected]}
+      onPress={() => setSelectedDateFilter(item)}
+    >
+      <Text style={[styles.chipText, selectedDateFilter === item && styles.chipTextSelected]}>
+        {item}
+      </Text>
+    </TouchableOpacity>
+  );
 
-            <View style={styles.divider} />
+  const renderAvailableTripItem = ({ item }: { item: Trip }) => (
+    <TouchableOpacity style={styles.availableCard} onPress={() => router.push(`/trip-details/${item.id}`)}>
+      {/* Driver Note Bubble */}
+      <View style={styles.tipBubble}>
+        <IconSymbol name="bubble.left.and.bubble.right.fill" size={12} color={COLORS.primary} />
+        <Text style={styles.tipText} numberOfLines={1}>
+           "Leaving strictly by {item.time}. AC is working."
+        </Text>
+      </View>
 
-            <View style={styles.tripFooter}>
-                <View style={styles.driverInfoSmall}>
-                    {/* Placeholder for driver image */}
-                    <View style={styles.driverAvatarSmall}>
-                        <Text style={styles.driverInitials}>DK</Text>
-                    </View>
-                    <Text style={styles.driverNameSmall}>David K.</Text>
-                </View>
+      <View style={styles.cardHeaderRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.routeTextOrigin}>{item.origin}</Text>
+           {/* Visual Route Connector */}
+           <View style={styles.connectorContainer}>
+              <View style={styles.connectorDot} />
+              <View style={styles.connectorLine} />
+              <View style={[styles.connectorDot, { backgroundColor: COLORS.primary }]} />
+           </View>
+          <Text style={styles.routeTextDest}>{item.destination}</Text>
+        </View>
+        <Text style={styles.priceTag}>₦{item.price.toLocaleString()}</Text>
+      </View>
 
-                <View style={styles.tripMeta}>
-                    <View style={styles.metaItem}>
-                        <IconSymbol name="calendar" size={14} color={COLORS.textSecondary} />
-                        <Text style={styles.metaText}>{item.date}</Text>
-                    </View>
-                    <View style={styles.metaItem}>
-                        <IconSymbol name="clock" size={14} color={COLORS.textSecondary} />
-                        <Text style={styles.metaText}>{item.time}</Text>
-                    </View>
-                </View>
-            </View>
-        </TouchableOpacity>
-    );
+      <View style={styles.divider} />
 
-    return (
-        // 2. Use SafeAreaView as root container
-        <SafeAreaView style={styles.container} edges={['top']}>
-            <StatusBar style="dark" backgroundColor={COLORS.white} />
-            
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Available Trips</Text>
-            </View>
+      <View style={styles.cardFooterRow}>
+        <View style={styles.driverRow}>
+          <View style={styles.avatarSmall}>
+             <Text style={styles.avatarText}>DK</Text>
+          </View>
+          <Text style={styles.driverName}>David K.</Text>
+        </View>
+        <View style={styles.metaRow}>
+          <IconSymbol name="calendar" size={14} color={COLORS.textSecondary} />
+          <Text style={styles.metaText}>{item.date}</Text>
+          <View style={{width: 8}} />
+          <IconSymbol name="clock" size={14} color={COLORS.textSecondary} />
+          <Text style={styles.metaText}>{item.time}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 
-            <FlatList
-                data={trips}
-                renderItem={renderTripItem}
+  // --- RENDERERS: MY TRIPS TAB (Snippet 1 Logic) ---
+
+  const renderMyTripItem = ({ item }: { item: any }) => (
+    <TouchableOpacity style={styles.myTripCard} onPress={() => router.push(`/trip-details/${item.id}`)}>
+      <View style={styles.cardHeaderRow}>
+        <View style={styles.statusBadge}>
+          <Text style={styles.statusText}>{item.status}</Text>
+        </View>
+        <Text style={styles.priceTagSmall}>₦{item.fare || item.price}</Text>
+      </View>
+
+      <View style={styles.myTripRouteContainer}>
+        <Text style={styles.addressText} numberOfLines={1}>{item.origin.address || item.origin}</Text>
+        <View style={styles.verticalDots} />
+        <Text style={styles.addressText} numberOfLines={1}>{item.destination.address || item.destination}</Text>
+      </View>
+
+      <View style={[styles.cardFooterRow, { borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10, marginTop: 10 }]}>
+        <Text style={styles.dateText}>{new Date(item.createdAt || Date.now()).toDateString()}</Text>
+        {item.driver && (
+           <Text style={styles.driverNameSmall}>Driver: {item.driver.name}</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
+  // --- MAIN RENDER ---
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar style="dark" backgroundColor={COLORS.white} />
+
+      {/* 1. MAIN HEADER & SEGMENTED CONTROL */}
+      <View style={styles.headerContainer}>
+        <Text style={styles.screenTitle}>Trips</Text>
+        <View style={styles.segmentedControl}>
+          <TouchableOpacity 
+            style={[styles.segmentBtn, viewMode === 'EXPLORE' && styles.segmentBtnActive]}
+            onPress={() => setViewMode('EXPLORE')}
+          >
+            <Text style={[styles.segmentText, viewMode === 'EXPLORE' && styles.segmentTextActive]}>Book Ride</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.segmentBtn, viewMode === 'MY_TRIPS' && styles.segmentBtnActive]}
+            onPress={() => setViewMode('MY_TRIPS')}
+          >
+            <Text style={[styles.segmentText, viewMode === 'MY_TRIPS' && styles.segmentTextActive]}>My Trips</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 2. CONDITIONAL LIST RENDERING */}
+      {viewMode === 'EXPLORE' ? (
+        // --- MODE A: BOOK RIDE (Snippet 2) ---
+        <FlatList
+          data={trips}
+          renderItem={renderAvailableTripItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />}
+          ListHeaderComponent={
+            <View>
+              <Text style={styles.sectionTitle}>Where to next?</Text>
+              <FlatList
+                data={SUGGESTED_DESTINATIONS}
+                renderItem={renderSuggestionItem}
                 keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.listContent}
-                refreshControl={
-                    <RefreshControl refreshing={isLoading} onRefresh={fetchTrips} colors={[COLORS.primary]} />
-                }
-                ListHeaderComponent={
-                    <>
-                        {/* Horizontal Suggestions Slider */}
-                        <Text style={styles.sectionTitle}>Where to next?</Text>
-                        <FlatList
-                            data={SUGGESTED_DESTINATIONS}
-                            renderItem={renderSuggestionItem}
-                            keyExtractor={(item) => item.id}
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.suggestionsList}
-                        />
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalList}
+              />
 
-                        {/* Date Filters Slider */}
-                        <Text style={styles.sectionTitle}>When?</Text>
-                        <FlatList
-                            data={dateFilters}
-                            renderItem={renderDateFilter}
-                            keyExtractor={(item) => item}
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.dateFilterList}
-                        />
-                        
-                        <Text style={[styles.sectionTitle, { marginTop: SPACING.m }]}>Upcoming Trips</Text>
-                    </>
-                }
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <IconSymbol name="paperplane.fill" size={48} color={COLORS.textSecondary} />
-                        <Text style={styles.emptyText}>No trips found for this date.</Text>
-                    </View>
-                }
-            />
-        </SafeAreaView>
-    );
+              <Text style={styles.sectionTitle}>When?</Text>
+              <FlatList
+                data={DATE_FILTERS}
+                renderItem={renderDateFilter}
+                keyExtractor={(item) => item}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalList}
+              />
+              <Text style={[styles.sectionTitle, { marginTop: SPACING.m }]}>Available Trips</Text>
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+               <Ionicons name="car-sport" size={48} color={COLORS.textSecondary} />
+               <Text style={styles.emptyText}>No upcoming trips found.</Text>
+            </View>
+          }
+        />
+      ) : (
+        // --- MODE B: MY TRIPS (Snippet 1) ---
+        <FlatList
+          data={myTripsTab === 'ACTIVE' ? activeTrips : history}
+          renderItem={renderMyTripItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />}
+          ListHeaderComponent={
+            <View style={styles.subTabsContainer}>
+              <TouchableOpacity 
+                onPress={() => setMyTripsTab('ACTIVE')} 
+                style={[styles.subTab, myTripsTab === 'ACTIVE' && styles.subTabActive]}
+              >
+                <Text style={[styles.subTabText, myTripsTab === 'ACTIVE' && styles.subTabTextActive]}>
+                  Active ({activeTrips.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => setMyTripsTab('HISTORY')} 
+                style={[styles.subTab, myTripsTab === 'HISTORY' && styles.subTabActive]}
+              >
+                <Text style={[styles.subTabText, myTripsTab === 'HISTORY' && styles.subTabTextActive]}>
+                  History
+                </Text>
+              </TouchableOpacity>
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <IconSymbol name="car.fill" size={40} color="#ccc" />
+              <Text style={styles.emptyText}>No {myTripsTab.toLowerCase()} trips.</Text>
+            </View>
+          }
+        />
+      )}
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#FAFAFA', 
-    },
-    header: {
-        backgroundColor: COLORS.white,
-        paddingHorizontal: SPACING.m,
-        paddingVertical: SPACING.m, // Adjusted padding
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.border,
-    },
-    headerTitle: {
-        fontSize: 24,
-        
-        textAlign: 'center',
-        color: COLORS.text,
-        fontFamily: Fonts.semibold,
-    },
-    listContent: {
-        paddingBottom: SPACING.xl,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: COLORS.text,
-        marginLeft: SPACING.m,
-        marginBottom: SPACING.s,
-        marginTop: SPACING.m,
-        fontFamily: Fonts.bold,
-    },
-    
-    // Suggestions Styles
-    suggestionsList: {
-        paddingHorizontal: SPACING.m,
-        marginBottom: SPACING.m,
-    },
-    suggestionCard: {
-        width: 140,
-        height: 100,
-        borderRadius: 12,
-        marginRight: SPACING.m,
-        overflow: 'hidden',
-        backgroundColor: '#ccc',
-    },
-    suggestionImage: {
-        width: '100%',
-        height: '100%',
-    },
-    suggestionOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        justifyContent: 'flex-end',
-        padding: 8,
-    },
-    suggestionText: {
-        color: COLORS.white,
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+  container: { flex: 1, backgroundColor: '#FAFAFA' },
+  
+  // --- HEADER & TABS ---
+  headerContainer: {
+    backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.m,
+    paddingBottom: SPACING.m,
+    paddingTop: SPACING.s,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  screenTitle: {
+    fontSize: 24,
+    fontFamily: Fonts.bold,
+    color: COLORS.text,
+    textAlign: 'center',
+    marginBottom: SPACING.m,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: 4,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  segmentBtnActive: {
+    backgroundColor: COLORS.white,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentText: {
+    fontWeight: '400',
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    fontFamily: Fonts.rounded,
+  },
+  segmentTextActive: {
+    color: COLORS.text,
+  },
 
-    // Date Filters Styles
-    dateFilterList: {
-        paddingHorizontal: SPACING.m,
-        marginBottom: SPACING.s,
-    },
-    dateFilterChip: {
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: 20,
-        backgroundColor: COLORS.white,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        marginRight: SPACING.s,
-    },
-    dateFilterChipSelected: {
-        backgroundColor: COLORS.primary,
-        borderColor: COLORS.primary,
-    },
-    dateFilterText: {
-        color: COLORS.textSecondary,
-        fontWeight: '600',
-    },
-    dateFilterTextSelected: {
-        color: COLORS.white,
-    },
+  // --- SHARED LIST STYLES ---
+  listContent: { paddingBottom: SPACING.xl },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: Fonts.bold,
+    color: COLORS.text,
+    marginLeft: SPACING.m,
+    marginBottom: SPACING.s,
+    marginTop: SPACING.m,
+  },
+  horizontalList: { paddingHorizontal: SPACING.m, marginBottom: SPACING.s },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
+  emptyText: { color: COLORS.textSecondary, marginTop: 10, fontSize: 16 },
 
-    // Trip Card Styles
-    tripCard: {
-        backgroundColor: COLORS.white,
-        marginHorizontal: SPACING.m,
-        marginBottom: SPACING.m,
-        borderRadius: 16,
-        padding: SPACING.m,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 3,
-    },
-    driverTipContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#F0F9FF',
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-        borderRadius: 8,
-        marginBottom: SPACING.m,
-        alignSelf: 'flex-start',
-    },
-    driverTipText: {
-        fontSize: 12,
-        color: '#0284C7',
-        marginLeft: 6,
-        fontStyle: 'italic',
-        maxWidth: 250,
-    },
-    tripHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: SPACING.s,
-    },
-    routeContainer: {
-        flex: 1,
-    },
-    tripRouteOrigin: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: COLORS.text,
-        marginBottom: 4,
-    },
-    routeLineContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        height: 16,
-        width: 20, // Small visual connector
-        marginLeft: 2,
-    },
-    routeDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: '#ccc',
-    },
-    routeLine: {
-        width: 2,
-        height: 10,
-        backgroundColor: '#ccc',
-        position: 'absolute',
-        left: 2,
-        top: 6,
-    },
-    tripRouteDest: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: COLORS.text,
-        marginTop: 4,
-    },
-    tripPrice: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: COLORS.primary,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: '#F0F0F0',
-        marginVertical: SPACING.m,
-    },
-    tripFooter: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    driverInfoSmall: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    driverAvatarSmall: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: '#E0E7FF',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 8,
-    },
-    driverInitials: {
-        fontSize: 12,
-        fontWeight: 'bold',
-        color: '#4338CA',
-    },
-    driverNameSmall: {
-        fontSize: 14,
-        fontWeight: '500',
-        color: COLORS.text,
-    },
-    tripMeta: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    metaItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    metaText: {
-        fontSize: 13,
-        color: COLORS.textSecondary,
-    },
-    emptyContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: 40,
-    },
-    emptyText: {
-        marginTop: SPACING.m,
-        color: COLORS.textSecondary,
-        fontSize: 16,
-    },
+  // --- DISCOVERY COMPONENTS (Snippet 2) ---
+  suggestionCard: {
+    width: 140, height: 100, borderRadius: 12, marginRight: SPACING.m,
+    overflow: 'hidden', backgroundColor: '#ccc',
+  },
+  suggestionImage: { width: '100%', height: '100%' },
+  suggestionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'flex-end', padding: 8,
+  },
+  suggestionText: { color: COLORS.white, fontWeight: '600', fontSize: 16, fontFamily:Fonts.semibold },
+  
+  chip: {
+    paddingVertical: 2, paddingHorizontal: 16, borderRadius: 20,
+    backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border,
+    marginRight: SPACING.s,
+  },
+  chipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  chipText: { color: COLORS.textSecondary, fontWeight: '600', fontFamily:Fonts.mono },
+  chipTextSelected: { color: COLORS.white },
+
+  availableCard: {
+    backgroundColor: COLORS.white, marginHorizontal: SPACING.m, marginBottom: SPACING.m,
+    borderRadius: 16, padding: SPACING.m,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 3,
+  },
+  tipBubble: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F9FF',
+    paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, marginBottom: SPACING.m,
+    alignSelf: 'flex-start',
+  },
+  tipText: { fontSize: 12, color: '#0284C7', marginLeft: 6, fontStyle: 'italic', maxWidth: 250 },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  routeTextOrigin: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginBottom: 4 },
+  routeTextDest: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginTop: 4 },
+  connectorContainer: { flexDirection: 'row', alignItems: 'center', height: 16, width: 20, marginLeft: 2 },
+  connectorDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ccc' },
+  connectorLine: { width: 2, height: 10, backgroundColor: '#ccc', position: 'absolute', left: 2, top: 6 },
+  priceTag: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary },
+  divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: SPACING.m },
+  cardFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  driverRow: { flexDirection: 'row', alignItems: 'center' },
+  avatarSmall: { 
+    width: 32, height: 32, borderRadius: 16, backgroundColor: '#E0E7FF', 
+    justifyContent: 'center', alignItems: 'center', marginRight: 8 
+  },
+  avatarText: { fontSize: 12, fontWeight: 'bold', color: '#4338CA' },
+  driverName: { fontSize: 14, fontWeight: '500', color: COLORS.text },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaText: { fontSize: 13, color: COLORS.textSecondary },
+
+  // --- MY TRIPS COMPONENTS (Snippet 1) ---
+  subTabsContainer: { flexDirection: 'row', paddingHorizontal: SPACING.m, marginBottom: 10, marginTop: SPACING.s },
+  subTab: { marginRight: 20, paddingBottom: 5 },
+  subTabActive: { borderBottomWidth: 2, borderBottomColor: COLORS.primary },
+  subTabText: { fontSize: 16, color: COLORS.textSecondary },
+  subTabTextActive: { color: COLORS.primary, fontWeight: 'bold' },
+
+  myTripCard: {
+    backgroundColor: 'white', padding: 16, borderRadius: 12, marginBottom: 12, 
+    marginHorizontal: SPACING.m, elevation: 2,
+  },
+  statusBadge: { backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  statusText: { color: COLORS.primary, fontSize: 12, fontWeight: 'bold' },
+  priceTagSmall: { fontWeight: 'bold', fontSize: 16 },
+  myTripRouteContainer: { marginLeft: 0, paddingVertical: 10 },
+  addressText: { fontSize: 14, fontWeight: '500', marginBottom: 10 },
+  verticalDots: { 
+    position: 'absolute', left: -10, top: 5, bottom: 5, width: 2, backgroundColor: '#eee' 
+    // Simplified visual for snippet 1 style
+  },
+  dateText: { color: '#888', fontSize: 12 },
+  driverNameSmall: { color: COLORS.text, fontSize: 12, fontWeight: '500' },
 });

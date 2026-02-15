@@ -1,21 +1,14 @@
-import { Trip } from '../types';
-
-// Mock delay to simulate network request
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import api from './api';
 
 export const TripService = {
-    fetchTrips: async (): Promise<Trip[]> => {
-        await delay(1000);
-        return []; // Store generic mock data handles initial state
+    async getHistory() {
+        // Token is auto-attached!
+        const response = await api.get('/rides/history'); 
+        return response.data;
     },
 
-    createTrip: async (trip: any): Promise<boolean> => {
-        await delay(1000);
-        return true;
-    },
-
-    joinTrip: async (tripId: string, userId: string): Promise<boolean> => {
-        await delay(1000);
-        return true;
-    },
+    async requestRide(data: { origin: any, dest: any }) {
+        const response = await api.post('/rides/request', data);
+        return response.data;
+    }
 };

@@ -56,6 +56,9 @@ export class Ride {
     @Column({ nullable: true }) // 'Lite', 'Comfort', 'Van'
     tier: string;
 
+    @Column({ nullable: true })
+    departureTime: Date;
+
     @CreateDateColumn()
     createdAt: Date;
 

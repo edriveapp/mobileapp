@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "831560072030",
+    "project_id": "edrive-765ed",
+    "storage_bucket": "edrive-765ed.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:831560072030:android:184c43ffab3c60a9e66dcf",
+        "android_client_info": {
+          "package_name": "edriveapp.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_5DM5pLy9dRa7bOPCRW8XcxLwNU9RJkA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

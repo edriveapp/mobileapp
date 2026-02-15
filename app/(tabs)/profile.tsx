@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import {
     Alert,
     ScrollView,
@@ -14,16 +14,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '@/app/stores/authStore';
+import { useSettingsStore } from '@/app/stores/settingsStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 export default function ProfileScreen() {
     const router = useRouter();
     const { logout, user } = useAuthStore();
+    const { preferences, fetchPreferences, updatePreference, savedPlaces, fetchSavedPlaces } = useSettingsStore();
 
-    // Toggle States (Mock)
-    const [pushNotifications, setPushNotifications] = useState(true);
-    const [emailNotifications, setEmailNotifications] = useState(true);
-    const [biometrics, setBiometrics] = useState(false);
+    useEffect(() => {
+        fetchPreferences();
+        fetchSavedPlaces();
+    }, []);
 
     const handleLogout = () => {
         Alert.alert("Logout", "Are you sure you want to log out?", [
@@ -129,8 +131,8 @@ export default function ProfileScreen() {
                         <SettingItem
                             icon="location-outline"
                             title="Saved Places"
-                            subtitle="Home, Work"
-                        // onPress={() => router.push('/(rider)/saved-places')}
+                            subtitle={savedPlaces.length > 0 ? savedPlaces.map(p => p.label).join(', ') : 'Add places'}
+                            onPress={() => router.push('/saved-places')}
                         />
                     </View>
                 </View>
@@ -142,22 +144,22 @@ export default function ProfileScreen() {
                         <SettingItem
                             icon="notifications-outline"
                             title="Push Notifications"
-                            hasSwitch_Value={pushNotifications}
-                            onSwitchChange={setPushNotifications}
+                            hasSwitch_Value={preferences.pushNotifications}
+                            onSwitchChange={(val) => updatePreference('pushNotifications', val)}
                         />
                         <View style={styles.divider} />
                         <SettingItem
                             icon="mail-outline"
                             title="Email Updates"
-                            hasSwitch_Value={emailNotifications}
-                            onSwitchChange={setEmailNotifications}
+                            hasSwitch_Value={preferences.emailNotifications}
+                            onSwitchChange={(val) => updatePreference('emailNotifications', val)}
                         />
                         <View style={styles.divider} />
                         <SettingItem
                             icon="finger-print-outline"
                             title="Biometric Login"
-                            hasSwitch_Value={biometrics}
-                            onSwitchChange={setBiometrics}
+                            hasSwitch_Value={preferences.biometricLogin}
+                            onSwitchChange={(val) => updatePreference('biometricLogin', val)}
                         />
                     </View>
                 </View>

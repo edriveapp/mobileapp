@@ -1,79 +1,82 @@
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Image, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+    ActivityIndicator,
+    Modal,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 
 interface RatingModalProps {
-    isVisible: boolean;
-    driverName: string;
-    driverImage: string;
-    onSubmit: (rating: number, comment: string) => void;
-    onSkip: () => void;
+    visible: boolean;
+    onSubmit: (rating: number, comment: string) => Promise<void>;
+    onClose: () => void; // Should usually force rating, but allow close for MVP
+    driverName?: string;
+    driverImage?: string;
 }
 
-export default function RatingModal({ isVisible, driverName, driverImage, onSubmit, onSkip }: RatingModalProps) {
+export default function RatingModal({ visible, onSubmit, onClose, driverName = "Driver" }: RatingModalProps) {
     const [rating, setRating] = useState(0);
     const [comment, setComment] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSubmit = () => {
-        onSubmit(rating, comment);
+    const handleSubmit = async () => {
+        if (rating === 0) return;
+        setIsLoading(true);
+        try {
+            await onSubmit(rating, comment);
+            // Reset
+            setRating(0);
+            setComment('');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
-        <Modal
-            animationType="slide"
-            transparent={true}
-            visible={isVisible}
-            onRequestClose={onSkip}
-        >
+        <Modal visible={visible} transparent animationType="slide">
             <View style={styles.overlay}>
                 <View style={styles.container}>
-                    {/* Header Image */}
-                    <View style={styles.imageContainer}>
-                        <Image source={{ uri: driverImage }} style={styles.driverImage} />
-                        <View style={styles.checkBadge}>
-                            <Ionicons name="checkmark" size={16} color={COLORS.white} />
-                        </View>
-                    </View>
+                    <Text style={styles.title}>Rate your trip</Text>
+                    <Text style={styles.subtitle}>How was your ride with {driverName}?</Text>
 
-                    <Text style={styles.title}>Rate your trip with {driverName}</Text>
-                    <Text style={styles.subtitle}>How was your experience?</Text>
-
-                    {/* Star Rating */}
                     <View style={styles.starsContainer}>
                         {[1, 2, 3, 4, 5].map((star) => (
                             <TouchableOpacity key={star} onPress={() => setRating(star)}>
                                 <Ionicons
-                                    name={rating >= star ? "star" : "star-outline"}
+                                    name={star <= rating ? "star" : "star-outline"}
                                     size={40}
-                                    color="#FFD700"
+                                    color={COLORS.primary}
                                 />
                             </TouchableOpacity>
                         ))}
                     </View>
 
-                    {/* Comment Input */}
                     <TextInput
                         style={styles.input}
-                        placeholder="Leave a comment (optional)"
-                        placeholderTextColor={COLORS.textSecondary}
-                        multiline
-                        returnKeyType="done"
-                        blurOnSubmit={true}
+                        placeholder="Add a comment (optional)"
                         value={comment}
                         onChangeText={setComment}
+                        multiline
                     />
 
-                    {/* Actions */}
                     <TouchableOpacity
-                        style={[styles.submitButton, rating === 0 && styles.disabledButton]}
+                        style={[styles.button, rating === 0 && styles.disabledButton]}
                         onPress={handleSubmit}
-                        disabled={rating === 0}
+                        disabled={rating === 0 || isLoading}
                     >
-                        <Text style={styles.submitText}>Submit Review</Text>
+                        {isLoading ? (
+                            <ActivityIndicator color={COLORS.white} />
+                        ) : (
+                            <Text style={styles.buttonText}>Submit Rating</Text>
+                        )}
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.skipButton} onPress={onSkip}>
+                    <TouchableOpacity onPress={onClose} style={styles.skipBtn}>
                         <Text style={styles.skipText}>Skip</Text>
                     </TouchableOpacity>
                 </View>
@@ -85,79 +88,48 @@ export default function RatingModal({ isVisible, driverName, driverImage, onSubm
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         padding: SPACING.l,
     },
     container: {
         backgroundColor: COLORS.white,
-        borderRadius: 24,
-        padding: SPACING.xl,
+        borderRadius: 20,
+        padding: SPACING.l,
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 10,
-        elevation: 10,
-    },
-    imageContainer: {
-        marginBottom: SPACING.m,
-        position: 'relative',
-    },
-    driverImage: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: '#eee',
-    },
-    checkBadge: {
-        position: 'absolute',
-        bottom: 0,
-        right: 0,
-        backgroundColor: COLORS.success,
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: COLORS.white,
     },
     title: {
-        fontSize: 20,
-        fontWeight: '600',
+        fontSize: 22,
+        fontWeight: 'bold',
         color: COLORS.text,
-        fontFamily: Fonts.semibold,
-        textAlign: 'center',
         marginBottom: 8,
+        fontFamily: Fonts.bold,
     },
     subtitle: {
-        fontSize: 16,
+        fontSize: 14,
         color: COLORS.textSecondary,
+        marginBottom: 24,
         fontFamily: Fonts.rounded,
-        marginBottom: SPACING.l,
     },
     starsContainer: {
         flexDirection: 'row',
-        gap: 8,
-        marginBottom: SPACING.l,
+        gap: 12,
+        marginBottom: 24,
     },
     input: {
         width: '100%',
         backgroundColor: COLORS.surface,
         borderRadius: 12,
-        padding: 16,
-        fontSize: 16,
-        fontFamily: Fonts.rounded,
-        color: COLORS.text,
-        height: 100,
+        padding: 12,
+        height: 80,
         textAlignVertical: 'top',
-        marginBottom: SPACING.l,
+        marginBottom: 24,
+        fontFamily: Fonts.rounded,
     },
-    submitButton: {
+    button: {
         width: '100%',
         backgroundColor: COLORS.primary,
-        paddingVertical: 16,
+        padding: 16,
         borderRadius: 12,
         alignItems: 'center',
         marginBottom: 12,
@@ -166,19 +138,18 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.textSecondary,
         opacity: 0.5,
     },
-    submitText: {
+    buttonText: {
         color: COLORS.white,
+        fontWeight: 'bold',
         fontSize: 16,
-        fontWeight: '600',
         fontFamily: Fonts.semibold,
     },
-    skipButton: {
+    skipBtn: {
         padding: 8,
     },
     skipText: {
         color: COLORS.textSecondary,
-        fontSize: 16,
-        fontWeight: '500',
+        fontSize: 14,
         fontFamily: Fonts.rounded,
     },
 });

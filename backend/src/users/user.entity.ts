@@ -36,6 +36,17 @@ export class User {
     @Column({ nullable: true })
     lastName: string;
 
+    @Column({
+        type: 'jsonb',
+        nullable: true,
+        default: () => `'{"pushNotifications": true, "emailNotifications": true, "biometricLogin": false}'`,
+    })
+    preferences: {
+        pushNotifications: boolean;
+        emailNotifications: boolean;
+        biometricLogin: boolean;
+    };
+
     @CreateDateColumn()
     createdAt: Date;
 

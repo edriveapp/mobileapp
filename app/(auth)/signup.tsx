@@ -3,15 +3,25 @@ import { UserRole } from '@/app/types';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { Link, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+
+// Firebase web config (must match firebaseConfig.ts)
+const firebaseConfig = {
+    apiKey: "AIzaSyDNJmzGcTCJoBNnLOsocTKNNwoG1gVonGU",
+    authDomain: "edrive-765ed.firebaseapp.com",
+    projectId: "edrive-765ed",
+    storageBucket: "edrive-765ed.firebasestorage.app",
+    messagingSenderId: "831560072030",
+    appId: "1:831560072030:web:9ebcd9f94bd8fbf8e66dcf"
+};
 
 export default function SignupScreen() {
     const router = useRouter();
-    const login = useAuthStore((state: { login: any }) => state.login);
-    const setLoading = useAuthStore((state: { setLoading: any }) => state.setLoading);
-    const isLoading = useAuthStore((state: { isLoading: any }) => state.isLoading);
+    const isLoading = useAuthStore((state) => state.isLoading);
+    const sendOtp = useAuthStore((state) => state.sendOtp);
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -19,29 +29,55 @@ export default function SignupScreen() {
     const [password, setPassword] = useState('');
     const [isDriver, setIsDriver] = useState(false);
 
+    // Ref for the invisible reCAPTCHA modal
+    const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
+
     const handleSignup = async () => {
         if (!name || !email || !phoneNumber || !password) {
             Alert.alert('Error', 'Please fill in all fields');
             return;
         }
 
+        // Ensure phone number has country code
+        let formattedPhone = phoneNumber.trim();
+        if (!formattedPhone.startsWith('+')) {
+            // Default to Nigeria country code
+            formattedPhone = '+234' + formattedPhone.replace(/^0/, '');
+        }
+
         const role: UserRole = isDriver ? 'driver' : 'rider';
 
-        // Redirect to OTP verification with user details
-        router.push({
-            pathname: '/(auth)/otp',
-            params: {
-                name,
-                email,
-                phoneNumber,
-                password,
-                role
-            }
-        });
+        try {
+            // Send OTP via Firebase (client-side) using the reCAPTCHA verifier
+            await sendOtp(formattedPhone, recaptchaVerifier.current);
+
+            // Navigate to OTP screen with user details
+            router.push({
+                pathname: '/(auth)/otp',
+                params: {
+                    name,
+                    email,
+                    phoneNumber: formattedPhone,
+                    password,
+                    role
+                }
+            });
+        } catch (error: any) {
+            console.error('Signup OTP error:', error);
+            const msg = error.message || 'Failed to send verification code';
+            Alert.alert('Error', msg);
+        }
     };
 
     return (
         <SafeAreaView style={styles.container}>
+            {/* Invisible reCAPTCHA modal — renders a WebView overlay when needed */}
+            <FirebaseRecaptchaVerifierModal
+                ref={recaptchaVerifier}
+                firebaseConfig={firebaseConfig}
+                attemptInvisibleVerification={true}
+            />
+
             <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.header}>
                     <View style={styles.tag}>

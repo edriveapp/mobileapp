@@ -1,11 +1,13 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-
-import { HapticTab } from '@/components/haptic-tab';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { HapticTab } from '@/components/haptic-tab'; // Ensure casing matches file system
 import { COLORS } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useColorScheme } from '@/hooks/use-color-scheme'; // Ensure casing matches file system
+import { CustomHomeIcon } from '@/components/icon'; // Ensure casing matches file system
+
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -13,16 +15,16 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: COLORS.primary, // Uses your green theme color for the active tab
-        tabBarInactiveTintColor: 'gray',       // Gray for inactive tabs
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: 'gray',
         headerShown: false,
         tabBarButton: HapticTab,
-        tabBarShowLabel: false, // Hides text labels to match your icon-only snippet
+        tabBarShowLabel: true,
         tabBarStyle: Platform.select({
           ios: {
             position: 'absolute',
             backgroundColor: '#fff',
-            borderTopWidth: 0, // Removes line for a cleaner look
+            borderTopWidth: 0,
             height: 60,
             paddingBottom: 5,
             shadowColor: '#000',
@@ -34,34 +36,50 @@ export default function TabLayout() {
             borderTopWidth: 0,
             height: 60,
             paddingBottom: 5,
-            elevation: 8, // Adds shadow on Android
+            elevation: 8,
           },
         }),
       }}
     >
-      {/* 1. Home Tab - Ionicons "home" */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="home" size={24} color={color} />
-          ),
-        }}
+      {/* 1. Home Tab */}
+     <Tabs.Screen
+  name="index"
+  options={{
+    title: 'Home',
+    tabBarIcon: ({ color, focused }) => (
+      <CustomHomeIcon 
+        focused={focused} 
+        color={color} 
+        size={28} 
       />
+    ),
+  }}
+/>
 
-      {/* 2. Trips Tab - MaterialCommunityIcons "clock-time-three-outline" */}
+      {/* 2. Activities Tab (Trips) */}
       <Tabs.Screen
         name="trips"
         options={{
-          title: 'My Trips',
+          title: 'Trips',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="clock-time-three-outline" size={26} color={color} />
+            // Ionicons car-sport match requested "Car icon"
+            <Ionicons name="car-sport" size={26} color={color} />
           ),
         }}
       />
 
-      {/* 3. Profile Tab - Ionicons "person-outline" */}
+      {/* 3. Chat Tab (Inbox) */}
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Inbox',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="chatbubbles" size={24} color={color} />
+          ),
+        }}
+      />
+
+      {/* 4. Profile Tab */}
       <Tabs.Screen
         name="profile"
         options={{
@@ -72,11 +90,7 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Hide Explore or any other unused tabs */}
-      <Tabs.Screen
-        name="explore"
-        options={{ href: null }}
-      />
+
     </Tabs>
   );
 }

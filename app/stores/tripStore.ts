@@ -1,189 +1,199 @@
 import { create } from 'zustand';
+import api from '../services/api';
 import { Trip } from '../types';
 
-interface TripState {
-    trips: Trip[];
-    trendingTrips: Trip[]; // <--- NEW: State for trending items
-    selectedTrip: Trip | null;
-    isLoading: boolean;
-    userJoinedTripIds: string[];
+// --- 1. Types & Interfaces ---
 
-    fetchTrips: () => Promise<void>;
-    createTrip: (trip: Omit<Trip, 'id' | 'riders' | 'availableSeats' | 'status'>) => void;
-    joinTrip: (tripId: string, userId: string) => Promise<void>;
-    setLoading: (loading: boolean) => void;
+export type RideStatus = 'IDLE' | 'SEARCHING' | 'ACCEPTED' | 'ARRIVING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export interface RideRequest {
+    origin: { lat: number; lon: number; address: string };
+    destination: { lat: number; lon: number; address: string };
+    tier: 'Lite' | 'Comfort' | 'Van';
+    price: number;
+    departureTime?: string; // ISO string
 }
 
-// 1. STANDARD TRIPS (For general search)
-const INITIAL_TRIPS: Trip[] = [
-    {
-        id: 'trip-1',
-        driverId: 'driver-1',
-        origin: 'Lagos',
-        destination: 'Abuja',
-        date: '2023-11-20',
-        time: '08:00',
-        price: 15000,
-        seats: 3,
-        availableSeats: 3,
-        riders: [],
-        status: 'scheduled',
-        vehicle: 'Toyota Sienna',
-        preferences: { ac: true, luggage: true, smoking: false },
-        autoAccept: true,
-    },
-    {
-        id: 'trip-2',
-        driverId: 'driver-2',
-        origin: 'Ibadan',
-        destination: 'Lagos',
-        date: '2023-11-21',
-        time: '10:00',
-        price: 5000,
-        seats: 4,
-        availableSeats: 1,
-        riders: [],
-        status: 'scheduled',
-        vehicle: 'Toyota Corolla',
-        preferences: { ac: false, luggage: true, smoking: false },
-        autoAccept: false,
-    },
-];
+export interface DriverLocation {
+    id: string;
+    coords: { latitude: number; longitude: number };
+    heading: number;
+}
+interface TripState {
+    // Lists
+    trips: Trip[];
+    availableTrips: Trip[];
+    trendingTrips: Trip[];   // <--- Added for JoinRideView
+    activeTrips: any[];
+    history: any[];
+    activeDrivers: DriverLocation[];
 
-// 2. TRENDING TRIPS (Matches your Screenshot)
-const TRENDING_TRIPS: Trip[] = [
-    {
-        id: 'trend-1',
-        driverId: 'd-trend-1',
-        destination: 'Federal University of Technology Owerri',
-        origin: 'Artillery, Port Harcourt',
-        date: 'Jan 18, 2026',
-        time: '09:00 AM',
-        price: 4500,
-        seats: 4,
-        availableSeats: 4,
-        riders: [],
-        status: 'scheduled',
-        vehicle: 'Toyota Camry',
-        preferences: { ac: true, luggage: true, smoking: false },
-        autoAccept: true,
-    },
-    {
-        id: 'trend-2',
-        driverId: 'd-trend-2',
-        destination: 'Redemption Camp 2026',
-        origin: 'Garrison, Port Harcourt',
-        date: 'Feb 12, 2026',
-        time: '07:00 AM',
-        price: 15000,
-        seats: 18, // Bus
-        availableSeats: 12,
-        riders: [],
-        status: 'scheduled',
-        vehicle: 'Toyota Coaster Bus',
-        preferences: { ac: true, luggage: true, smoking: false },
-        autoAccept: false,
-    },
-    {
-        id: 'trend-3',
-        driverId: 'd-trend-3',
-        destination: 'University of Uyo',
-        origin: 'Garrison, Port Harcourt',
-        date: 'Feb 12, 2026',
-        time: '10:00 AM',
-        price: 6000,
-        seats: 4,
-        availableSeats: 2,
-        riders: [],
-        status: 'scheduled',
-        vehicle: 'Toyota Sienna',
-        preferences: { ac: true, luggage: true, smoking: false },
-        autoAccept: true,
-    },
-];
+    // Active Ride State (Passenger)
+    currentRide: any | null;
+    rideStatus: RideStatus;
+
+    // UI States
+    isLoading: boolean;
+    error: string | null;
+
+    // Actions
+    fetchTrips: (filters?: any) => Promise<void>;
+    fetchAvailableTrips: (filters?: any) => Promise<void>;
+    fetchMyTrips: () => Promise<void>;
+    fetchNearbyDrivers: (lat: number, lon: number) => Promise<void>;
+
+    // Ride Actions
+    requestRide: (request: RideRequest) => Promise<void>;
+    cancelRide: (rideId?: string) => Promise<void>;
+    postTrip: (tripData: any) => Promise<void>;
+    submitRating: (rideId: string, raterId: string, rateeId: string, value: number, comment: string) => Promise<void>;
+
+    // State Setters (called by SocketService)
+    updateRideStatus: (status: RideStatus, data?: any) => void;
+}
+
+// --- 2. Store Implementation ---
 
 export const useTripStore = create<TripState>((set, get) => ({
-    trips: INITIAL_TRIPS,
-    trendingTrips: TRENDING_TRIPS, // <--- Initialize here
-    selectedTrip: null,
+    // Initial State
+    trips: [],
+    availableTrips: [],
+    trendingTrips: [],       // <--- Initialized
+    activeTrips: [],
+    history: [],
+    activeDrivers: [],
+    currentRide: null,
+    rideStatus: 'IDLE',
     isLoading: false,
-    userJoinedTripIds: [],
+    error: null,
 
-    setLoading: (loading) => set({ isLoading: loading }),
+    // --- Fetch Actions ---
 
-    fetchTrips: async () => {
+    fetchTrips: async (filters) => {
+        await get().fetchAvailableTrips(filters);
+    },
+
+    fetchAvailableTrips: async (filters) => {
+        set({ isLoading: true, error: null });
+        try {
+            // We need to know if we are searching as a driver or rider. 
+            // Better to pass it or get from authStore. But simpler to pass in filters.
+            const response = await api.get('/rides/available', { params: filters });
+            set({
+                availableTrips: response.data,
+                trips: response.data,
+                // We derive trending trips from the available list (e.g., top 5)
+                // or you can point this to a specific /rides/trending endpoint
+                trendingTrips: response.data.slice(0, 5)
+            });
+        } catch (error: any) {
+            console.error("Fetch Available Trips Error:", error);
+            set({ error: error.message || "Failed to load trips" });
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    fetchMyTrips: async () => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await api.get('/rides/my-rides');
+            set({
+                activeTrips: response.data.active || [],
+                history: response.data.history || []
+            });
+
+            const ongoingRide = response.data.active.find((r: any) =>
+                ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'IN_PROGRESS'].includes(r.status)
+            );
+
+            if (ongoingRide) {
+                set({
+                    currentRide: ongoingRide,
+                    rideStatus: ongoingRide.status as RideStatus
+                });
+            }
+
+        } catch (error: any) {
+            console.error("Fetch My Trips Error:", error);
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    fetchNearbyDrivers: async (lat, lon) => {
+        try {
+            const response = await api.get('/users/drivers/nearby', { params: { lat, lon } });
+            set({ activeDrivers: response.data });
+        } catch (error) {
+            console.log("Error fetching drivers:", error);
+        }
+    },
+
+    // --- Ride Flow Actions ---
+
+    requestRide: async (request) => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await api.post('/rides/request', request);
+            set({
+                currentRide: response.data,
+                rideStatus: 'SEARCHING'
+            });
+        } catch (error: any) {
+            set({ rideStatus: 'IDLE', error: error.response?.data?.message || error.message });
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    cancelRide: async (rideId) => {
+        const idToCancel = rideId || get().currentRide?.id;
+        if (!idToCancel) return;
+
         set({ isLoading: true });
-        // Simulate API delay
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        // In a real app, you would fetch both standard and trending trips here
-        // const response = await api.getTrips();
-        // set({ trips: response.all, trendingTrips: response.trending });
-
-        set({ isLoading: false });
+        try {
+            await api.patch(`/rides/${idToCancel}/cancel`);
+            set({
+                rideStatus: 'IDLE',
+                currentRide: null
+            });
+            await get().fetchMyTrips();
+        } catch (error: any) {
+            set({ error: error.message });
+            console.error("Cancel Ride Error:", error);
+        } finally {
+            set({ isLoading: false });
+        }
     },
 
-    createTrip: (tripData) => {
-        const newTrip: Trip = {
-            ...tripData,
-            id: `trip-${Date.now()}`,
-            availableSeats: tripData.seats,
-            riders: [],
-            status: 'scheduled',
-            driverId: 'current-user', // Fallback ID
-        };
-        set((state) => ({ trips: [newTrip, ...state.trips] }));
+    postTrip: async (tripData) => {
+        set({ isLoading: true, error: null });
+        try {
+            await api.post('/rides/publish', tripData);
+            await get().fetchMyTrips();
+        } catch (error: any) {
+            set({ error: error.message });
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
     },
 
-    joinTrip: async (tripId: string, userId: string) => {
-        const { trips, trendingTrips, userJoinedTripIds } = get();
-
-        // Check both lists
-        let isTrending = false;
-        let tripIndex = trips.findIndex((t) => t.id === tripId);
-
-        if (tripIndex === -1) {
-            tripIndex = trendingTrips.findIndex((t) => t.id === tripId);
-            isTrending = true;
+    submitRating: async (rideId, raterId, rateeId, value, comment) => {
+        try {
+            await api.post('/ratings', { rideId, raterId, rateeId, value, comment });
+        } catch (error) {
+            console.log("Rating Error:", error);
+            throw error;
         }
+    },
 
-        if (tripIndex === -1) {
-            throw new Error('Trip not found');
-        }
-
-        const listToUpdate = isTrending ? trendingTrips : trips;
-        const trip = listToUpdate[tripIndex];
-
-        if (userJoinedTripIds.includes(tripId)) {
-            throw new Error('You have already joined this trip');
-        }
-
-        if (trip.availableSeats <= 0) {
-            throw new Error('No seats available');
-        }
-
-        const updatedTrip = {
-            ...trip,
-            availableSeats: trip.availableSeats - 1,
-            riders: [...trip.riders, userId],
-        };
-
-        // Create new arrays to update state immutably
-        if (isTrending) {
-            const updatedTrending = [...trendingTrips];
-            updatedTrending[tripIndex] = updatedTrip;
-            set({ trendingTrips: updatedTrending });
-        } else {
-            const updatedTrips = [...trips];
-            updatedTrips[tripIndex] = updatedTrip;
-            set({ trips: updatedTrips });
-        }
-
+    updateRideStatus: (status, data) => {
         set((state) => ({
-            userJoinedTripIds: [...state.userJoinedTripIds, tripId],
-            selectedTrip: updatedTrip,
+            rideStatus: status,
+            currentRide: data ? { ...state.currentRide, ...data } : state.currentRide
         }));
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-    },
+    }
 }));

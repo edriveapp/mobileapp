@@ -7,6 +7,7 @@ export interface User {
   role: UserRole;
   phoneNumber: string;
   isVerified: boolean;
+  token?: string;
 }
 
 export interface Trip {

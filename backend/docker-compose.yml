@@ -31,7 +31,7 @@ services:
   osrm:
     image: osrm/osrm-backend
     ports:
-      - "5000:5000"
+      - "5005:5000"
     volumes:
       - ./osrm-data:/data
     command: osrm-routed --algorithm mld /data/nigeria-latest.osrm

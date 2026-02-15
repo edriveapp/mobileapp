@@ -164,15 +164,15 @@ export default function DriverHome() {
                     </TouchableOpacity>
                 )}
 
-                {/* 1. Active Trips Card */}
+                {/* 1. Requests / Active Trips Card */}
                 <TouchableOpacity
                     style={[styles.card, styles.cardBorderGreen]}
-                    onPress={() => handleAction(() => console.log('View Active Trips'))}
+                    onPress={() => router.push('/(driver)/requests')}
                 >
                     <View style={styles.cardRow}>
                         <View>
-                            <Text style={styles.cardTitle}>Active Trips</Text>
-                            <Text style={styles.cardSubtitle}>View Active Trips</Text>
+                            <Text style={styles.cardTitle}>Ride Requests</Text>
+                            <Text style={styles.cardSubtitle}>View Available Rides</Text>
                         </View>
                         <Text style={styles.seeDetails}>see details</Text>
                     </View>

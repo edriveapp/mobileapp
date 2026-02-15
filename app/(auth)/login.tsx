@@ -1,17 +1,15 @@
-import { AuthService } from '@/app/services/authService';
 import { useAuthStore } from '@/app/stores/authStore';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { COLORS, Fonts, SPACING } from '@/constants/theme';
+import { COLORS, Fonts } from '@/constants/theme';
+import Feather from '@expo/vector-icons/Feather';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View, StatusBar, Platform } from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
+import { ActivityIndicator, Alert, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function LoginScreen() {
     const router = useRouter();
-    const login = useAuthStore((state: { login: any }) => state.login);
-    const setLoading = useAuthStore((state: { setLoading: any }) => state.setLoading);
-    const isLoading = useAuthStore((state: { isLoading: any }) => state.isLoading);
+    const login = useAuthStore((state) => state.login);
+    const isLoading = useAuthStore((state) => state.isLoading);
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -23,28 +21,39 @@ export default function LoginScreen() {
             return;
         }
 
-        setLoading(true);
+        // Email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            Alert.alert('Error', 'Please enter a valid email address');
+            return;
+        }
+
         try {
-            const user = await AuthService.login(email, password);
-            login(user);
-            router.replace('/(tabs)');
-        } catch (error) {
-            Alert.alert('Error', 'Login failed. Please try again.');
-        } finally {
-            setLoading(false);
+            await login({ email, password });
+
+            // Role-based redirect
+            const user = useAuthStore.getState().user;
+            if (user?.role === 'driver') {
+                router.replace('/(driver)');
+            } else {
+                router.replace('/(tabs)');
+            }
+        } catch (error: any) {
+            const msg = error.response?.data?.message || 'Login failed. Please try again.';
+            Alert.alert('Error', msg);
         }
     };
 
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            
+
             <View style={styles.header}>
                 <View style={styles.tag}>
                     <Text style={styles.tagText}>Welcome Back</Text>
                 </View>
                 <TouchableOpacity style={styles.helpButton}>
-                   <Feather name="headphones" size={14} color="black" />
+                    <Feather name="headphones" size={14} color="black" />
                     <Text style={styles.helpText}>Help</Text>
                 </TouchableOpacity>
             </View>
@@ -80,10 +89,10 @@ export default function LoginScreen() {
                             secureTextEntry={!showPassword}
                         />
                         <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                            <IconSymbol 
-                                name={showPassword ? "eye" : "eye.slash"} 
-                                size={20} 
-                                color="#141414ff" 
+                            <IconSymbol
+                                name={showPassword ? "eye" : "eye.slash"}
+                                size={20}
+                                color="#141414ff"
                             />
                         </TouchableOpacity>
                     </View>
@@ -122,7 +131,7 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#ffffffff',
         paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-        
+
     },
     header: {
         flexDirection: 'row',
@@ -131,7 +140,7 @@ const styles = StyleSheet.create({
         marginTop: 10,
         paddingBottom: 24,
         paddingHorizontal: 20,
-        
+
     },
     tag: {
         backgroundColor: '#BDF7DB',
@@ -188,7 +197,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '400',
         color: '#000000',
-        marginBottom: 3     ,
+        marginBottom: 3,
         fontFamily: Fonts.rounded,
     },
     inputWrapper: {
@@ -199,7 +208,7 @@ const styles = StyleSheet.create({
         borderColor: '#b49f9fff',
         borderRadius: 12,
         paddingHorizontal: 10,
-        
+
         height: 45,
     },
     input: {

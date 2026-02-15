@@ -21,27 +21,30 @@ try {
 }
 
 export default function AnimatedSplashScreen() {
-    const setFinishedSplash = useAuthStore((state) => state.setFinishedSplash);
+    const checkLogin = useAuthStore((state) => state.checkLogin);
 
     const opacity = useSharedValue(0);
     const scale = useSharedValue(0.8);
 
     useEffect(() => {
-        opacity.value = withTiming(1, { 
-            duration: 1500,
-            easing: Easing.bezier(0.25, 0.1, 0.25, 1)
-        });
-        
-        scale.value = withTiming(1, { 
+        opacity.value = withTiming(1, {
             duration: 1500,
             easing: Easing.bezier(0.25, 0.1, 0.25, 1)
         });
 
-        const timeout = setTimeout(() => {
-            setFinishedSplash(true);
-        }, 3000);
+        scale.value = withTiming(1, {
+            duration: 1500,
+            easing: Easing.bezier(0.25, 0.1, 0.25, 1)
+        });
 
-        return () => clearTimeout(timeout);
+        const initApp = async () => {
+            // Ensure animation plays for at least 2 seconds
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            await checkLogin();
+            // checkLogin sets hasFinishedSplash to true
+        };
+
+        initApp();
     }, []);
 
     const animatedLogoStyle = useAnimatedStyle(() => ({
