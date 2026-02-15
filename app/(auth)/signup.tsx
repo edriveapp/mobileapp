@@ -3,20 +3,9 @@ import { UserRole } from '@/app/types';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { Link, useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
-// Firebase web config (must match firebaseConfig.ts)
-const firebaseConfig = {
-    apiKey: "AIzaSyDNJmzGcTCJoBNnLOsocTKNNwoG1gVonGU",
-    authDomain: "edrive-765ed.firebaseapp.com",
-    projectId: "edrive-765ed",
-    storageBucket: "edrive-765ed.firebasestorage.app",
-    messagingSenderId: "831560072030",
-    appId: "1:831560072030:web:9ebcd9f94bd8fbf8e66dcf"
-};
 
 export default function SignupScreen() {
     const router = useRouter();
@@ -28,9 +17,6 @@ export default function SignupScreen() {
     const [phoneNumber, setPhoneNumber] = useState('');
     const [password, setPassword] = useState('');
     const [isDriver, setIsDriver] = useState(false);
-
-    // Ref for the invisible reCAPTCHA modal
-    const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
 
     const handleSignup = async () => {
         if (!name || !email || !phoneNumber || !password) {
@@ -45,11 +31,11 @@ export default function SignupScreen() {
             formattedPhone = '+234' + formattedPhone.replace(/^0/, '');
         }
 
-        const role: UserRole = isDriver ? 'driver' : 'rider';
+        const role: UserRole = isDriver ? 'driver' : 'passenger';
 
         try {
-            // Send OTP via Firebase (client-side) using the reCAPTCHA verifier
-            await sendOtp(formattedPhone, recaptchaVerifier.current);
+            // Send OTP via backend (Twilio)
+            await sendOtp(formattedPhone);
 
             // Navigate to OTP screen with user details
             router.push({
@@ -64,20 +50,13 @@ export default function SignupScreen() {
             });
         } catch (error: any) {
             console.error('Signup OTP error:', error);
-            const msg = error.message || 'Failed to send verification code';
+            const msg = error.response?.data?.message || error.message || 'Failed to send verification code';
             Alert.alert('Error', msg);
         }
     };
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* Invisible reCAPTCHA modal — renders a WebView overlay when needed */}
-            <FirebaseRecaptchaVerifierModal
-                ref={recaptchaVerifier}
-                firebaseConfig={firebaseConfig}
-                attemptInvisibleVerification={true}
-            />
-
             <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.header}>
                     <View style={styles.tag}>

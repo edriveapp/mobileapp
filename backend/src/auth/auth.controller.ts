@@ -15,9 +15,15 @@ export class AuthController {
         return this.authService.login(user);
     }
 
+    @Post('send-otp')
+    @HttpCode(HttpStatus.OK)
+    async sendOtp(@Body() body: { phoneNumber: string }) {
+        return this.authService.sendOtp(body.phoneNumber);
+    }
+
     @Post('register')
     async register(@Body() body: any) {
-        const { firebaseIdToken, ...userData } = body;
-        return this.authService.register(userData, firebaseIdToken);
+        const { otpCode, ...userData } = body;
+        return this.authService.register(userData, otpCode);
     }
 }

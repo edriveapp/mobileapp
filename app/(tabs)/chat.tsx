@@ -85,8 +85,9 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 24,
-        fontFamily: Fonts.bold,
+        fontFamily: Fonts.semibold,
         color: COLORS.text,
+        textAlign: 'center',
     },
     list: {
         padding: SPACING.m,

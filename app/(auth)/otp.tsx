@@ -2,7 +2,6 @@ import { useAuthStore } from '@/app/stores/authStore';
 import { UserRole } from '@/app/types';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 
@@ -16,16 +15,6 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-
-// Firebase web config (must match firebaseConfig.ts)
-const firebaseConfig = {
-    apiKey: "AIzaSyDNJmzGcTCJoBNnLOsocTKNNwoG1gVonGU",
-    authDomain: "edrive-765ed.firebaseapp.com",
-    projectId: "edrive-765ed",
-    storageBucket: "edrive-765ed.firebasestorage.app",
-    messagingSenderId: "831560072030",
-    appId: "1:831560072030:web:9ebcd9f94bd8fbf8e66dcf"
-};
 
 export default function OtpScreen() {
     const router = useRouter();
@@ -42,9 +31,6 @@ export default function OtpScreen() {
     // Resend timer
     const [resendTimer, setResendTimer] = useState(60);
     const [canResend, setCanResend] = useState(false);
-
-    // Ref for reCAPTCHA (needed for resend)
-    const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
 
     useEffect(() => {
         if (resendTimer > 0) {
@@ -91,12 +77,13 @@ export default function OtpScreen() {
     const handleResend = async () => {
         if (!canResend || !phoneNumber) return;
         try {
-            await sendOtp(phoneNumber as string, recaptchaVerifier.current);
+            await sendOtp(phoneNumber as string);
             setResendTimer(60);
             setCanResend(false);
             Alert.alert('OTP Resent', 'A new verification code has been sent to your phone.');
         } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to resend OTP. Please try again.');
+            const msg = error.response?.data?.message || error.message || 'Failed to resend OTP. Please try again.';
+            Alert.alert('Error', msg);
         }
     };
 
@@ -123,7 +110,7 @@ export default function OtpScreen() {
                 role: userRole,
             };
 
-            // Verify OTP with Firebase (client-side) then register with backend
+            // Verify OTP via backend (Twilio) and register
             await verifyOtp(otpString, userData);
 
             if (userRole === 'driver') {
@@ -139,13 +126,6 @@ export default function OtpScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* reCAPTCHA for resend functionality */}
-            <FirebaseRecaptchaVerifierModal
-                ref={recaptchaVerifier}
-                firebaseConfig={firebaseConfig}
-                attemptInvisibleVerification={true}
-            />
-
             <View style={styles.header}>
                 <View style={styles.tag}>
                     <Text style={styles.tagText}>Verify number</Text>
@@ -277,15 +257,15 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         width: '90%',
         marginBottom: 24,
-        gap: 8,
+        gap: 4,
     },
     otpInput: {
-        width: 48,
+        width: 44,
         height: 55,
         borderWidth: 1.5,
         borderColor: '#E0E0E0',
         borderRadius: 14,
-        fontSize: 24,
+        fontSize: 22,
         paddingVertical: 0,
         textAlign: 'center',
         textAlignVertical: 'center',

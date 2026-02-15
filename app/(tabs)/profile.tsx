@@ -86,6 +86,9 @@ export default function ProfileScreen() {
 
     if (!user) return null;
 
+    // Use firstName from backend, fall back to name
+    const displayName = (user as any).firstName || user.name || 'User';
+
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
             <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
@@ -100,13 +103,15 @@ export default function ProfileScreen() {
                 {/* Avatar Section */}
                 <View style={styles.avatarContainer}>
                     <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{user.name?.charAt(0) || 'U'}</Text>
+                        <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
                     </View>
-                    <Text style={styles.userName}>{user.name}</Text>
+                    <Text style={styles.userName}>{displayName}</Text>
                     <Text style={styles.userEmail}>{user.email}</Text>
                     <View style={styles.roleBadge}>
                         <Ionicons name="person" size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
-                        <Text style={styles.roleText}>Rider Account</Text>
+                        <Text style={styles.roleText}>
+                            {user.role === 'driver' ? 'Driver Account' : 'Rider Account'}
+                        </Text>
                     </View>
                 </View>
 
@@ -117,15 +122,14 @@ export default function ProfileScreen() {
                         <SettingItem
                             icon="person-outline"
                             title="Personal Information"
-                            subtitle={user.phoneNumber || '+234 800 000 0000'} // Mock phone if missing
-                        // onPress={() => router.push('/(rider)/profile-details')}
+                            subtitle="View your details"
+                            onPress={() => router.push('/profile-details')}
                         />
                         <View style={styles.divider} />
                         <SettingItem
                             icon="card-outline"
                             title="Payment Methods"
-                            subtitle="Visa **4242"
-                        // onPress={() => router.push('/(rider)/payments')}
+                            subtitle="Manage payment"
                         />
                         <View style={styles.divider} />
                         <SettingItem
@@ -139,7 +143,7 @@ export default function ProfileScreen() {
 
                 {/* Preferences Section */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionHeader}>PREFERENCES</Text>
+                    <Text style={styles.sectionHeader}>NOTIFICATIONS</Text>
                     <View style={styles.sectionBody}>
                         <SettingItem
                             icon="notifications-outline"
@@ -156,10 +160,10 @@ export default function ProfileScreen() {
                         />
                         <View style={styles.divider} />
                         <SettingItem
-                            icon="finger-print-outline"
-                            title="Biometric Login"
-                            hasSwitch_Value={preferences.biometricLogin}
-                            onSwitchChange={(val) => updatePreference('biometricLogin', val)}
+                            icon="cloud-download-outline"
+                            title="OTA Updates"
+                            hasSwitch_Value={preferences.otaUpdates}
+                            onSwitchChange={(val) => updatePreference('otaUpdates', val)}
                         />
                     </View>
                 </View>
@@ -208,7 +212,7 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center', // Center title
+        justifyContent: 'center',
         paddingHorizontal: SPACING.l,
         paddingVertical: SPACING.m,
         backgroundColor: COLORS.white,
@@ -229,7 +233,7 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: COLORS.primary, // Edrive Green
+        backgroundColor: COLORS.primary,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: SPACING.s,
@@ -259,7 +263,7 @@ const styles = StyleSheet.create({
     roleBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#E8F5E9', // Light green bg
+        backgroundColor: '#E8F5E9',
         paddingHorizontal: 10,
         paddingVertical: 4,
         borderRadius: 12,

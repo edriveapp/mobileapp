@@ -1,29 +1,18 @@
-import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as admin from 'firebase-admin';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
+import { SmsService } from './sms.service';
 
 @Injectable()
-export class AuthService implements OnModuleInit {
+export class AuthService {
     private readonly logger = new Logger(AuthService.name);
 
     constructor(
         private usersService: UsersService,
         private jwtService: JwtService,
-        private configService: ConfigService,
+        private smsService: SmsService,
     ) { }
-
-    onModuleInit() {
-        // Initialize Firebase Admin SDK (only once)
-        if (!admin.apps.length) {
-            admin.initializeApp({
-                projectId: this.configService.get<string>('FIREBASE_PROJECT_ID') || 'edrive-765ed',
-            });
-            this.logger.log('Firebase Admin SDK initialized');
-        }
-    }
 
     async validateUser(email: string, pass: string): Promise<any> {
         const user = await this.usersService.findOneByEmail(email);
@@ -42,23 +31,27 @@ export class AuthService implements OnModuleInit {
         };
     }
 
-    async register(userData: any, firebaseIdToken: string) {
-        // Verify the Firebase ID token
-        let decodedToken: admin.auth.DecodedIdToken;
-        try {
-            decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
-        } catch (error: any) {
-            this.logger.error(`Firebase token verification failed: ${error.message}`);
-            throw new BadRequestException('Invalid or expired verification token. Please try again.');
+    async sendOtp(phoneNumber: string) {
+        if (!phoneNumber) {
+            throw new BadRequestException('Phone number is required.');
+        }
+        return this.smsService.sendOtp(phoneNumber);
+    }
+
+    async register(userData: any, otpCode: string) {
+        const phoneNumber = userData.phone;
+
+        if (!phoneNumber || !otpCode) {
+            throw new BadRequestException('Phone number and OTP code are required.');
         }
 
-        // The phone number from the verified Firebase token
-        const verifiedPhone = decodedToken.phone_number;
-        if (!verifiedPhone) {
-            throw new BadRequestException('Phone number not verified in token.');
+        // Verify the OTP via Twilio
+        const isValid = await this.smsService.verifyOtp(phoneNumber, otpCode);
+        if (!isValid) {
+            throw new BadRequestException('Invalid or expired OTP code. Please try again.');
         }
 
-        this.logger.log(`Verified phone number from Firebase: ${verifiedPhone}`);
+        this.logger.log(`OTP verified for phone number: ${phoneNumber}`);
 
         // Check if user already exists
         let user = await this.usersService.findOneByEmail(userData.email);
@@ -67,10 +60,7 @@ export class AuthService implements OnModuleInit {
         }
 
         // Create user with verified phone
-        user = await this.usersService.create({
-            ...userData,
-            phone: verifiedPhone,
-        });
+        user = await this.usersService.create(userData);
 
         return this.login(user);
     }

@@ -13,7 +13,7 @@ export interface SavedPlace {
 export interface Preferences {
     pushNotifications: boolean;
     emailNotifications: boolean;
-    biometricLogin: boolean;
+    otaUpdates: boolean;
 }
 
 interface SettingsState {
@@ -33,7 +33,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     preferences: {
         pushNotifications: true,
         emailNotifications: true,
-        biometricLogin: false,
+        otaUpdates: true,
     },
     savedPlaces: [],
     isLoading: false,

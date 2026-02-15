@@ -44,6 +44,7 @@ export default function SavedPlacesScreen() {
     const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
+    const [isGettingLocation, setIsGettingLocation] = useState(false);
     const searchTimeout = useRef<any>(null);
 
     useEffect(() => {
@@ -75,6 +76,45 @@ export default function SavedPlacesScreen() {
             }
         }, 800);
     }, []);
+
+    const handleUseCurrentLocation = async () => {
+        setIsGettingLocation(true);
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Location permission is needed to use this feature.');
+                return;
+            }
+            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            const { latitude, longitude } = loc.coords;
+
+            // Reverse geocode via LocationIQ
+            const API_KEY = 'pk.b2973113f0eed13c609ab7a517220e92';
+            const url = `https://us1.locationiq.com/v1/reverse.php?key=${API_KEY}&lat=${latitude}&lon=${longitude}&format=json`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data?.display_name) {
+                const place: PlaceResult = {
+                    place_id: `current_${Date.now()}`,
+                    display_name: data.display_name,
+                    lat: String(latitude),
+                    lon: String(longitude),
+                };
+                setSelectedPlace(place);
+                setSearchText(data.display_name.split(',')[0]);
+                setSearchResults([]);
+                Keyboard.dismiss();
+            } else {
+                Alert.alert('Error', 'Could not determine your address.');
+            }
+        } catch (error) {
+            console.error('Location error:', error);
+            Alert.alert('Error', 'Failed to get current location.');
+        } finally {
+            setIsGettingLocation(false);
+        }
+    };
 
     const handleSelectPlace = (place: PlaceResult) => {
         setSelectedPlace(place);
@@ -190,6 +230,17 @@ export default function SavedPlacesScreen() {
                             placeholderTextColor={COLORS.textSecondary}
                         />
                         {isSearching && <ActivityIndicator size="small" color={COLORS.primary} />}
+                        <TouchableOpacity
+                            style={styles.locateButton}
+                            onPress={handleUseCurrentLocation}
+                            disabled={isGettingLocation}
+                        >
+                            {isGettingLocation ? (
+                                <ActivityIndicator size="small" color={COLORS.primary} />
+                            ) : (
+                                <Ionicons name="locate" size={20} color={COLORS.primary} />
+                            )}
+                        </TouchableOpacity>
                     </View>
 
                     {/* Search results */}
@@ -338,6 +389,15 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontFamily: Fonts.rounded,
         color: COLORS.text,
+    },
+    locateButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#E8F5E9',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
     },
     resultsContainer: {
         borderWidth: 1,
