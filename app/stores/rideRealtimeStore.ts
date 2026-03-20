@@ -127,6 +127,13 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
       if (message?.rideId) {
         void useChatStore.getState().incrementUnread(message.rideId);
       }
+      // Trigger a local notification so user hears the ding and sees a banner
+      presentLocalNotification(
+        'New message',
+        message?.text || 'You have a new message',
+        { type: 'chat_message', rideId: message?.rideId || '' },
+        'message',
+      );
       set({
         latestChatMessage: {
           rideId: message?.rideId || '',

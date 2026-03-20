@@ -12,6 +12,7 @@ export interface Message {
     _id: string;
     name: string;
   };
+  pending?: boolean; // optimistic flag
 }
 
 interface ChatState {
@@ -29,6 +30,7 @@ interface ChatState {
   hydrateUnread: () => Promise<void>;
   incrementUnread: (rideId: string) => Promise<void>;
   markRideRead: (rideId: string) => Promise<void>;
+  getTotalUnread: () => number;
 }
 
 const getChatStorageKey = (rideId: string) => `chat_messages_${rideId}`;
@@ -38,7 +40,8 @@ const normalizeMessages = (messages: Message[]) => {
   const unique = new Map<string, Message>();
   messages.forEach((message) => {
     if (!message?._id) return;
-    unique.set(message._id, message);
+    // Confirmed server messages replace optimistic ones
+    unique.set(message._id, { ...message, pending: false });
   });
 
   return Array.from(unique.values()).sort(
@@ -47,7 +50,9 @@ const normalizeMessages = (messages: Message[]) => {
 };
 
 const persistMessages = async (rideId: string, messages: Message[]) => {
-  await AsyncStorage.setItem(getChatStorageKey(rideId), JSON.stringify(normalizeMessages(messages)));
+  // Don't persist optimistic messages
+  const toSave = messages.filter((m) => !m.pending);
+  await AsyncStorage.setItem(getChatStorageKey(rideId), JSON.stringify(normalizeMessages(toSave)));
 };
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -56,6 +61,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isConnected: false,
   currentRideId: null,
   unreadByRide: {},
+
+  getTotalUnread: () => {
+    return Object.values(get().unreadByRide).reduce((sum, count) => sum + count, 0);
+  },
 
   hydrateUnread: async () => {
     try {
@@ -117,11 +126,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
 
     socket.on('receive_message', (message: Message) => {
-      void get().addMessage(rideId, message);
+      const currentId = get().currentRideId;
+      // Always use the rideId captured in closure for this socket
+      void get().addMessage(currentId || rideId, message);
     });
 
     socket.on('disconnect', () => {
       set({ isConnected: false });
+      // Do NOT clear currentRideId or messages on disconnect —
+      // we want messages to persist for display and unread tracking
     });
 
     set({ socket, currentRideId: rideId });
@@ -132,13 +145,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (socket) {
       socket.disconnect();
     }
-    set({ socket: null, isConnected: false, currentRideId: null, messages: [] });
+    // Only clear socket state; keep messages and currentRideId intact
+    // so the inbox can still read cached messages after leaving the chat screen
+    set({ socket: null, isConnected: false });
   },
 
   sendMessage: (rideId, text) => {
     const { socket } = get();
     const user = useAuthStore.getState().user;
-    if (socket && user) {
+    if (!user) return;
+
+    // 1. Optimistic append — user sees message immediately
+    const optimisticId = `optimistic_${Date.now()}`;
+    const optimisticMsg: Message = {
+      _id: optimisticId,
+      text,
+      createdAt: new Date().toISOString(),
+      user: { _id: user.id, name: user.name || 'Me' },
+      pending: true,
+    };
+    const nextMessages = [...get().messages, optimisticMsg].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    set({ messages: nextMessages });
+
+    // 2. Emit over socket
+    if (socket) {
       socket.emit('send_message', {
         rideId,
         text,
@@ -149,7 +181,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   addMessage: async (rideId, msg) => {
-    const nextMessages = normalizeMessages([...get().messages, msg]);
+    const currentMessages = get().messages;
+    // Remove any optimistic message that looks like this one (same text + sender within 10s)
+    const withoutOptimistic = currentMessages.filter((m) => {
+      if (!m.pending) return true;
+      const sameUser = m.user._id === msg.user?._id;
+      const sameText = m.text === msg.text;
+      const timeDiff = Math.abs(new Date(m.createdAt).getTime() - new Date(msg.createdAt).getTime());
+      return !(sameUser && sameText && timeDiff < 10000);
+    });
+
+    const nextMessages = normalizeMessages([...withoutOptimistic, { ...msg, pending: false }]);
     set({ messages: nextMessages, currentRideId: rideId });
     await persistMessages(rideId, nextMessages);
 

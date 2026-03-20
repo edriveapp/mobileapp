@@ -183,15 +183,22 @@ export default function TripDetailsScreen() {
   const completeBooking = async (method: PaymentMethod, paymentStatus: string) => {
     if (!trip?.id) return null;
 
-    const coords = await LocationService.getCurrentCoordinates();
-    const locationLabel = await LocationService.getCurrentState();
+    // Safely get location — fall back to trip origin if location denied or fails
+    let coords = null;
+    let locationLabel = '';
+    try {
+      coords = await LocationService.getCurrentCoordinates();
+      locationLabel = await LocationService.getCurrentState();
+    } catch {
+      // Permission denied or unavailable — use trip origin as fallback
+    }
 
     return bookTrip(trip.id, {
       paymentMethod: method,
       paymentStatus,
       pickupLocation: {
-        lat: coords?.latitude || trip.origin?.lat || 0,
-        lon: coords?.longitude || trip.origin?.lon || 0,
+        lat: coords?.latitude ?? (trip.origin?.lat || 0),
+        lon: coords?.longitude ?? (trip.origin?.lon || 0),
         address: locationLabel || getAddressText(trip.origin),
       },
     });
@@ -210,9 +217,12 @@ export default function TripDetailsScreen() {
       setPaymentStep('success');
       await wait(1200);
       setShowPaymentModal(false);
-      router.replace('/(tabs)');
+      // Navigate to Trips tab specifically so user sees their booking in "My Trips"
+      router.replace('/(tabs)/trips');
     } catch (error: any) {
-      setPaymentError(error?.message || 'Could not complete this booking.');
+      const errMsg = error?.message || error?.response?.data?.message || 'Could not complete this booking. Please try again.';
+      setPaymentError(errMsg);
+      // Return to the payment step that was active
       setPaymentStep(method === 'cash' ? 'cash' : 'transfer');
     }
   };
@@ -351,9 +361,16 @@ export default function TripDetailsScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.bookButton} onPress={openPaymentFlow}>
-          <Text style={styles.bookButtonText}>Continue to Payment</Text>
-        </TouchableOpacity>
+        {(trip.availableSeats === 0 || trip.seats === 0) ? (
+          <View style={[styles.bookButton, { backgroundColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+            <Ionicons name="close-circle-outline" size={20} color="#64748B" />
+            <Text style={[styles.bookButtonText, { color: '#64748B' }]}>No seats available</Text>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.bookButton} onPress={openPaymentFlow}>
+            <Text style={styles.bookButtonText}>Continue to Payment</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <Modal visible={showDriverModal} transparent animationType="slide" onRequestClose={() => setShowDriverModal(false)}>

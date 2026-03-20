@@ -7,18 +7,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
-    Image,
     KeyboardAvoidingView,
     Platform,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
+    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
-// import { io } from "socket.io-client"; // Uncomment when socket is ready
 
 import { Message, useChatStore } from '@/app/stores/chatStore';
 
@@ -72,9 +71,11 @@ export default function ChatScreen() {
         (!isPlaceholderName(derivedRecipientName) ? derivedRecipientName : '') ||
         (!isPlaceholderName(messageParticipantName) ? messageParticipantName : '') ||
         (user?.role === 'driver' ? 'Rider' : 'Driver');
+
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(true);
     const flatListRef = useRef<FlatList>(null);
+    const prevMessageCount = useRef(0);
 
     const fetchMessages = useCallback(async () => {
         try {
@@ -91,7 +92,9 @@ export default function ChatScreen() {
     }, [setMessages, tripId]);
 
     useEffect(() => {
+        // Hydrate cached messages first (no loading flash), then fetch fresh
         hydrateMessages(tripId).finally(() => {
+            setLoading(false); // Show cached immediately
             fetchMessages();
         });
         void markRideRead(tripId);
@@ -102,16 +105,27 @@ export default function ChatScreen() {
         };
     }, [connect, disconnect, fetchMessages, hydrateMessages, markRideRead, tripId]);
 
-    const handleSend = async () => {
-        if (!inputText.trim()) return;
+    // Scroll to bottom when new messages arrive
+    useEffect(() => {
+        if (messages.length > prevMessageCount.current) {
+            prevMessageCount.current = messages.length;
+            setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: true });
+            }, 80);
+        }
+    }, [messages]);
 
-        // sendMessage in store emits socket event
+    const handleSend = () => {
+        if (!inputText.trim()) return;
         sendMessage(tripId, inputText.trim());
         setInputText('');
+        // Scroll after optimistic append
+        setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+        }, 50);
     };
 
     const renderItem = ({ item }: { item: Message }) => {
-        // Handle both structure if necessary, but store enforces user object.
         const isMe = item.user?._id === user?.id;
 
         return (
@@ -119,9 +133,19 @@ export default function ChatScreen() {
                 <Text style={[styles.messageText, isMe ? styles.myText : styles.theirText]}>
                     {item.text}
                 </Text>
-                <Text style={[styles.timeText, isMe ? styles.myTime : styles.theirTime]}>
-                    {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
+                <View style={styles.timeRow}>
+                    <Text style={[styles.timeText, isMe ? styles.myTime : styles.theirTime]}>
+                        {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                    {isMe && (
+                        <Ionicons
+                            name={item.pending ? 'time-outline' : 'checkmark-done'}
+                            size={12}
+                            color={item.pending ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.8)'}
+                            style={{ marginLeft: 4 }}
+                        />
+                    )}
+                </View>
             </View>
         );
     };
@@ -138,12 +162,15 @@ export default function ChatScreen() {
                         <Image source={{ uri: recipientImage }} style={styles.avatar} />
                     ) : (
                         <View style={styles.avatarPlaceholder}>
-                            <Text style={styles.avatarInitials}>{recipientName.charAt(0)}</Text>
+                            <Text style={styles.avatarInitials}>{recipientName.charAt(0).toUpperCase()}</Text>
                         </View>
                     )}
                     <View>
                         <Text style={styles.name}>{recipientName}</Text>
-                        <Text style={styles.status}>Online</Text>
+                        <View style={styles.onlineRow}>
+                            <View style={styles.onlineDot} />
+                            <Text style={styles.status}>Online</Text>
+                        </View>
                     </View>
                 </View>
 
@@ -162,15 +189,24 @@ export default function ChatScreen() {
                         <ActivityIndicator size="large" color={COLORS.primary} />
                     </View>
                 ) : (
-                    <FlatList
-                        ref={flatListRef}
-                        data={messages}
-                        renderItem={renderItem}
-                        keyExtractor={(item) => item._id}
-                        contentContainerStyle={styles.listContent}
-                        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-                        onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-                    />
+                    <>
+                        {messages.length === 0 && (
+                            <View style={styles.emptyChat}>
+                                <Ionicons name="chatbubbles-outline" size={48} color="#C8D5CC" />
+                                <Text style={styles.emptyChatText}>No messages yet</Text>
+                                <Text style={styles.emptyChatSub}>Say hello to start the conversation</Text>
+                            </View>
+                        )}
+                        <FlatList
+                            ref={flatListRef}
+                            data={messages}
+                            renderItem={renderItem}
+                            keyExtractor={(item) => item._id}
+                            contentContainerStyle={styles.listContent}
+                            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                            onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                        />
+                    </>
                 )}
 
                 <View style={styles.inputContainer}>
@@ -181,6 +217,9 @@ export default function ChatScreen() {
                         placeholder="Type a message..."
                         placeholderTextColor={COLORS.textSecondary}
                         multiline
+                        returnKeyType="send"
+                        onSubmitEditing={handleSend}
+                        blurOnSubmit={false}
                     />
                     <TouchableOpacity
                         style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
@@ -198,7 +237,7 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.background,
+        backgroundColor: '#F5F7F5',
     },
     header: {
         flexDirection: 'row',
@@ -229,7 +268,7 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: '#E0E7FF',
+        backgroundColor: COLORS.primaryLight || '#E8F5E9',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 10,
@@ -238,6 +277,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
         color: COLORS.primary,
+        fontFamily: Fonts.bold,
     },
     name: {
         fontSize: 16,
@@ -245,9 +285,21 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         fontFamily: Fonts.semibold,
     },
+    onlineRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        marginTop: 1,
+    },
+    onlineDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        backgroundColor: '#22C55E',
+    },
     status: {
         fontSize: 12,
-        color: COLORS.success || '#10B981',
+        color: '#22C55E',
         fontFamily: Fonts.rounded,
     },
     callButton: {
@@ -257,14 +309,35 @@ const styles = StyleSheet.create({
     },
     listContent: {
         padding: SPACING.m,
-        gap: 12,
-        paddingBottom: 20
+        paddingBottom: 20,
+        flexGrow: 1,
+    },
+    emptyChat: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 8,
+        zIndex: 0,
+    },
+    emptyChatText: {
+        fontSize: 16,
+        color: COLORS.text,
+        fontFamily: Fonts.semibold,
+    },
+    emptyChatSub: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        fontFamily: Fonts.rounded,
     },
     messageBubble: {
         maxWidth: '80%',
         padding: 12,
-        borderRadius: 16,
-        marginBottom: 4,
+        borderRadius: 18,
+        marginBottom: 6,
     },
     myMessage: {
         alignSelf: 'flex-end',
@@ -273,12 +346,17 @@ const styles = StyleSheet.create({
     },
     theirMessage: {
         alignSelf: 'flex-start',
-        backgroundColor: '#F3F4F6',
+        backgroundColor: COLORS.white,
         borderBottomLeftRadius: 4,
+        shadowColor: '#000',
+        shadowOpacity: 0.04,
+        shadowRadius: 4,
+        elevation: 1,
     },
     messageText: {
         fontSize: 15,
         fontFamily: Fonts.rounded,
+        lineHeight: 20,
     },
     myText: {
         color: COLORS.white,
@@ -286,35 +364,40 @@ const styles = StyleSheet.create({
     theirText: {
         color: COLORS.text,
     },
+    timeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        marginTop: 4,
+    },
     timeText: {
         fontSize: 10,
-        marginTop: 4,
-        alignSelf: 'flex-end',
         fontFamily: Fonts.rounded,
     },
     myTime: {
-        color: 'rgba(255,255,255,0.7)',
+        color: 'rgba(255,255,255,0.65)',
     },
     theirTime: {
         color: COLORS.textSecondary,
     },
     inputContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         padding: SPACING.m,
+        paddingTop: 10,
         backgroundColor: COLORS.white,
         borderTopWidth: 1,
         borderTopColor: COLORS.border || '#E5E7EB',
         marginBottom: Platform.OS === 'ios' ? 10 : 0,
+        gap: 10,
     },
     input: {
         flex: 1,
         backgroundColor: '#F3F4F6',
-        borderRadius: 20,
+        borderRadius: 22,
         paddingHorizontal: 16,
         paddingVertical: 10,
-        marginRight: 12,
-        fontSize: 16,
+        fontSize: 15,
         fontFamily: Fonts.rounded,
         maxHeight: 100,
         color: COLORS.text,
@@ -328,7 +411,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     sendButtonDisabled: {
-        backgroundColor: COLORS.textSecondary || '#9CA3AF',
-        opacity: 0.5,
+        backgroundColor: '#CBD5E1',
     },
 });

@@ -1,30 +1,52 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, View, Text, StyleSheet } from 'react-native';
 
 import { useAuthStore } from '@/app/stores/authStore';
 import { useChatStore } from '@/app/stores/chatStore';
 import { COLORS } from '@/constants/theme';
 
-const DotIcon = ({ children, showDot }: { children: React.ReactNode; showDot: boolean }) => (
-  <>
+const BadgeIcon = ({ children, count }: { children: React.ReactNode; count: number }) => (
+  <View style={{ position: 'relative' }}>
     {children}
-    {showDot && (
-      <MaterialCommunityIcons
-        name="circle"
-        size={10}
-        color="#22C55E"
-        style={{ position: 'absolute', top: -1, right: -4 }}
-      />
+    {count > 0 && (
+      <View style={badgeStyles.badge}>
+        <Text style={badgeStyles.badgeText}>{count > 99 ? '99+' : count}</Text>
+      </View>
     )}
-  </>
+  </View>
 );
+
+const badgeStyles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#22C55E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#F8FBFA',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 11,
+  },
+});
 
 export default function DriverLayout() {
   const user = useAuthStore((s) => s.user);
-  const unreadByRide = useChatStore((state) => state.unreadByRide);
-  const unreadCount = Object.keys(unreadByRide).length;
+  // Sum of all unread messages across all rides
+  const unreadCount = useChatStore((state) =>
+    Object.values(state.unreadByRide).reduce((sum, n) => sum + n, 0)
+  );
 
   // Check authentication
   if (!user) return <Redirect href="/(auth)/login" />;
@@ -101,9 +123,9 @@ export default function DriverLayout() {
         options={{
           title: 'Messages',
           tabBarIcon: ({ color }) => (
-            <DotIcon showDot={unreadCount > 0}>
+            <BadgeIcon count={unreadCount}>
               <Ionicons name="chatbubble-ellipses-outline" size={24} color={color} />
-            </DotIcon>
+            </BadgeIcon>
           ),
         }}
       />

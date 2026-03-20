@@ -12,6 +12,11 @@ export const getBaseUrl = () => {
 
   // Auto-detect local IP from Expo's packager
   const debuggerHost = Constants.expoConfig?.hostUri;
+  
+  if (debuggerHost?.includes('.exp.direct')) {
+    console.warn('⚠️ TUNNEL DETECTED: You are running an Expo tunnel. The backend at port 3000 cannot be reached via this tunnel unless you use EXPO_PUBLIC_API_URL with a backend tunnel (like ngrok). API requests will likely timeout!');
+  }
+
   const ip = debuggerHost ? debuggerHost.split(":")[0] : "10.0.2.2"; // Android emulator default
 
   return `http://${ip}:3000`;
