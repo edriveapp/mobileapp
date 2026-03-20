@@ -4,12 +4,10 @@ import React from 'react';
 import { Platform } from 'react-native';
 
 import { useAuthStore } from '@/app/stores/authStore';
-import { useDriverStore } from '@/app/stores/driverStore';
 import { COLORS } from '@/constants/theme';
 
 export default function DriverLayout() {
   const user = useAuthStore((s) => s.user);
-  const hasCompletedOnboarding = useDriverStore((s) => s.hasCompletedOnboarding);
 
   // Check authentication
   if (!user) return <Redirect href="/(auth)/login" />;
@@ -78,6 +76,12 @@ export default function DriverLayout() {
 
       <Tabs.Screen
         name="onboarding"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="requests"
         options={{
           href: null,
         }}

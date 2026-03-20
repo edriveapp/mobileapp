@@ -24,7 +24,14 @@ export default function DriverInfoStep() {
         if (user?.phoneNumber && !driverInfo.phoneNumber) {
             setDriverInfo({ phoneNumber: user.phoneNumber });
         }
-    }, [user]);
+    }, [user, driverInfo.fullName, driverInfo.phoneNumber, setDriverInfo]);
+
+    const formatDateInput = (input: string) => {
+        const digits = input.replace(/\D/g, '').slice(0, 8);
+        if (digits.length <= 2) return digits;
+        if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+        return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    };
 
     return (
         <KeyboardAvoidingView
@@ -72,9 +79,13 @@ export default function DriverInfoStep() {
                         <TextInput
                             style={styles.input}
                             value={driverInfo.dateOfBirth}
-                            onChangeText={(text) => setDriverInfo({ dateOfBirth: text })}
+                            onChangeText={(text) =>
+                                setDriverInfo({ dateOfBirth: formatDateInput(text) })
+                            }
                             placeholder="DD/MM/YYYY"
                             placeholderTextColor={COLORS.textSecondary}
+                            keyboardType="number-pad"
+                            maxLength={10}
                         />
                     </View>
 
@@ -94,7 +105,7 @@ export default function DriverInfoStep() {
 
                     {/* Driver's License Number */}
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Driver's License Number *</Text>
+                        <Text style={styles.label}>Driver License Number *</Text>
                         <TextInput
                             style={styles.input}
                             value={driverInfo.licenseNumber}
@@ -111,9 +122,13 @@ export default function DriverInfoStep() {
                         <TextInput
                             style={styles.input}
                             value={driverInfo.licenseExpiry}
-                            onChangeText={(text) => setDriverInfo({ licenseExpiry: text })}
+                            onChangeText={(text) =>
+                                setDriverInfo({ licenseExpiry: formatDateInput(text) })
+                            }
                             placeholder="DD/MM/YYYY"
                             placeholderTextColor={COLORS.textSecondary}
+                            keyboardType="number-pad"
+                            maxLength={10}
                         />
                     </View>
                 </View>

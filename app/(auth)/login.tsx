@@ -17,14 +17,14 @@ export default function LoginScreen() {
 
     const handleLogin = async () => {
         if (!email || !password) {
-            Alert.alert('Error', 'Please enter both email and password');
+            Alert.alert('oops', 'Please enter both email and password');
             return;
         }
 
         // Email validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
-            Alert.alert('Error', 'Please enter a valid email address');
+            Alert.alert('oops', 'Please enter a valid email address');
             return;
         }
 
@@ -40,7 +40,7 @@ export default function LoginScreen() {
             }
         } catch (error: any) {
             const msg = error.response?.data?.message || 'Login failed. Please try again.';
-            Alert.alert('Error', msg);
+            Alert.alert('omo', msg);
         }
     };
 

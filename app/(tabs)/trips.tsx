@@ -6,8 +6,7 @@ import {
   StyleSheet, 
   TouchableOpacity, 
   RefreshControl, 
-  Image,
-  Dimensions
+  Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -15,8 +14,6 @@ import { useRouter } from 'expo-router';
 
 // Services & Stores
 import { useTripStore } from '@/app/stores/tripStore';
-import { useAuthStore } from '@/app/stores/authStore'; // Assuming this exists based on snippet 1
-import { Trip } from '@/app/types';
 
 // Constants & UI
 import { COLORS, SPACING, Fonts } from '@/constants/theme';
@@ -31,6 +28,7 @@ const SUGGESTED_DESTINATIONS = [
   { id: '4', name: 'Uyo', image: 'https://images.unsplash.com/photo-1598556885317-0685933610d4?q=80&w=200' },
 ];
 const DATE_FILTERS = ['All', 'Today', 'Tomorrow', 'Sat', 'Sun'];
+const getAddressText = (value: any) => (typeof value === 'string' ? value : value?.address || '');
 
 export default function TripsScreen() {
   const router = useRouter();
@@ -55,16 +53,14 @@ export default function TripsScreen() {
     isLoading 
   } = useTripStore();
 
-  const { user } = useAuthStore();
-
   // Initial Fetch
   useEffect(() => {
-    fetchTrips();
+    fetchTrips({ role: 'rider' });
     fetchMyTrips();
-  }, []);
+  }, [fetchMyTrips, fetchTrips]);
 
   const handleRefresh = () => {
-    if (viewMode === 'EXPLORE') fetchTrips();
+    if (viewMode === 'EXPLORE') fetchTrips({ role: 'rider' });
     else fetchMyTrips();
   };
 
@@ -90,28 +86,28 @@ export default function TripsScreen() {
     </TouchableOpacity>
   );
 
-  const renderAvailableTripItem = ({ item }: { item: Trip }) => (
+  const renderAvailableTripItem = ({ item }: { item: any }) => (
     <TouchableOpacity style={styles.availableCard} onPress={() => router.push(`/trip-details/${item.id}`)}>
       {/* Driver Note Bubble */}
       <View style={styles.tipBubble}>
         <IconSymbol name="bubble.left.and.bubble.right.fill" size={12} color={COLORS.primary} />
         <Text style={styles.tipText} numberOfLines={1}>
-           "Leaving strictly by {item.time}. AC is working."
+          {item.notes || `Leaving by ${item.time || 'soon'}. AC is working.`}
         </Text>
       </View>
 
       <View style={styles.cardHeaderRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.routeTextOrigin}>{item.origin}</Text>
+          <Text style={styles.routeTextOrigin}>{getAddressText(item.origin)}</Text>
            {/* Visual Route Connector */}
            <View style={styles.connectorContainer}>
               <View style={styles.connectorDot} />
               <View style={styles.connectorLine} />
               <View style={[styles.connectorDot, { backgroundColor: COLORS.primary }]} />
            </View>
-          <Text style={styles.routeTextDest}>{item.destination}</Text>
+          <Text style={styles.routeTextDest}>{getAddressText(item.destination)}</Text>
         </View>
-        <Text style={styles.priceTag}>₦{item.price.toLocaleString()}</Text>
+        <Text style={styles.priceTag}>₦{Number(item.price || item.fare || 0).toLocaleString()}</Text>
       </View>
 
       <View style={styles.divider} />
@@ -125,10 +121,10 @@ export default function TripsScreen() {
         </View>
         <View style={styles.metaRow}>
           <IconSymbol name="calendar" size={14} color={COLORS.textSecondary} />
-          <Text style={styles.metaText}>{item.date}</Text>
+          <Text style={styles.metaText}>{item.date || 'Today'}</Text>
           <View style={{width: 8}} />
           <IconSymbol name="clock" size={14} color={COLORS.textSecondary} />
-          <Text style={styles.metaText}>{item.time}</Text>
+          <Text style={styles.metaText}>{item.time || 'Now'}</Text>
         </View>
       </View>
     </TouchableOpacity>

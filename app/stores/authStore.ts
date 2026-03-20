@@ -3,6 +3,20 @@ import { create } from 'zustand';
 import api from '../services/api';
 import { User } from '../types';
 
+const normalizeUser = (rawUser: any): User => ({
+    id: String(rawUser?.id || ''),
+    name:
+        rawUser?.name ||
+        [rawUser?.firstName, rawUser?.lastName].filter(Boolean).join(' ').trim() ||
+        rawUser?.email ||
+        'User',
+    email: String(rawUser?.email || ''),
+    role: rawUser?.role === 'driver' ? 'driver' : 'passenger',
+    phoneNumber: String(rawUser?.phoneNumber || rawUser?.phone || ''),
+    isVerified: Boolean(rawUser?.isVerified ?? rawUser?.role === 'driver'),
+    token: rawUser?.token,
+});
+
 interface AuthState {
     user: User | null;
     token: string | null;
@@ -30,7 +44,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ isLoading: true });
         try {
             const response = await api.post('/auth/login', { email, password });
-            const { access_token, user } = response.data;
+            const { access_token, user: rawUser } = response.data;
+            const user = normalizeUser(rawUser);
 
             await SecureStore.setItemAsync('token', access_token);
             await SecureStore.setItemAsync('user', JSON.stringify(user));
@@ -64,7 +79,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 ...userData,
                 otpCode: code,
             });
-            const { access_token, user } = response.data;
+            const { access_token, user: rawUser } = response.data;
+            const user = normalizeUser(rawUser);
 
             await SecureStore.setItemAsync('token', access_token);
             await SecureStore.setItemAsync('user', JSON.stringify(user));
@@ -91,9 +107,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const userStr = await SecureStore.getItemAsync('user');
 
             if (token && userStr) {
-                set({ user: JSON.parse(userStr), token, isAuthenticated: true });
+                set({ user: normalizeUser(JSON.parse(userStr)), token, isAuthenticated: true });
             }
-        } catch (error) {
+        } catch {
             await get().logout();
         } finally {
             set({ isLoading: false, hasFinishedSplash: true });

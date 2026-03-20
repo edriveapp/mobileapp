@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { getSocketBaseUrl } from '../services/api';
 import { create } from 'zustand';
 import { useAuthStore } from './authStore';
 
@@ -33,11 +34,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     setMessages: (messages) => set({ messages }),
 
     connect: (rideId: string) => {
-        const socket = io('http://192.168.1.5:3000'); // TODO: Use dynamic URL from api.ts
-        // Actually, let's get base URL from api.defaults.baseURL if possible, or just hardcode for MVP if dynamic is complex here.
-        // api.ts has getBaseUrl logic but it's internal.
-        // I'll grab it from Constants or just assume localhost for now, user can change.
-        // Better: use the same logic as API.
+        const socket = io(getSocketBaseUrl(), {
+            transports: ['websocket'],
+        });
 
         socket.on('connect', () => {
             console.log('Socket connected');

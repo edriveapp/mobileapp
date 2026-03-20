@@ -8,7 +8,9 @@ import {
     WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { PushNotificationsService } from '../common/push-notifications.service';
 import { RedisService } from '../common/redis.service';
+import { UsersService } from '../users/users.service';
 import { RidesService } from './rides.service';
 
 @WebSocketGateway({ cors: true })
@@ -19,6 +21,8 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
     constructor(
         private ridesService: RidesService,
         private redisService: RedisService,
+        private usersService: UsersService,
+        private pushNotificationsService: PushNotificationsService,
     ) { }
 
     handleConnection(client: Socket) {
@@ -67,6 +71,58 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @SubscribeMessage('join_driver_room')
     handleJoinDriverRoom(@MessageBody() driverId: string, @ConnectedSocket() client: Socket) {
         client.join(`driver_${driverId}`);
+        client.join('drivers');
+    }
+
+    @SubscribeMessage('join_user_room')
+    handleJoinUserRoom(@MessageBody() userId: string, @ConnectedSocket() client: Socket) {
+        client.join(`user_${userId}`);
+    }
+
+    async broadcastNewRideRequest(ride: any) {
+        const nearbyDriverIds = ride.origin?.lat && ride.origin?.lon
+            ? await this.redisService.getNearbyDrivers(ride.origin.lat, ride.origin.lon, 15)
+            : [];
+
+        if (nearbyDriverIds.length) {
+            nearbyDriverIds.forEach((driverId) => {
+                this.server.to(`driver_${driverId}`).emit('ride_request', ride);
+            });
+        } else {
+            this.server.to('drivers').emit('ride_request', ride);
+        }
+
+        const driverTokens = await this.usersService.getPushTokensForRole('driver' as any);
+        await this.pushNotificationsService.sendToExpoTokens(
+            driverTokens,
+            'New rider request',
+            `${ride.origin?.address || 'A rider'} -> ${ride.destination?.address || 'Destination'}`,
+            { type: 'ride_request', rideId: ride.id },
+        );
+    }
+
+    async broadcastRideAccepted(ride: any) {
+        this.server.to(`user_${ride.passengerId}`).emit('driver_accepted', ride);
+
+        const riderTokens = await this.usersService.getPushTokensForUser(ride.passengerId);
+        await this.pushNotificationsService.sendToExpoTokens(
+            riderTokens,
+            'Driver accepted your trip',
+            'Your ride request has been accepted. Chat is now open.',
+            { type: 'ride_accepted', rideId: ride.id },
+        );
+    }
+
+    async broadcastTripBooked(ride: any) {
+        this.server.to(`driver_${ride.driverId}`).emit('trip_booked', ride);
+
+        const driverTokens = await this.usersService.getPushTokensForUser(ride.driverId);
+        await this.pushNotificationsService.sendToExpoTokens(
+            driverTokens,
+            'New trip booking',
+            `${ride.passenger?.firstName || ride.passenger?.email || 'A rider'} booked ${ride.origin?.address || 'your trip'}`,
+            { type: 'trip_booked', rideId: ride.id },
+        );
     }
 
     @SubscribeMessage('accept_ride')
@@ -74,11 +130,7 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @MessageBody() data: { rideId: string; driverId: string },
     ) {
         const updatedRide = await this.ridesService.acceptRide(data.rideId, data.driverId);
-
-        // Notify passenger
-        // Assuming passenger joined `ride_{rideId}` room or `passenger_{id}`
-        // We need to track socket mapping. For simplicity, let's assume client joined `user_${passengerId}`
-        this.server.to(`user_${updatedRide.passengerId}`).emit('driver_accepted', updatedRide);
+        await this.broadcastRideAccepted(updatedRide);
 
         return updatedRide;
     }

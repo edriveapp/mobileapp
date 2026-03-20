@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../services/api';
 import { Trip } from '../types';
+import { useAuthStore } from './authStore';
 
 // --- 1. Types & Interfaces ---
 
@@ -19,6 +20,43 @@ export interface DriverLocation {
     coords: { latitude: number; longitude: number };
     heading: number;
 }
+
+const toAddressObject = (value: any) => {
+    if (value && typeof value === 'object') {
+        return {
+            lat: Number(value.lat ?? 0),
+            lon: Number(value.lon ?? 0),
+            address: String(value.address ?? ''),
+        };
+    }
+    return {
+        lat: 0,
+        lon: 0,
+        address: String(value ?? ''),
+    };
+};
+
+const normalizeTrip = (ride: any) => {
+    const origin = toAddressObject(ride.origin);
+    const destination = toAddressObject(ride.destination);
+    const departure = ride.departureTime ? new Date(ride.departureTime) : null;
+
+    return {
+        ...ride,
+        origin,
+        destination,
+        price: Number(ride.price ?? ride.fare ?? 0),
+        fare: Number(ride.fare ?? ride.price ?? 0),
+        seats: typeof ride.seats === 'number' ? ride.seats : Number(ride.seats ?? 1),
+        availableSeats:
+            typeof ride.availableSeats === 'number'
+                ? ride.availableSeats
+                : Number(ride.availableSeats ?? ride.seats ?? 1),
+        date: ride.date ?? (departure ? departure.toLocaleDateString() : ''),
+        time: ride.time ?? (departure ? departure.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''),
+    };
+};
+
 interface TripState {
     // Lists
     trips: Trip[];
@@ -45,8 +83,14 @@ interface TripState {
     // Ride Actions
     requestRide: (request: RideRequest) => Promise<void>;
     cancelRide: (rideId?: string) => Promise<void>;
+    acceptRide: (rideId: string) => Promise<any>;
+    bookTrip: (rideId: string, payload: any) => Promise<any>;
     postTrip: (tripData: any) => Promise<void>;
+    createTrip: (tripData: any) => Promise<void>;
+    updateTrip: (rideId: string, tripData: any) => Promise<any>;
+    updateTripStatus: (rideId: string, status: string) => Promise<any>;
     submitRating: (rideId: string, raterId: string, rateeId: string, value: number, comment: string) => Promise<void>;
+    prependAvailableRide: (ride: any) => void;
 
     // State Setters (called by SocketService)
     updateRideStatus: (status: RideStatus, data?: any) => void;
@@ -70,7 +114,7 @@ export const useTripStore = create<TripState>((set, get) => ({
     // --- Fetch Actions ---
 
     fetchTrips: async (filters) => {
-        await get().fetchAvailableTrips(filters);
+        await get().fetchAvailableTrips({ role: 'rider', ...(filters || {}) });
     },
 
     fetchAvailableTrips: async (filters) => {
@@ -79,12 +123,15 @@ export const useTripStore = create<TripState>((set, get) => ({
             // We need to know if we are searching as a driver or rider. 
             // Better to pass it or get from authStore. But simpler to pass in filters.
             const response = await api.get('/rides/available', { params: filters });
+            const normalized = Array.isArray(response.data)
+                ? response.data.map(normalizeTrip)
+                : [];
             set({
-                availableTrips: response.data,
-                trips: response.data,
+                availableTrips: normalized,
+                trips: normalized,
                 // We derive trending trips from the available list (e.g., top 5)
                 // or you can point this to a specific /rides/trending endpoint
-                trendingTrips: response.data.slice(0, 5)
+                trendingTrips: normalized.slice(0, 8)
             });
         } catch (error: any) {
             console.error("Fetch Available Trips Error:", error);
@@ -95,27 +142,55 @@ export const useTripStore = create<TripState>((set, get) => ({
     },
 
     fetchMyTrips: async () => {
+        const token = useAuthStore.getState().token;
+        if (!token) {
+            set({
+                activeTrips: [],
+                history: [],
+                currentRide: null,
+                rideStatus: 'IDLE',
+                isLoading: false,
+            });
+            return;
+        }
+
         set({ isLoading: true, error: null });
         try {
             const response = await api.get('/rides/my-rides');
+            const active = Array.isArray(response.data.active)
+                ? response.data.active.map(normalizeTrip)
+                : [];
+            const history = Array.isArray(response.data.history)
+                ? response.data.history.map(normalizeTrip)
+                : [];
+
             set({
-                activeTrips: response.data.active || [],
-                history: response.data.history || []
+                activeTrips: active,
+                history,
             });
 
-            const ongoingRide = response.data.active.find((r: any) =>
-                ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'IN_PROGRESS'].includes(r.status)
+            const ongoingRide = active.find((r: any) =>
+                ['searching', 'accepted', 'arrived', 'in_progress'].includes(String(r.status).toLowerCase())
             );
 
             if (ongoingRide) {
                 set({
                     currentRide: ongoingRide,
-                    rideStatus: ongoingRide.status as RideStatus
+                    rideStatus: String(ongoingRide.status).toUpperCase() as RideStatus
                 });
             }
 
         } catch (error: any) {
-            console.error("Fetch My Trips Error:", error);
+            if (error?.response?.status === 401) {
+                set({
+                    activeTrips: [],
+                    history: [],
+                    currentRide: null,
+                    rideStatus: 'IDLE',
+                });
+                return;
+            }
+            console.error("Fetch My Trips Error:", error?.message || "Unknown error");
         } finally {
             set({ isLoading: false });
         }
@@ -168,6 +243,41 @@ export const useTripStore = create<TripState>((set, get) => ({
         }
     },
 
+    acceptRide: async (rideId) => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await api.patch(`/rides/${rideId}/accept`);
+            await get().fetchAvailableTrips({ role: 'driver' });
+            await get().fetchMyTrips();
+            return response.data;
+        } catch (error: any) {
+            set({ error: error.response?.data?.message || error.message });
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    bookTrip: async (rideId, payload) => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await api.post(`/rides/${rideId}/book`, payload);
+            const normalized = normalizeTrip(response.data);
+            set({
+                currentRide: normalized,
+                rideStatus: 'ACCEPTED',
+            });
+            await get().fetchTrips({ role: 'rider' });
+            await get().fetchMyTrips();
+            return normalized;
+        } catch (error: any) {
+            set({ error: error.response?.data?.message || error.message });
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
     postTrip: async (tripData) => {
         set({ isLoading: true, error: null });
         try {
@@ -175,6 +285,41 @@ export const useTripStore = create<TripState>((set, get) => ({
             await get().fetchMyTrips();
         } catch (error: any) {
             set({ error: error.message });
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    createTrip: async (tripData) => {
+        await get().postTrip(tripData);
+    },
+
+    updateTrip: async (rideId, tripData) => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await api.patch(`/rides/${rideId}`, tripData);
+            await get().fetchMyTrips();
+            await get().fetchAvailableTrips({ role: 'rider' });
+            return response.data;
+        } catch (error: any) {
+            set({ error: error.response?.data?.message || error.message });
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    updateTripStatus: async (rideId, status) => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await api.patch(`/rides/${rideId}/status`, { status });
+            await get().fetchMyTrips();
+            await get().fetchAvailableTrips({ role: 'rider' });
+            await get().fetchAvailableTrips({ role: 'driver' });
+            return response.data;
+        } catch (error: any) {
+            set({ error: error.response?.data?.message || error.message });
             throw error;
         } finally {
             set({ isLoading: false });
@@ -195,5 +340,17 @@ export const useTripStore = create<TripState>((set, get) => ({
             rideStatus: status,
             currentRide: data ? { ...state.currentRide, ...data } : state.currentRide
         }));
-    }
+    },
+
+    prependAvailableRide: (ride) => {
+        const normalized = normalizeTrip(ride);
+        set((state) => {
+            const existing = state.availableTrips.filter((item: any) => item.id !== normalized.id);
+            return {
+                availableTrips: [normalized, ...existing],
+                trips: [normalized, ...state.trips.filter((item: any) => item.id !== normalized.id)],
+                trendingTrips: [normalized, ...state.trendingTrips.filter((item: any) => item.id !== normalized.id)].slice(0, 8),
+            };
+        });
+    },
 }));

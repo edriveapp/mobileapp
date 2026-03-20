@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '../services/api';
+import { useAuthStore } from './authStore';
 
 export interface SavedPlace {
     id: string;
@@ -39,13 +40,26 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     isLoading: false,
 
     fetchPreferences: async () => {
+        const token = useAuthStore.getState().token;
+        if (!token) {
+            set({
+                preferences: {
+                    pushNotifications: true,
+                    emailNotifications: true,
+                    otaUpdates: true,
+                },
+            });
+            return;
+        }
+
         try {
             const response = await api.get('/users/me');
             if (response.data?.preferences) {
                 set({ preferences: response.data.preferences });
             }
-        } catch (error) {
-            console.error('Failed to fetch preferences:', error);
+        } catch (error: any) {
+            if (error?.response?.status === 401) return;
+            console.error('Failed to fetch preferences:', error?.message || 'Unknown error');
         }
     },
 
@@ -64,12 +78,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     },
 
     fetchSavedPlaces: async () => {
+        const token = useAuthStore.getState().token;
+        if (!token) {
+            set({ savedPlaces: [], isLoading: false });
+            return;
+        }
+
         set({ isLoading: true });
         try {
             const response = await api.get('/users/saved-places');
             set({ savedPlaces: response.data });
-        } catch (error) {
-            console.error('Failed to fetch saved places:', error);
+        } catch (error: any) {
+            if (error?.response?.status === 401) {
+                set({ savedPlaces: [] });
+                return;
+            }
+            console.error('Failed to fetch saved places:', error?.message || 'Unknown error');
         } finally {
             set({ isLoading: false });
         }
@@ -81,8 +105,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             set((state) => ({
                 savedPlaces: [...state.savedPlaces, response.data],
             }));
-        } catch (error) {
-            console.error('Failed to add saved place:', error);
+        } catch (error: any) {
+            console.error('Failed to add saved place:', error?.message || 'Unknown error');
             throw error;
         }
     },
@@ -94,9 +118,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
         try {
             await api.delete(`/users/saved-places/${id}`);
-        } catch (error) {
+        } catch (error: any) {
             set({ savedPlaces: prev });
-            console.error('Failed to delete saved place:', error);
+            console.error('Failed to delete saved place:', error?.message || 'Unknown error');
             throw error;
         }
     },

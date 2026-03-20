@@ -47,6 +47,13 @@ export class User {
         biometricLogin: boolean;
     };
 
+    @Column({
+        type: 'jsonb',
+        nullable: false,
+        default: () => "'[]'",
+    })
+    expoPushTokens: string[];
+
     @CreateDateColumn()
     createdAt: Date;
 

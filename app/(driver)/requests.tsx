@@ -1,33 +1,45 @@
 import { useTripStore } from '@/app/stores/tripStore';
+import { useRideRealtimeStore } from '@/app/stores/rideRealtimeStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
     FlatList,
+    Linking,
     RefreshControl,
-    SafeAreaView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function DriverRequestsScreen() {
     const router = useRouter();
-    const { availableTrips, fetchAvailableTrips, isLoading, error } = useTripStore();
+    const { availableTrips, fetchAvailableTrips, acceptRide, isLoading } = useTripStore();
+    const dequeueRideRequest = useRideRealtimeStore((state) => state.dequeueRideRequest);
     const [refreshing, setRefreshing] = useState(false);
+
+    const getPassengerName = (ride: any) => {
+        const fullName = [ride?.passenger?.firstName, ride?.passenger?.lastName].filter(Boolean).join(' ').trim();
+        return fullName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
+    };
+
+    const loadRequests = useCallback(async () => {
+        // Fetch rides where riders are searching (role='driver' tells backend to look for rider requests)
+        await fetchAvailableTrips({ role: 'driver' });
+    }, [fetchAvailableTrips]);
 
     useEffect(() => {
         loadRequests();
-    }, []);
-
-    const loadRequests = async () => {
-        // Fetch rides where riders are searching (role='driver' tells backend to look for rider requests)
-        await fetchAvailableTrips({ role: 'driver' });
-    };
+        const interval = setInterval(() => {
+            loadRequests();
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [loadRequests]);
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -36,17 +48,20 @@ export default function DriverRequestsScreen() {
     };
 
     const handleAccept = (rideId: string) => {
-        // Implement accept logic (API call)
-        // For now, allow mock accept or call store action
         Alert.alert("Accept Ride", "Are you sure you want to accept this ride?", [
             { text: "Cancel", style: "cancel" },
             {
                 text: "Accept",
-                onPress: () => {
-                    // Call store.acceptRide(rideId) - Need to add this action to store
-                    Alert.alert("Success", "Ride accepted!");
-                    loadRequests(); // Refresh
-                }
+                onPress: async () => {
+                    try {
+                        const ride = await acceptRide(rideId);
+                        dequeueRideRequest(rideId);
+                        Alert.alert("Success", "Ride accepted!");
+                        router.push(`/chat/${ride.id}`);
+                    } catch (error: any) {
+                        Alert.alert('Accept failed', error?.message || 'Could not accept this ride.');
+                    }
+                },
             }
         ]);
     };
@@ -56,10 +71,10 @@ export default function DriverRequestsScreen() {
             <View style={styles.cardHeader}>
                 <View style={styles.userRow}>
                     <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{item.passenger?.name?.charAt(0) || 'U'}</Text>
+                        <Text style={styles.avatarText}>{getPassengerName(item).charAt(0) || 'U'}</Text>
                     </View>
                     <View>
-                        <Text style={styles.userName}>{item.passenger?.name || 'Passenger'}</Text>
+                        <Text style={styles.userName}>{getPassengerName(item)}</Text>
                         <Text style={styles.timeText}>
                             {item.departureTime
                                 ? `Scheduled: ${new Date(item.departureTime).toLocaleString()}`
@@ -85,11 +100,44 @@ export default function DriverRequestsScreen() {
             <TouchableOpacity style={styles.acceptButton} onPress={() => handleAccept(item.id)}>
                 <Text style={styles.acceptText}>Accept Ride</Text>
             </TouchableOpacity>
+
+            <View style={styles.actionRow}>
+                <TouchableOpacity
+                    style={styles.callButton}
+                    onPress={() => {
+                        const phone = item.passenger?.phone;
+                        if (!phone) {
+                            Alert.alert('No phone number', 'Passenger phone is not available for this request.');
+                            return;
+                        }
+                        Linking.canOpenURL(`tel:${phone}`).then((supported) => {
+                            if (!supported) {
+                                Alert.alert('Call unavailable', 'This device cannot place phone calls.');
+                                return;
+                            }
+                            Linking.openURL(`tel:${phone}`).catch(() => {
+                                Alert.alert('Call failed', 'Could not open the phone dialer.');
+                            });
+                        });
+                    }}
+                >
+                    <Ionicons name="call-outline" size={16} color={COLORS.primary} />
+                    <Text style={styles.callText}>Call</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={styles.chatButton}
+                    onPress={() => router.push(`/chat/${item.id}`)}
+                >
+                    <Ionicons name="chatbubble-ellipses-outline" size={16} color={COLORS.white} />
+                    <Text style={styles.chatText}>Chat</Text>
+                </TouchableOpacity>
+            </View>
         </View>
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top']}>
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color={COLORS.text} />
@@ -173,4 +221,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     acceptText: { color: COLORS.white, fontWeight: '600', fontSize: 14, fontFamily: Fonts.semibold },
+    actionRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+    callButton: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: COLORS.primary,
+        borderRadius: 10,
+        paddingVertical: 10,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 6,
+    },
+    callText: { color: COLORS.primary, fontFamily: Fonts.semibold, fontSize: 13 },
+    chatButton: {
+        flex: 1,
+        backgroundColor: COLORS.primary,
+        borderRadius: 10,
+        paddingVertical: 10,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 6,
+    },
+    chatText: { color: COLORS.white, fontFamily: Fonts.semibold, fontSize: 13 },
 });

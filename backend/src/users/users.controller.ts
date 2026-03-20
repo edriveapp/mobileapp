@@ -20,6 +20,15 @@ export class UsersController {
         return this.usersService.updatePreferences(req.user.userId, body);
     }
 
+    @UseGuards(AuthGuard('jwt'))
+    @Post('push-token')
+    registerPushToken(@Request() req, @Body() body: { token?: string }) {
+        if (!body?.token) {
+            return { success: false };
+        }
+        return this.usersService.registerExpoPushToken(req.user.userId, body.token);
+    }
+
     // --- Saved Places ---
 
     @UseGuards(AuthGuard('jwt'))

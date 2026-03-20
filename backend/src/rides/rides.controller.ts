@@ -1,20 +1,26 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { RidesGateway } from './rides.gateway';
 import { RidesService } from './rides.service';
 
 @Controller('rides')
 export class RidesController {
-    constructor(private ridesService: RidesService) { }
+    constructor(
+        private ridesService: RidesService,
+        private ridesGateway: RidesGateway,
+    ) { }
 
     @UseGuards(AuthGuard('jwt'))
     @Post('request')
-    requestRide(@Request() req, @Body() body) {
+    async requestRide(@Request() req, @Body() body) {
         // Passenger requesting a ride
-        return this.ridesService.createRide({
+        const ride = await this.ridesService.createRide({
             ...body,
             passengerId: req.user.userId,
             status: 'searching' // RideStatus.SEARCHING
         });
+        await this.ridesGateway.broadcastNewRideRequest(ride);
+        return ride;
     }
 
     @UseGuards(AuthGuard('jwt'))
@@ -48,12 +54,35 @@ export class RidesController {
         return this.ridesService.updateStatus(id, 'cancelled' as any);
     }
 
+    @UseGuards(AuthGuard('jwt'))
+    @Patch(':id/accept')
+    async acceptRide(@Param('id') id: string, @Request() req) {
+        const updatedRide = await this.ridesService.acceptRide(id, req.user.userId);
+        await this.ridesGateway.broadcastRideAccepted(updatedRide);
+        return updatedRide;
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Post(':id/book')
+    async bookTrip(@Param('id') id: string, @Request() req, @Body() body) {
+        const bookedRide = await this.ridesService.bookPublishedTrip(id, req.user.userId, body);
+        await this.ridesGateway.broadcastTripBooked(bookedRide);
+        return bookedRide;
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Patch(':id')
+    updateRide(@Param('id') id: string, @Request() req, @Body() body) {
+        return this.ridesService.updateRideDetails(id, req.user.userId, body);
+    }
+
     // Keep existing endpoints if needed for admin or general usage
     @Post()
     create(@Body() createRideDto: any) {
         return this.ridesService.createRide(createRideDto);
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Patch(':id/status')
     updateStatus(@Param('id') id: string, @Body('status') status: any) {
         return this.ridesService.updateStatus(id, status);

@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   Animated,
@@ -21,7 +21,6 @@ import Svg, { Path } from 'react-native-svg';
 // --- IMPORTS FROM YOUR LOGIC SNIPPET ---
 import { LocationService } from '@/app/services/locationService';
 import { useTripStore } from '@/app/stores/tripStore';
-import { Trip } from '@/app/types';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 // Components
@@ -48,11 +47,11 @@ const TopDownCar = () => (
   </Svg>
 );
 
-const MOCK_NEARBY_DRIVERS = [
-  { id: 'd1', coords: { latitude: 4.8156, longitude: 7.0498 }, heading: 45 },
-  { id: 'd2', coords: { latitude: 4.8120, longitude: 7.0550 }, heading: 180 },
-  { id: 'd3', coords: { latitude: 4.8190, longitude: 7.0400 }, heading: 90 },
-];
+const getAddressText = (value: any) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value.address || '';
+};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -60,9 +59,10 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   // --- STORE & LOGIC HOOKS ---
-  const {
+const {
     trips,
     fetchTrips,
+    fetchNearbyDrivers,
     requestRide,
     cancelRide, // Import cancel action
     currentRide,
@@ -86,17 +86,45 @@ export default function HomeScreen() {
 
   // --- FLOW STATE ---
   const [step, setStep] = useState<'IDLE' | 'ESTIMATING' | 'SEARCHING' | 'ON_TRIP'>('IDLE');
-  const [destination, setDestination] = useState<any>(null);
+  const [destination] = useState<any>(null);
   const [currentRegion, setCurrentRegion] = useState({ latitude: 4.8156, longitude: 7.0498, latitudeDelta: 0.015, longitudeDelta: 0.015 });
 
   // 1. INITIAL LOAD
+  const collapseSheet = useCallback((fully = false) => {
+    Keyboard.dismiss();
+    Animated.timing(sheetHeight, {
+      toValue: fully ? height * 0.35 : SHEET_COLLAPSED_HEIGHT,
+      duration: 300,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: false,
+    }).start(() => setIsExpanded(false));
+  }, [sheetHeight]);
+
+  const loadLocationData = useCallback(async () => {
+    const coords = await LocationService.getCurrentCoordinates();
+    if (coords) {
+      const newRegion = {
+        ...coords,
+        latitudeDelta: 0.015,
+        longitudeDelta: 0.015,
+      };
+      setCurrentRegion(newRegion);
+      mapRef.current?.animateToRegion(newRegion, 1000);
+      await fetchNearbyDrivers(coords.latitude, coords.longitude);
+    }
+
+    const stateName = await LocationService.getCurrentState();
+    setLocationState(stateName || "Unknown");
+    setEmergencyContacts(LocationService.getEmergencyNumbers(stateName));
+  }, [fetchNearbyDrivers]);
+
   useEffect(() => {
     const init = async () => {
       await loadLocationData();
       await fetchTrips();
     };
     init();
-  }, []);
+  }, [fetchTrips, loadLocationData]);
 
   // 2. LISTEN TO RIDE STATUS
   useEffect(() => {
@@ -111,24 +139,7 @@ export default function HomeScreen() {
       setStep('IDLE');
       collapseSheet();
     }
-  }, [rideStatus]);
-
-  const loadLocationData = async () => {
-    const coords = await LocationService.getCurrentCoordinates();
-    if (coords) {
-      const newRegion = {
-        ...coords,
-        latitudeDelta: 0.015,
-        longitudeDelta: 0.015,
-      };
-      setCurrentRegion(newRegion);
-      mapRef.current?.animateToRegion(newRegion, 1000);
-    }
-
-    const stateName = await LocationService.getCurrentState();
-    setLocationState(stateName || "Unknown");
-    setEmergencyContacts(LocationService.getEmergencyNumbers(stateName));
-  };
+  }, [collapseSheet, rideStatus]);
 
   // --- ANIMATION HANDLERS ---
   const expandSheet = () => {
@@ -142,32 +153,7 @@ export default function HomeScreen() {
     }).start();
   };
 
-  const collapseSheet = (fully = false) => {
-    Keyboard.dismiss();
-    Animated.timing(sheetHeight, {
-      toValue: fully ? height * 0.35 : SHEET_COLLAPSED_HEIGHT,
-      duration: 300,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: false,
-    }).start(() => setIsExpanded(false));
-  };
-
   // --- LOGIC HANDLERS ---
-  const handleDestinationSelected = (dest: any) => {
-    setDestination(dest);
-    setStep('ESTIMATING');
-    expandSheet();
-
-    if (currentRegion && dest.coords) {
-      mapRef.current?.fitToCoordinates([
-        { latitude: currentRegion.latitude, longitude: currentRegion.longitude },
-        dest.coords
-      ], {
-        edgePadding: { top: 100, right: 50, bottom: SHEET_EXPANDED_HEIGHT / 2, left: 50 }
-      });
-    }
-  };
-
   const handleConfirmRide = async (tier: string, scheduledTime?: string) => {
     try {
       if (!currentRegion || !destination) return;
@@ -189,7 +175,7 @@ export default function HomeScreen() {
       });
       setStep('SEARCHING');
       collapseSheet();
-    } catch (e) {
+    } catch {
       Alert.alert("Error", "Failed to book ride");
     }
   };
@@ -213,23 +199,25 @@ export default function HomeScreen() {
       Alert.alert("Thank you", "Your rating has been submitted.");
       setShowRatingModal(false);
       updateRideStatus('IDLE', null); // Reset store
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "Failed to submit rating");
     }
   };
 
-  const renderSimpleSuggestion = ({ item }: { item: Trip }) => (
+  const renderSimpleSuggestion = ({ item }: { item: any }) => (
     <TouchableOpacity style={styles.suggestionItem} onPress={() => router.push(`/trip-details/${item.id}`)}>
       <View style={styles.iconContainer}>
         <Ionicons name="location-sharp" size={20} color={COLORS.white} />
       </View>
       <View style={styles.suggestionTextContainer}>
         <View style={styles.suggestionHeader}>
-          <Text style={styles.suggestionTitle}>{item.origin || locationState}</Text>
+          <Text style={styles.suggestionTitle}>{getAddressText(item.origin) || locationState}</Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textSecondary} />
-          <Text style={styles.suggestionTitle}>{item.destination}</Text>
+          <Text style={styles.suggestionTitle}>{getAddressText(item.destination)}</Text>
         </View>
-        <Text style={styles.suggestionSubtext}>{item.date} • ₦{item.price.toLocaleString()}</Text>
+        <Text style={styles.suggestionSubtext}>
+          {item.date || 'Today'} • ₦{Number(item.price || item.fare || 0).toLocaleString()}
+        </Text>
       </View>
       <View style={styles.arrowContainer}>
         <MaterialCommunityIcons name="navigation-variant" size={20} color={COLORS.primary} />
@@ -237,7 +225,7 @@ export default function HomeScreen() {
     </TouchableOpacity>
   );
 
-  const driversToDisplay = activeDrivers && activeDrivers.length > 0 ? activeDrivers : MOCK_NEARBY_DRIVERS;
+  const driversToDisplay = activeDrivers || [];
 
   return (
     <View style={styles.container}>

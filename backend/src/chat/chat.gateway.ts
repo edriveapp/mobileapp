@@ -1,11 +1,18 @@
 import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-
+import { PushNotificationsService } from '../common/push-notifications.service';
+import { RidesService } from '../rides/rides.service';
+import { UsersService } from '../users/users.service';
 import { ChatService } from './chat.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class ChatGateway {
-  constructor(private chatService: ChatService) { }
+  constructor(
+    private chatService: ChatService,
+    private ridesService: RidesService,
+    private usersService: UsersService,
+    private pushNotificationsService: PushNotificationsService,
+  ) { }
 
   @WebSocketServer()
   server: Server;
@@ -23,6 +30,7 @@ export class ChatGateway {
 
     const message = {
       _id: savedMessage.id,
+      rideId: payload.rideId,
       text: savedMessage.text,
       createdAt: savedMessage.createdAt,
       user: {
@@ -33,5 +41,18 @@ export class ChatGateway {
 
     // Emit to everyone in the room
     this.server.to(`ride_${payload.rideId}`).emit('receive_message', message);
+
+    const ride = await this.ridesService.findRideById(payload.rideId);
+    const recipientId = payload.senderId === ride?.driverId ? ride?.passengerId : ride?.driverId;
+
+    if (recipientId) {
+      const tokens = await this.usersService.getPushTokensForUser(recipientId);
+      await this.pushNotificationsService.sendToExpoTokens(
+        tokens,
+        payload.role === 'DRIVER' ? 'Driver message' : 'Passenger message',
+        payload.text,
+        { type: 'chat_message', rideId: payload.rideId },
+      );
+    }
   }
 }

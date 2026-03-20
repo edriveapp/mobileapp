@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
@@ -13,12 +12,13 @@ import {
     TextInput,
     Alert,
     Keyboard,
-    Platform
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LocationService } from '@/app/services/locationService';
+import { useRideRealtimeStore } from '@/app/stores/rideRealtimeStore';
+import { useTripStore } from '@/app/stores/tripStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 interface PlaceResult {
@@ -47,7 +47,7 @@ const getDirections = async (startLoc: any, destinationLoc: any) => {
         }));
         
         return { coordinates, distance: route.distance / 1000, duration: route.duration / 60 };
-    } catch (error) {
+    } catch {
         return null;
     }
 };
@@ -55,6 +55,9 @@ const getDirections = async (startLoc: any, destinationLoc: any) => {
 export default function DriverMapScreen() {
     const mapRef = useRef<MapView>(null);
     const insets = useSafeAreaInsets();
+    const { availableTrips, activeTrips, fetchAvailableTrips, fetchMyTrips, acceptRide } = useTripStore();
+    const requestQueue = useRideRealtimeStore((state) => state.requestQueue);
+    const dequeueRideRequest = useRideRealtimeStore((state) => state.dequeueRideRequest);
 
     const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
     const [loading, setLoading] = useState(true);
@@ -71,6 +74,7 @@ export default function DriverMapScreen() {
     const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [activeDestination, setActiveDestination] = useState<PlaceResult | null>(null);
+    const [selectedRideRequestId, setSelectedRideRequestId] = useState<string | null>(null);
     
     const searchTimeout = useRef<any>(null);
 
@@ -82,10 +86,27 @@ export default function DriverMapScreen() {
             if (mounted && coords) {
                 setLocation(coords);
                 setLoading(false);
+                await fetchAvailableTrips({ role: 'driver' });
+                await fetchMyTrips();
             }
         })();
         return () => { mounted = false; };
-    }, []);
+    }, [fetchAvailableTrips, fetchMyTrips]);
+
+    const liveRideRequests = (requestQueue.length > 0 ? requestQueue : availableTrips).filter(
+        (ride: any) => ride?.origin?.lat && ride?.origin?.lon,
+    );
+
+    const activePickupTrips = activeTrips.filter(
+        (ride: any) => ride?.pickupLocation?.lat && ride?.pickupLocation?.lon,
+    );
+
+    const selectedRideRequest = liveRideRequests.find((ride: any) => ride.id === selectedRideRequestId) || null;
+
+    const getPassengerName = (ride: any) => {
+        const fullName = [ride?.passenger?.firstName, ride?.passenger?.lastName].filter(Boolean).join(' ').trim();
+        return fullName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
+    };
 
     // --- OPTIMIZED SEARCH (Fixes Freezing) ---
     const handleSearchInput = useCallback((text: string) => {
@@ -244,6 +265,35 @@ export default function DriverMapScreen() {
                     </Marker>
                 )}
 
+                {liveRideRequests.map((ride: any) => (
+                    <Marker
+                        key={ride.id}
+                        coordinate={{
+                            latitude: Number(ride.origin.lat),
+                            longitude: Number(ride.origin.lon),
+                        }}
+                        onPress={() => setSelectedRideRequestId(ride.id)}
+                    >
+                        <View style={styles.requestMarker}>
+                            <Ionicons name="person" size={14} color="white" />
+                        </View>
+                    </Marker>
+                ))}
+
+                {activePickupTrips.map((ride: any) => (
+                    <Marker
+                        key={`pickup-${ride.id}`}
+                        coordinate={{
+                            latitude: Number(ride.pickupLocation.lat),
+                            longitude: Number(ride.pickupLocation.lon),
+                        }}
+                    >
+                        <View style={styles.pickupMarker}>
+                            <Ionicons name="person-circle" size={18} color="white" />
+                        </View>
+                    </Marker>
+                ))}
+
                 {/* Route Line */}
                 {routeCoordinates.length > 0 && (
                     <Polyline
@@ -317,6 +367,37 @@ export default function DriverMapScreen() {
                             <Ionicons name="search" size={20} color={COLORS.white} style={{ marginRight: 8 }} />
                             <Text style={styles.navButtonText}>Search Destination</Text>
                         </TouchableOpacity>
+                        {selectedRideRequest && (
+                            <View style={styles.requestPanel}>
+                                <Text style={styles.requestPanelName}>{getPassengerName(selectedRideRequest)}</Text>
+                                <Text style={styles.requestPanelRoute}>
+                                    {selectedRideRequest.origin?.address} to {selectedRideRequest.destination?.address}
+                                </Text>
+                                <View style={styles.requestPanelActions}>
+                                    <TouchableOpacity
+                                        style={styles.requestPanelSecondary}
+                                        onPress={() => setSelectedRideRequestId(null)}
+                                    >
+                                        <Text style={styles.requestPanelSecondaryText}>Dismiss</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.requestPanelPrimary}
+                                        onPress={async () => {
+                                            try {
+                                                await acceptRide(selectedRideRequest.id);
+                                                dequeueRideRequest(selectedRideRequest.id);
+                                                setSelectedRideRequestId(null);
+                                                Alert.alert('Ride accepted', 'Passenger removed from live queue.');
+                                            } catch (error: any) {
+                                                Alert.alert('Accept failed', error?.message || 'Could not accept this request.');
+                                            }
+                                        }}
+                                    >
+                                        <Text style={styles.requestPanelPrimaryText}>Pick up rider</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
                     </View>
                 )}
             </View>
@@ -430,6 +511,75 @@ const styles = StyleSheet.create({
         width: 16, height: 16, borderRadius: 8,
         backgroundColor: COLORS.primary, // Solid green center
         borderWidth: 2, borderColor: 'white',
+    },
+    requestMarker: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#FF7043',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: 'white',
+    },
+    pickupMarker: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: COLORS.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: 'white',
+    },
+    requestPanel: {
+        marginTop: 12,
+        borderRadius: 14,
+        backgroundColor: '#FFF7F3',
+        borderWidth: 1,
+        borderColor: '#FFD8CC',
+        padding: 12,
+    },
+    requestPanelName: {
+        fontSize: 15,
+        color: COLORS.text,
+        fontFamily: Fonts.semibold,
+        marginBottom: 4,
+    },
+    requestPanelRoute: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        fontFamily: Fonts.rounded,
+        marginBottom: 10,
+    },
+    requestPanelActions: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    requestPanelSecondary: {
+        flex: 1,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E3C7BB',
+        alignItems: 'center',
+        paddingVertical: 10,
+    },
+    requestPanelSecondaryText: {
+        color: COLORS.text,
+        fontFamily: Fonts.semibold,
+        fontSize: 13,
+    },
+    requestPanelPrimary: {
+        flex: 1,
+        borderRadius: 10,
+        backgroundColor: COLORS.primary,
+        alignItems: 'center',
+        paddingVertical: 10,
+    },
+    requestPanelPrimaryText: {
+        color: COLORS.white,
+        fontFamily: Fonts.semibold,
+        fontSize: 13,
     },
 
     // Modal

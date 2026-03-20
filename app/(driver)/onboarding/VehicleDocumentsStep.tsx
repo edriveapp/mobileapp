@@ -20,6 +20,13 @@ const VEHICLE_TYPES = ['Sedan', 'SUV', 'Van', 'Minibus', 'Coaster Bus'];
 export default function VehicleDocumentsStep() {
     const { vehicleInfo, documents, setVehicleInfo, setDocuments } = useDriverStore();
 
+    const formatPlateNumber = (value: string) => {
+        const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+        if (cleaned.length <= 3) return cleaned;
+        if (cleaned.length <= 6) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+        return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+    };
+
     const pickLicenseImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -29,7 +36,7 @@ export default function VehicleDocumentsStep() {
         }
 
         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [4, 3],
             quality: 0.8,
@@ -49,7 +56,7 @@ export default function VehicleDocumentsStep() {
         }
 
         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsMultipleSelection: true,
             quality: 0.8,
         });
@@ -151,16 +158,19 @@ export default function VehicleDocumentsStep() {
                         <TextInput
                             style={styles.input}
                             value={vehicleInfo.plateNumber}
-                            onChangeText={(text) => setVehicleInfo({ plateNumber: text })}
+                            onChangeText={(text) =>
+                                setVehicleInfo({ plateNumber: formatPlateNumber(text) })
+                            }
                             placeholder="e.g., ABC-123-XY"
                             placeholderTextColor={COLORS.textSecondary}
                             autoCapitalize="characters"
+                            maxLength={10}
                         />
                     </View>
 
                     {/* Driver's License Upload */}
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Driver's License Photo *</Text>
+                        <Text style={styles.label}>Driver License Photo *</Text>
                         <TouchableOpacity style={styles.uploadButton} onPress={pickLicenseImage}>
                             <Text style={styles.uploadButtonText}>
                                 {documents.licenseImageUri ? '✓ License Uploaded' : '+ Upload License'}

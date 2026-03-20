@@ -1,8 +1,11 @@
 import { useAuthStore } from '@/app/stores/authStore';
 import { useDriverStore } from '@/app/stores/driverStore';
+import { useRideRealtimeStore } from '@/app/stores/rideRealtimeStore';
+import { useTripStore } from '@/app/stores/tripStore';
+import RideRequestModal from '@/app/components/RideRequestModal';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Modal, Pressable,
@@ -18,32 +21,41 @@ export default function DriverHome() {
     const router = useRouter();
     const { user, logout } = useAuthStore();
     const hasCompletedOnboarding = useDriverStore((s) => s.hasCompletedOnboarding);
+    const { availableTrips, activeTrips, history, fetchAvailableTrips, fetchMyTrips, acceptRide, cancelRide, updateTripStatus } = useTripStore();
+    const latestRideRequest = useRideRealtimeStore((state) => state.latestRideRequest);
+    const requestQueue = useRideRealtimeStore((state) => state.requestQueue);
+    const clearLatestRideRequest = useRideRealtimeStore((state) => state.clearLatestRideRequest);
+    const dequeueRideRequest = useRideRealtimeStore((state) => state.dequeueRideRequest);
+    const lastRequestCountRef = useRef(0);
 
     // Menu State
     const [menuVisible, setMenuVisible] = useState(false);
+    const [isRefreshingRequests, setIsRefreshingRequests] = useState(false);
 
-    // Mock Data
     const stats = {
-        activeTrips: 2,
-        totalTrips: 65,
-        rating: 4.2,
-        earnings: '₦45,000',
-        remittance: '₦4,500'
+        activeTrips: activeTrips.length,
+        totalTrips: activeTrips.length + history.length,
+        rating: Number((user as any)?.rating || 4.8).toFixed(1),
+        earnings: '--',
+        remittance: '--',
     };
 
-    const handleAction = (action: () => void) => {
-        if (!hasCompletedOnboarding) {
-            Alert.alert(
-                "Verification Required",
-                "Please complete your driver profile to access this.",
-                [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Verify Now", onPress: () => router.push('/(driver)/onboarding') }
-                ]
-            );
-            return;
+    const getPassengerName = (ride: any) => {
+        const fullName = [ride?.passenger?.firstName, ride?.passenger?.lastName].filter(Boolean).join(' ').trim();
+        return fullName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
+    };
+
+    const getRouteAddress = (value: any, fallback: string) => {
+        if (value && typeof value === 'object') return value.address || fallback;
+        return value || fallback;
+    };
+
+    const formatTripTime = (trip: any) => {
+        if (trip?.departureTime) {
+            const date = new Date(trip.departureTime);
+            return `${date.toLocaleDateString()} • ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
         }
-        action();
+        return `${trip?.date || 'Today'} • ${trip?.time || 'Any time'}`;
     };
 
     const handleLogout = () => {
@@ -60,6 +72,73 @@ export default function DriverHome() {
             }
         ]);
     };
+
+    const handleEditTrip = (tripId: string) => {
+        router.push({ pathname: '/(driver)/create-trip', params: { tripId } } as never);
+    };
+
+    const handleCancelTrip = (tripId: string) => {
+        Alert.alert('Remove trip', 'This will take the trip off the rider side.', [
+            { text: 'Keep it', style: 'cancel' },
+            {
+                text: 'Remove',
+                style: 'destructive',
+                onPress: async () => {
+                    try {
+                        await cancelRide(tripId);
+                    } catch (error: any) {
+                        Alert.alert('Could not remove trip', error?.message || 'Please try again.');
+                    }
+                }
+            }
+        ]);
+    };
+
+    const handleCompleteTrip = (tripId: string) => {
+        Alert.alert('Mark trip as done', 'This will move the trip out of your active list.', [
+            { text: 'Not yet', style: 'cancel' },
+            {
+                text: 'Mark done',
+                onPress: async () => {
+                    try {
+                        await updateTripStatus(tripId, 'completed');
+                    } catch (error: any) {
+                        Alert.alert('Could not complete trip', error?.message || 'Please try again.');
+                    }
+                }
+            }
+        ]);
+    };
+
+    const refreshDriverRequests = useCallback(async (showLoader = false) => {
+        if (showLoader) setIsRefreshingRequests(true);
+        try {
+            await fetchAvailableTrips({ role: 'driver' });
+        } finally {
+            if (showLoader) setIsRefreshingRequests(false);
+        }
+    }, [fetchAvailableTrips]);
+
+    useEffect(() => {
+        refreshDriverRequests(true);
+        fetchMyTrips();
+        const interval = setInterval(() => {
+            refreshDriverRequests(false);
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [fetchMyTrips, refreshDriverRequests]);
+
+    useEffect(() => {
+        const currentCount = availableTrips.length;
+        if (lastRequestCountRef.current > 0 && currentCount > lastRequestCountRef.current) {
+            const diff = currentCount - lastRequestCountRef.current;
+            Alert.alert(
+                'New rider request',
+                `${diff} new live request${diff > 1 ? 's' : ''} just came in.`
+            );
+        }
+        lastRequestCountRef.current = currentCount;
+    }, [availableTrips.length]);
 
     return (
         // 2. FIX: Use the new SafeAreaView
@@ -172,18 +251,158 @@ export default function DriverHome() {
                     <View style={styles.cardRow}>
                         <View>
                             <Text style={styles.cardTitle}>Ride Requests</Text>
-                            <Text style={styles.cardSubtitle}>View Available Rides</Text>
+                            <Text style={styles.cardSubtitle}>
+                                {availableTrips.length} live request{availableTrips.length === 1 ? '' : 's'} nearby
+                            </Text>
                         </View>
-                        <Text style={styles.seeDetails}>see details</Text>
+                        <TouchableOpacity onPress={() => refreshDriverRequests(true)}>
+                            <Text style={styles.seeDetails}>
+                                {isRefreshingRequests ? 'refreshing...' : 'see details'}
+                            </Text>
+                        </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
+
+                <View style={styles.quickActionsRow}>
+                    <TouchableOpacity style={styles.quickActionCard} onPress={() => router.push('/(driver)/create-trip')}>
+                        <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                        <Text style={styles.quickActionText}>Post Trip</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.quickActionCard} onPress={() => router.push('/(driver)/requests')}>
+                        <Ionicons name="flash-outline" size={18} color={COLORS.primary} />
+                        <Text style={styles.quickActionText}>Live Requests</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <View style={styles.tripManagerSection}>
+                    <View style={styles.liveSectionHeader}>
+                        <Text style={styles.liveSectionTitle}>Your active trips</Text>
+                        <Text style={styles.liveSectionMeta}>{activeTrips.length} live</Text>
+                    </View>
+                    {activeTrips.length > 0 ? (
+                        activeTrips.slice(0, 4).map((trip: any) => {
+                            const isSearchTrip = String(trip.status).toLowerCase() === 'searching';
+                            return (
+                                <View key={trip.id} style={styles.tripManagerCard}>
+                                    <View style={styles.tripManagerTop}>
+                                        <View style={styles.tripManagerRoute}>
+                                            <Text style={styles.tripManagerRouteText}>
+                                                {getRouteAddress(trip.origin, 'Pickup')}
+                                            </Text>
+                                            <Ionicons name="arrow-forward" size={14} color={COLORS.textSecondary} />
+                                            <Text style={styles.tripManagerRouteText}>
+                                                {getRouteAddress(trip.destination, 'Destination')}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.tripStatusPill}>
+                                            <Text style={styles.tripStatusPillText}>{String(trip.status || 'active')}</Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.tripManagerMeta}>
+                                        {formatTripTime(trip)} • {trip.availableSeats ?? trip.seats ?? 0} seats left • ₦
+                                        {Number(trip.fare || trip.price || 0).toLocaleString()}
+                                    </Text>
+                                    <View style={styles.tripManagerActions}>
+                                        {isSearchTrip ? (
+                                            <>
+                                                <TouchableOpacity
+                                                    style={styles.tripActionSecondary}
+                                                    onPress={() => handleEditTrip(trip.id)}
+                                                >
+                                                    <Text style={styles.tripActionSecondaryText}>Edit</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={styles.tripActionDanger}
+                                                    onPress={() => handleCancelTrip(trip.id)}
+                                                >
+                                                    <Text style={styles.tripActionDangerText}>Remove</Text>
+                                                </TouchableOpacity>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <TouchableOpacity
+                                                    style={styles.tripActionSecondary}
+                                                    onPress={() => router.push(`/chat/${trip.id}`)}
+                                                >
+                                                    <Text style={styles.tripActionSecondaryText}>Open trip</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={styles.tripActionPrimary}
+                                                    onPress={() => handleCompleteTrip(trip.id)}
+                                                >
+                                                    <Text style={styles.tripActionPrimaryText}>Mark done</Text>
+                                                </TouchableOpacity>
+                                            </>
+                                        )}
+                                    </View>
+                                </View>
+                            );
+                        })
+                    ) : (
+                        <View style={styles.tripManagerEmpty}>
+                            <Text style={styles.tripManagerEmptyTitle}>No active trips yet</Text>
+                            <Text style={styles.tripManagerEmptyText}>
+                                Post a trip and it will stay here so you can edit, remove, or close it out quickly.
+                            </Text>
+                        </View>
+                    )}
+                </View>
+
+                <View style={styles.liveSection}>
+                    <View style={styles.liveSectionHeader}>
+                        <Text style={styles.liveSectionTitle}>Live rider queue</Text>
+                        <Text style={styles.liveSectionMeta}>{requestQueue.length} waiting</Text>
+                    </View>
+                    {requestQueue.length > 0 ? (
+                        requestQueue.slice(0, 3).map((ride) => (
+                            <View key={ride.id} style={styles.liveRideCard}>
+                                <View style={styles.liveRideTop}>
+                                    <View>
+                                        <Text style={styles.liveRideName}>{getPassengerName(ride)}</Text>
+                                        <Text style={styles.liveRideRoute}>
+                                            {ride.origin?.address || 'Pickup'} to {ride.destination?.address || 'Destination'}
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.liveRideFare}>₦{Number(ride.fare || ride.price || 2500).toLocaleString()}</Text>
+                                </View>
+                                <View style={styles.liveRideActions}>
+                                    <TouchableOpacity
+                                        style={styles.liveRideSecondary}
+                                        onPress={() => router.push('/(driver)/maps')}
+                                    >
+                                        <Text style={styles.liveRideSecondaryText}>View on map</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.liveRidePrimary}
+                                        onPress={async () => {
+                                            try {
+                                                const accepted = await acceptRide(ride.id);
+                                                dequeueRideRequest(ride.id);
+                                                clearLatestRideRequest();
+                                                router.push(`/chat/${accepted.id}`);
+                                            } catch (error: any) {
+                                                Alert.alert('Accept failed', error?.message || 'Could not accept this ride.');
+                                            }
+                                        }}
+                                    >
+                                        <Text style={styles.liveRidePrimaryText}>Accept</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        ))
+                    ) : (
+                        <View style={styles.liveRideEmpty}>
+                            <Text style={styles.liveRideEmptyText}>New rider requests will appear here in real time.</Text>
+                        </View>
+                    )}
+                </View>
 
                 {/* 2. Total Trips Card */}
                 <View style={[styles.card, styles.cardBgGreen]}>
                     <View style={styles.cardRow}>
                         <View>
                             <Text style={styles.cardTitle}>Trips</Text>
-                            <Text style={styles.cardSubtitle}>Total covered</Text>
+                            <Text style={styles.cardSubtitle}>{stats.activeTrips} active right now</Text>
                         </View>
                         <Text style={styles.bigValue}>{stats.totalTrips}</Text>
                     </View>
@@ -229,6 +448,37 @@ export default function DriverHome() {
                 </TouchableOpacity>
 
             </ScrollView>
+
+            <RideRequestModal
+                isVisible={!!latestRideRequest}
+                request={latestRideRequest ? {
+                    id: latestRideRequest.id,
+                    passengerName: getPassengerName(latestRideRequest),
+                    passengerRating: latestRideRequest.passenger?.rating || 5,
+                    pickup: latestRideRequest.origin?.address || 'Unknown pickup',
+                    dropoff: latestRideRequest.destination?.address || 'Unknown destination',
+                    distance: 'Live request',
+                    price: Number(latestRideRequest.fare || latestRideRequest.price || 2500),
+                    eta: 'Now',
+                } : null}
+                onDecline={() => {
+                    if (latestRideRequest?.id) {
+                        dequeueRideRequest(latestRideRequest.id);
+                    }
+                    clearLatestRideRequest();
+                }}
+                onAccept={async () => {
+                    if (!latestRideRequest?.id) return;
+                    try {
+                        const ride = await acceptRide(latestRideRequest.id);
+                        dequeueRideRequest(latestRideRequest.id);
+                        clearLatestRideRequest();
+                        router.push(`/chat/${ride.id}`);
+                    } catch (error: any) {
+                        Alert.alert('Accept failed', error?.message || 'Could not accept the live request.');
+                    }
+                }}
+            />
         </SafeAreaView>
     );
 }
@@ -404,6 +654,234 @@ const styles = StyleSheet.create({
     cardBgRed: {
         backgroundColor: '#FFF5F5',
         borderColor: '#FF4d4d',
+    },
+    quickActionsRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 16,
+    },
+    quickActionCard: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: '#D8E7DC',
+        backgroundColor: '#F4FBF6',
+        borderRadius: 12,
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+    },
+    quickActionText: {
+        color: COLORS.primary,
+        fontSize: 13,
+        fontFamily: Fonts.semibold,
+    },
+    tripManagerSection: {
+        marginBottom: 18,
+    },
+    tripManagerCard: {
+        backgroundColor: '#FFFDF8',
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: '#ECE7DA',
+        padding: 14,
+        marginBottom: 10,
+    },
+    tripManagerTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: 10,
+        marginBottom: 8,
+    },
+    tripManagerRoute: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    tripManagerRouteText: {
+        flexShrink: 1,
+        fontSize: 14,
+        color: '#101828',
+        fontFamily: Fonts.semibold,
+    },
+    tripManagerMeta: {
+        color: '#667085',
+        fontSize: 12,
+        fontFamily: Fonts.rounded,
+        marginBottom: 12,
+    },
+    tripStatusPill: {
+        backgroundColor: '#EBF7EE',
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    tripStatusPillText: {
+        color: COLORS.primary,
+        fontSize: 11,
+        fontFamily: Fonts.semibold,
+        textTransform: 'capitalize',
+    },
+    tripManagerActions: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    tripActionSecondary: {
+        flex: 1,
+        height: 40,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#D0D5DD',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+    },
+    tripActionSecondaryText: {
+        color: '#344054',
+        fontFamily: Fonts.semibold,
+        fontSize: 13,
+    },
+    tripActionPrimary: {
+        flex: 1,
+        height: 40,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: COLORS.primary,
+    },
+    tripActionPrimaryText: {
+        color: '#FFFFFF',
+        fontFamily: Fonts.semibold,
+        fontSize: 13,
+    },
+    tripActionDanger: {
+        flex: 1,
+        height: 40,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#FFF1F3',
+    },
+    tripActionDangerText: {
+        color: '#D92D20',
+        fontFamily: Fonts.semibold,
+        fontSize: 13,
+    },
+    tripManagerEmpty: {
+        borderRadius: 18,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: '#D0D5DD',
+        padding: 18,
+        backgroundColor: '#FCFCFD',
+    },
+    tripManagerEmptyTitle: {
+        fontSize: 15,
+        color: '#101828',
+        fontFamily: Fonts.semibold,
+        marginBottom: 4,
+    },
+    tripManagerEmptyText: {
+        fontSize: 13,
+        color: '#667085',
+        fontFamily: Fonts.rounded,
+        lineHeight: 19,
+    },
+    liveSection: {
+        marginBottom: 16,
+    },
+    liveSectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    liveSectionTitle: {
+        fontSize: 16,
+        color: COLORS.text,
+        fontFamily: Fonts.bold,
+    },
+    liveSectionMeta: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        fontFamily: Fonts.rounded,
+    },
+    liveRideCard: {
+        backgroundColor: '#F7FBF8',
+        borderWidth: 1,
+        borderColor: '#DBEDE0',
+        borderRadius: 14,
+        padding: 14,
+        marginBottom: 10,
+    },
+    liveRideTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: 10,
+        marginBottom: 10,
+    },
+    liveRideName: {
+        fontSize: 15,
+        color: COLORS.text,
+        fontFamily: Fonts.semibold,
+        marginBottom: 4,
+    },
+    liveRideRoute: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        fontFamily: Fonts.rounded,
+        maxWidth: 220,
+    },
+    liveRideFare: {
+        fontSize: 15,
+        color: COLORS.primary,
+        fontFamily: Fonts.bold,
+    },
+    liveRideActions: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    liveRideSecondary: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: '#C7D8CC',
+        borderRadius: 10,
+        paddingVertical: 10,
+        alignItems: 'center',
+    },
+    liveRideSecondaryText: {
+        color: COLORS.text,
+        fontFamily: Fonts.semibold,
+        fontSize: 13,
+    },
+    liveRidePrimary: {
+        flex: 1,
+        backgroundColor: COLORS.primary,
+        borderRadius: 10,
+        paddingVertical: 10,
+        alignItems: 'center',
+    },
+    liveRidePrimaryText: {
+        color: COLORS.white,
+        fontFamily: Fonts.semibold,
+        fontSize: 13,
+    },
+    liveRideEmpty: {
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#ECECEC',
+        borderStyle: 'dashed',
+        padding: 16,
+        backgroundColor: '#FCFCFC',
+    },
+    liveRideEmptyText: {
+        color: COLORS.textSecondary,
+        fontFamily: Fonts.rounded,
+        fontSize: 13,
+        textAlign: 'center',
     },
     alertBanner: {
         backgroundColor: '#FFF3CD',

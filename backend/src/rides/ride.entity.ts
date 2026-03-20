@@ -15,11 +15,11 @@ export class Ride {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @ManyToOne(() => User)
+    @ManyToOne(() => User, { nullable: true })
     @JoinColumn({ name: 'passengerId' })
     passenger: User;
 
-    @Column()
+    @Column({ nullable: true })
     passengerId: string;
 
     @ManyToOne(() => User, { nullable: true })
@@ -53,8 +53,59 @@ export class Ride {
     @Column('decimal', { precision: 10, scale: 2, nullable: true })
     fare: number;
 
+    @Column({ type: 'int', nullable: true, default: 0 })
+    distanceKm: number;
+
+    @Column('decimal', { precision: 10, scale: 2, nullable: true })
+    tripFare: number;
+
+    @Column('simple-json', { nullable: true })
+    pickupLocation: {
+        lat: number;
+        lon: number;
+        address: string;
+    };
+
+    @Column({ type: 'int', default: 1 })
+    seats: number;
+
+    @Column({ type: 'int', default: 1 })
+    availableSeats: number;
+
     @Column({ nullable: true }) // 'Lite', 'Comfort', 'Van'
     tier: string;
+
+    @Column({ type: 'text', nullable: true })
+    notes: string;
+
+    @Column('simple-json', { nullable: true })
+    preferences: {
+        ac?: boolean;
+        luggage?: boolean;
+        smoking?: boolean;
+    };
+
+    @Column({ default: false })
+    autoAccept: boolean;
+
+    @Column({ nullable: true })
+    paymentMethod: string;
+
+    @Column({ nullable: true })
+    paymentStatus: string;
+
+    @Column({ nullable: true })
+    pricingScenario: string;
+
+    @Column('simple-json', { nullable: true })
+    pricingBreakdown: {
+        baseCost?: number;
+        subtotal?: number;
+        operationsBuffer?: number;
+        marginAmount?: number;
+        finalTripFare?: number;
+        seatFare?: number;
+    };
 
     @Column({ nullable: true })
     departureTime: Date;

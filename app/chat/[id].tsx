@@ -2,20 +2,20 @@ import { useAuthStore } from '@/app/stores/authStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
     Image,
     KeyboardAvoidingView,
     Platform,
-    SafeAreaView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
     View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
 // import { io } from "socket.io-client"; // Uncomment when socket is ready
 
@@ -36,16 +36,7 @@ export default function ChatScreen() {
     const [loading, setLoading] = useState(true);
     const flatListRef = useRef<FlatList>(null);
 
-    useEffect(() => {
-        fetchMessages();
-        connect(tripId);
-
-        return () => {
-            disconnect();
-        };
-    }, [tripId]);
-
-    const fetchMessages = async () => {
+    const fetchMessages = useCallback(async () => {
         try {
             const res = await api.get(`/chats/${tripId}/messages`);
             setMessages(res.data);
@@ -54,7 +45,16 @@ export default function ChatScreen() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [setMessages, tripId]);
+
+    useEffect(() => {
+        fetchMessages();
+        connect(tripId);
+
+        return () => {
+            disconnect();
+        };
+    }, [connect, disconnect, fetchMessages, tripId]);
 
     const handleSend = async () => {
         if (!inputText.trim()) return;
@@ -81,7 +81,7 @@ export default function ChatScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top']}>
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color={COLORS.text} />

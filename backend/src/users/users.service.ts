@@ -4,7 +4,7 @@ import { Point } from 'geojson';
 import { Repository } from 'typeorm';
 import { DriverProfile } from './driver-profile.entity';
 import { SavedPlace } from './saved-place.entity';
-import { User } from './user.entity';
+import { User, UserRole } from './user.entity';
 
 @Injectable()
 export class UsersService {
@@ -39,6 +39,31 @@ export class UsersService {
         return this.usersRepository.save(user);
     }
 
+    async registerExpoPushToken(userId: string, token: string): Promise<User> {
+        const user = await this.findOneById(userId);
+        if (!user) throw new NotFoundException('User not found');
+
+        const nextTokens = Array.from(new Set([...(user.expoPushTokens || []), token]));
+        user.expoPushTokens = nextTokens;
+        return this.usersRepository.save(user);
+    }
+
+    async getPushTokensForRole(role: User['role']): Promise<string[]> {
+        const users = await this.usersRepository.find({
+            where: { role },
+        });
+
+        return users
+            .filter((user) => user.preferences?.pushNotifications !== false)
+            .flatMap((user) => user.expoPushTokens || []);
+    }
+
+    async getPushTokensForUser(userId: string): Promise<string[]> {
+        const user = await this.findOneById(userId);
+        if (!user || user.preferences?.pushNotifications === false) return [];
+        return user.expoPushTokens || [];
+    }
+
     // --- Saved Places ---
 
     async getSavedPlaces(userId: string): Promise<SavedPlace[]> {
@@ -68,6 +93,11 @@ export class UsersService {
     }
 
     async createDriverProfile(user: User, details: any): Promise<DriverProfile> {
+        if (user.role !== UserRole.DRIVER) {
+            user.role = UserRole.DRIVER;
+            await this.usersRepository.save(user);
+        }
+
         const profile = this.driverProfileRepository.create({
             user,
             ...details

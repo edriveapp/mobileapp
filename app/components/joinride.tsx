@@ -1,21 +1,20 @@
-import { Trip } from '@/app/types';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   FlatList,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
+  KeyboardEvent,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LocationService } from '@/app/services/locationService';
 import { useSettingsStore } from '@/app/stores/settingsStore';
@@ -28,28 +27,142 @@ interface PlaceResult {
   lon: string;
 }
 
+type BookingStage = 'search' | 'matches' | 'requested' | 'confirmed';
+
+type DriverSignalState = 'idle' | 'requested' | 'accepted';
+
+interface DriverMatch {
+  id: string;
+  driverName: string;
+  rating: number;
+  etaMinutes: number;
+  seatsLeft: number;
+  directionScore: number;
+  fare: number;
+  baseFare: number;
+  tripId: string;
+  routeSummary: string;
+  signalState: DriverSignalState;
+}
+
+interface RouteSuggestion {
+  id: string;
+  origin: string;
+  destination: string;
+}
+
+const DRIVER_NAMES = [
+  'Ayo Daniels',
+  'Ife Nnamdi',
+  'Tunde Bello',
+  'Zainab Musa',
+  'Kemi Adeoye',
+  'David Okonkwo',
+  'Adaobi Nwosu',
+];
+
+const normalizeTokens = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .split(' ')
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+const overlapScore = (a: string, b: string) => {
+  const aTokens = normalizeTokens(a);
+  const bTokens = normalizeTokens(b);
+  if (!aTokens.length || !bTokens.length) return 0;
+
+  const bSet = new Set(bTokens);
+  const common = aTokens.filter((token) => bSet.has(token)).length;
+  return common / Math.max(aTokens.length, bTokens.length);
+};
+
+const getAddressText = (value: any) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value.address || '';
+};
+
+const getDirectionScore = (origin: string, dest: string, trip: any) => {
+  const tripDestination = getAddressText(trip.destination);
+  const tripOrigin = getAddressText(trip.origin);
+  const destinationWeight = overlapScore(dest, tripDestination) * 0.7;
+  const originWeight = overlapScore(origin, tripOrigin) * 0.3;
+  return Math.round((destinationWeight + originWeight) * 100);
+};
+
+const estimateFare = (baseFare: number, directionScore: number, stopsCount: number) => {
+  const detourPenalty = stopsCount * 850;
+  const routeDiscount = Math.round(((100 - directionScore) / 100) * 700);
+  return Math.max(baseFare + detourPenalty + routeDiscount, 1500);
+};
+
 export default function JoinRideView({ onClose }: { onClose: () => void }) {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { trendingTrips } = useTripStore();
+  const { trendingTrips, fetchAvailableTrips, requestRide, isLoading } = useTripStore();
 
   const [originText, setOriginText] = useState('');
   const [destText, setDestText] = useState('');
+  const [stopText, setStopText] = useState('');
+  const [stops, setStops] = useState<string[]>([]);
   const [isLoadingLoc, setIsLoadingLoc] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
   const [activeField, setActiveField] = useState<'origin' | 'dest' | null>(null);
+  const [bookingStage, setBookingStage] = useState<BookingStage>('search');
+  const [driverMatches, setDriverMatches] = useState<DriverMatch[]>([]);
+  const [routeSuggestions, setRouteSuggestions] = useState<RouteSuggestion[]>([]);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isCreatingLiveRequest, setIsCreatingLiveRequest] = useState(false);
 
   const searchTimeout = useRef<any>(null);
+  const requestTimeout = useRef<any>(null);
 
   const { savedPlaces, fetchSavedPlaces } = useSettingsStore();
 
   useEffect(() => {
     fetchSavedPlaces();
+    fetchAvailableTrips({ role: 'rider' });
+  }, [fetchAvailableTrips, fetchSavedPlaces]);
+
+  useEffect(() => {
+    const onKeyboardShow = (event: KeyboardEvent) => {
+      setKeyboardHeight(Math.max(event.endCoordinates.height - insets.bottom, 0));
+    };
+
+    const onKeyboardHide = () => {
+      setKeyboardHeight(0);
+    };
+
+    const showSub = Keyboard.addListener('keyboardWillShow', onKeyboardShow);
+    const hideSub = Keyboard.addListener('keyboardWillHide', onKeyboardHide);
+    const showSubAndroid = Keyboard.addListener('keyboardDidShow', onKeyboardShow);
+    const hideSubAndroid = Keyboard.addListener('keyboardDidHide', onKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      showSubAndroid.remove();
+      hideSubAndroid.remove();
+    };
+  }, [insets.bottom]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+      if (requestTimeout.current) clearTimeout(requestTimeout.current);
+    };
   }, []);
 
   const handleSearchLogic = useCallback((text: string, type: 'origin' | 'dest') => {
     if (type === 'origin') setOriginText(text);
     else setDestText(text);
+    setBookingStage('search');
+    setSelectedDriverId(null);
 
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
 
@@ -95,6 +208,226 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const buildDriverMatches = () => {
+    const sourceTrips = trendingTrips.filter((trip: any) => {
+      const availableSeats = typeof trip.availableSeats === 'number'
+        ? trip.availableSeats
+        : typeof trip.seats === 'number'
+          ? trip.seats
+          : 1;
+      const tripStatus = String(trip.status || '').toLowerCase();
+      return availableSeats > 0 && ['scheduled', 'searching', 'active'].includes(tripStatus);
+    });
+
+    const matches = sourceTrips
+      .map((trip, index) => {
+        const directionScore = getDirectionScore(originText, destText, trip);
+        if (directionScore < 20) return null;
+
+        const seed = Number((trip.id || '').replace(/\D/g, '').slice(-2)) || index + 11;
+        const etaMinutes = Math.max(4, 18 - Math.floor(directionScore / 9) + (seed % 5));
+
+        const availableSeats = typeof (trip as any).availableSeats === 'number'
+          ? (trip as any).availableSeats
+          : typeof (trip as any).seats === 'number'
+            ? (trip as any).seats
+            : 1;
+        const tripFare = Number((trip as any).price ?? (trip as any).fare ?? 2500);
+
+        return {
+          id: `match-${trip.id}`,
+          driverName: DRIVER_NAMES[index % DRIVER_NAMES.length],
+          rating: Number((4.2 + ((seed % 8) / 10)).toFixed(1)),
+          etaMinutes,
+          seatsLeft: availableSeats,
+          directionScore,
+          baseFare: tripFare,
+          fare: estimateFare(tripFare, directionScore, stops.length),
+          tripId: trip.id,
+          routeSummary: `${getAddressText((trip as any).origin)} to ${getAddressText((trip as any).destination)}`,
+          signalState: 'idle' as DriverSignalState,
+        };
+      })
+      .filter(Boolean) as DriverMatch[];
+
+    matches.sort((a, b) => {
+      if (b.directionScore !== a.directionScore) return b.directionScore - a.directionScore;
+      return a.etaMinutes - b.etaMinutes;
+    });
+
+    return matches.slice(0, 6);
+  };
+
+  const buildRouteSuggestions = () => {
+    const seen = new Set<string>();
+    const suggestions: RouteSuggestion[] = [];
+
+    for (const trip of trendingTrips as any[]) {
+      const origin = getAddressText(trip.origin);
+      const destination = getAddressText(trip.destination);
+      if (!origin || !destination) continue;
+
+      const key = `${origin}::${destination}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      suggestions.push({
+        id: `route-${trip.id}`,
+        origin,
+        destination,
+      });
+
+      if (suggestions.length >= 5) break;
+    }
+
+    return suggestions;
+  };
+
+  const handleFindRides = () => {
+    if (!originText.trim() || !destText.trim()) {
+      Alert.alert('Missing route', 'Enter your pickup and destination to find a matching driver.');
+      return;
+    }
+
+    Keyboard.dismiss();
+    const matches = buildDriverMatches();
+    if (!matches.length) {
+      const suggestions = buildRouteSuggestions();
+      setRouteSuggestions(suggestions);
+      Alert.alert('No route matches yet', 'Create a live request so nearby drivers can see your route now?', [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Send request',
+          onPress: async () => {
+            try {
+              setIsCreatingLiveRequest(true);
+              const currentCoords = await LocationService.getCurrentCoordinates();
+              const currentState = await LocationService.getCurrentState();
+
+              await requestRide({
+                origin: {
+                  lat: currentCoords?.latitude ?? 0,
+                  lon: currentCoords?.longitude ?? 0,
+                  address: originText.trim() || currentState || 'Current location',
+                },
+                destination: {
+                  lat: currentCoords?.latitude ?? 0,
+                  lon: currentCoords?.longitude ?? 0,
+                  address: destText.trim(),
+                },
+                tier: 'Lite',
+                price: 2500,
+              });
+
+              setBookingStage('requested');
+              Alert.alert(
+                'Request sent',
+                suggestions.length
+                  ? 'Nearby drivers can now see your route request. You can also pick from live routes below.'
+                  : 'Nearby drivers can now see your route request.'
+              );
+            } catch (error: any) {
+              Alert.alert('Request failed', error?.message || 'Unable to send live request right now.');
+            } finally {
+              setIsCreatingLiveRequest(false);
+            }
+          },
+        },
+      ]);
+      return;
+    }
+
+    setRouteSuggestions([]);
+    setDriverMatches(matches);
+    setBookingStage('matches');
+  };
+
+  const handleSignalDriver = (driver: DriverMatch) => {
+    if (requestTimeout.current) clearTimeout(requestTimeout.current);
+
+    setSelectedDriverId(driver.id);
+    setBookingStage('requested');
+    setDriverMatches((prev) =>
+      prev.map((d) =>
+        d.id === driver.id ? { ...d, signalState: 'requested' } : { ...d, signalState: 'idle' }
+      )
+    );
+
+    requestTimeout.current = setTimeout(() => {
+      const accepted = driver.directionScore >= 45;
+
+      if (!accepted) {
+        setBookingStage('matches');
+        setSelectedDriverId(null);
+        setDriverMatches((prev) => prev.map((d) => ({ ...d, signalState: 'idle' })));
+        Alert.alert('Driver unavailable', 'That driver cannot take this detour now. Pick another match.');
+        return;
+      }
+
+      setBookingStage('confirmed');
+      setDriverMatches((prev) =>
+        prev.map((d) => (d.id === driver.id ? { ...d, signalState: 'accepted' } : d))
+      );
+    }, 1300);
+  };
+
+  const handleCancelRequest = () => {
+    if (requestTimeout.current) clearTimeout(requestTimeout.current);
+    setSelectedDriverId(null);
+    setBookingStage('matches');
+    setDriverMatches((prev) => prev.map((d) => ({ ...d, signalState: 'idle' })));
+  };
+
+  const handleAddStop = () => {
+    const cleanStop = stopText.trim();
+    if (!cleanStop) return;
+
+    if (stops.length >= 2) {
+      Alert.alert('Stop limit reached', 'You can add up to 2 stops per booking.');
+      return;
+    }
+
+    const nextStops = [...stops, cleanStop];
+    setStops(nextStops);
+    setStopText('');
+    setDriverMatches((prev) =>
+      prev.map((match) => ({
+        ...match,
+        fare: estimateFare(match.baseFare, match.directionScore, nextStops.length),
+      }))
+    );
+  };
+
+  const handleRemoveStop = (index: number) => {
+    const nextStops = stops.filter((_, idx) => idx !== index);
+    setStops(nextStops);
+    setDriverMatches((prev) =>
+      prev.map((match) => ({
+        ...match,
+        fare: estimateFare(match.baseFare, match.directionScore, nextStops.length),
+      }))
+    );
+  };
+
+  const handleBookRide = () => {
+    const selected = driverMatches.find((driver) => driver.id === selectedDriverId);
+    if (!selected) {
+      Alert.alert('No driver selected', 'Pick a driver before confirming your booking.');
+      return;
+    }
+
+    Alert.alert(
+      'Ride booked',
+      `${selected.driverName} is now assigned to your route. You can track this trip in details.`,
+      [
+        {
+          text: 'Open trip',
+          onPress: () => router.push(`/trip-details/${selected.tripId}`),
+        },
+      ]
+    );
+  };
+
   const renderSearchResult = ({ item }: { item: PlaceResult }) => (
     <TouchableOpacity style={styles.suggestionItem} onPress={() => handleSelectPlace(item)}>
       <View style={[styles.iconContainer, { backgroundColor: '#F0F4F8' }]}>
@@ -107,14 +440,16 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
     </TouchableOpacity>
   );
 
-  const renderTrendingItem = ({ item }: { item: Trip }) => (
+  const renderTrendingItem = ({ item }: { item: any }) => (
     <TouchableOpacity style={styles.suggestionItem} onPress={() => router.push(`/trip-details/${item.id}`)}>
       <View style={styles.iconContainer}>
         <Ionicons name="location-sharp" size={20} color={COLORS.success} />
       </View>
       <View style={styles.suggestionTextContainer}>
-        <Text style={styles.suggestionTitle}>{item.destination}</Text>
-        <Text style={styles.suggestionSubtext}>{item.date} • {item.origin}</Text>
+        <Text style={styles.suggestionTitle}>{getAddressText(item.destination)}</Text>
+        <Text style={styles.suggestionSubtext}>
+          {item.date || 'Now'} • {getAddressText(item.origin)}
+        </Text>
       </View>
       <View style={styles.arrowContainer}>
         <MaterialCommunityIcons name="navigation-variant" size={20} color={COLORS.primary} />
@@ -122,11 +457,109 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
     </TouchableOpacity>
   );
 
+  const renderRouteSuggestion = ({ item }: { item: RouteSuggestion }) => (
+    <TouchableOpacity
+      style={styles.suggestionItem}
+      onPress={() => {
+        setOriginText(item.origin);
+        setDestText(item.destination);
+        setRouteSuggestions([]);
+      }}
+    >
+      <View style={styles.iconContainer}>
+        <MaterialCommunityIcons name="routes" size={18} color={COLORS.primary} />
+      </View>
+      <View style={styles.suggestionTextContainer}>
+        <Text style={styles.suggestionTitle}>{item.destination}</Text>
+        <Text style={styles.suggestionSubtext}>{item.origin}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderDriverMatch = ({ item }: { item: DriverMatch }) => {
+    const isSelected = selectedDriverId === item.id;
+
+    return (
+      <View style={[styles.matchCard, isSelected && styles.matchCardActive]}>
+        <View style={styles.matchTopRow}>
+          <View style={styles.avatarBubble}>
+            <Text style={styles.avatarText}>
+              {item.driverName
+                .split(' ')
+                .map((word) => word[0])
+                .join('')
+                .slice(0, 2)}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.matchDriverName}>{item.driverName}</Text>
+            <Text style={styles.matchSubtext}>
+              ETA {item.etaMinutes} min • {item.seatsLeft} seat{item.seatsLeft > 1 ? 's' : ''} left
+            </Text>
+          </View>
+          <Text style={styles.fareText}>₦{item.fare.toLocaleString()}</Text>
+        </View>
+
+        <View style={styles.matchMetaRow}>
+          <View style={styles.pill}>
+            <Ionicons name="star" size={12} color="#E8AA00" />
+            <Text style={styles.pillText}>{item.rating.toFixed(1)}</Text>
+          </View>
+          <View style={styles.pill}>
+            <MaterialCommunityIcons name="source-branch" size={12} color={COLORS.primary} />
+            <Text style={styles.pillText}>Route fit {item.directionScore}%</Text>
+          </View>
+          <View style={styles.pill}>
+            <Text style={styles.pillText}>Signal: {item.signalState}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.routeText} numberOfLines={1}>
+          {item.routeSummary}
+        </Text>
+
+        <TouchableOpacity
+          style={[styles.signalButton, isSelected && styles.signalButtonSelected]}
+          onPress={() => handleSignalDriver(item)}
+          disabled={bookingStage === 'requested' || bookingStage === 'confirmed'}
+        >
+          <Text style={styles.signalButtonText}>
+            {isSelected ? 'Signal sent' : 'Signal driver'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const dataSource =
+    bookingStage === 'search'
+      ? searchResults.length > 0
+        ? searchResults
+        : trendingTrips
+      : routeSuggestions.length > 0 && driverMatches.length === 0
+        ? routeSuggestions
+        : driverMatches;
+
+  const listTitle =
+    bookingStage === 'search'
+      ? searchResults.length > 0
+        ? 'Search Results'
+        : 'Trending Trips'
+      : bookingStage === 'requested'
+        ? 'Notifying Driver'
+        : bookingStage === 'confirmed'
+          ? 'Driver Accepted'
+          : routeSuggestions.length > 0 && driverMatches.length === 0
+            ? 'Live Driver Routes'
+            : 'Driver Matches';
+
+  const selectedDriver = driverMatches.find((driver) => driver.id === selectedDriverId);
+  const footerBottom = keyboardHeight > 0 ? keyboardHeight + 8 : insets.bottom + 8;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }} edges={['top']}>
       <View style={styles.container}>
 
-        {/* --- FIXED HEADER & INPUTS --- */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backButton}>
             <Ionicons name="chevron-back" size={24} color="#000" />
@@ -168,19 +601,49 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
               value={destText}
               onFocus={() => setActiveField('dest')}
               onChangeText={(t) => handleSearchLogic(t, 'dest')}
-              autoFocus={true}
+              autoFocus={false}
             />
             {isSearching && activeField === 'dest' && <ActivityIndicator size="small" color={COLORS.primary} />}
           </View>
         </View>
 
-        <View style={styles.listHeaderRow}>
-          <Text style={styles.sectionHeader}>
-            {searchResults.length > 0 ? 'Search Results' : 'Trending Trips'}
-          </Text>
+        <View style={styles.stopRow}>
+          <View style={styles.stopInputWrap}>
+            <Feather name="map-pin" size={14} color={COLORS.primary} />
+            <TextInput
+              style={styles.stopInput}
+              placeholder="Add stop (optional)"
+              value={stopText}
+              onChangeText={setStopText}
+              onSubmitEditing={handleAddStop}
+              returnKeyType="done"
+            />
+          </View>
+          <TouchableOpacity style={styles.addStopBtn} onPress={handleAddStop}>
+            <Text style={styles.addStopText}>Add stop</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* SAVED PLACES CHIPS */}
+        {stops.length > 0 && (
+          <View style={styles.stopsWrap}>
+            {stops.map((stop, index) => (
+              <TouchableOpacity key={`${stop}-${index}`} style={styles.stopChip} onPress={() => handleRemoveStop(index)}>
+                <Text style={styles.stopChipText}>{stop}</Text>
+                <Ionicons name="close" size={14} color={COLORS.primary} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.listHeaderRow}>
+          <Text style={styles.sectionHeader}>{listTitle}</Text>
+          {bookingStage !== 'search' && (
+            <TouchableOpacity onPress={() => setBookingStage('search')}>
+              <Text style={styles.resetLink}>Reset</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {savedPlaces.length > 0 && searchResults.length === 0 && (
           <View style={styles.savedChipsRow}>
             {savedPlaces.map((place) => (
@@ -200,37 +663,95 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
           </View>
         )}
 
-        {/* --- KEYBOARD AVOIDING VIEW --- */}
-        <KeyboardAvoidingView
+        <FlatList
+          data={dataSource as any[]}
+          renderItem={
+            bookingStage === 'search'
+              ? searchResults.length > 0
+                ? (renderSearchResult as any)
+                : (renderTrendingItem as any)
+              : routeSuggestions.length > 0 && driverMatches.length === 0
+                ? (renderRouteSuggestion as any)
+                : (renderDriverMatch as any)
+          }
+          keyExtractor={(item: any) => item.place_id || item.id}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={Keyboard.dismiss}
+          ListEmptyComponent={
+            isLoading ? (
+              <View style={styles.emptyWrap}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.emptyText}>Looking for rides nearby...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyText}>No trips available right now.</Text>
+              </View>
+            )
+          }
+          contentContainerStyle={{ paddingBottom: 180 }}
           style={{ flex: 1 }}
-          // FIX: Use 'undefined' for Android to prevent flickering
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
-        >
-          <FlatList
-            data={searchResults.length > 0 ? searchResults : trendingTrips}
-            renderItem={searchResults.length > 0 ? (renderSearchResult as any) : renderTrendingItem}
-            keyExtractor={(item: any) => item.place_id || item.id}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingBottom: 20 }}
-            style={{ flex: 1 }}
-          />
+        />
 
-          <View style={styles.footerButtonContainer}>
-            <TouchableOpacity style={styles.findButton}>
-              <Text style={styles.findButtonText}>Find Rides</Text>
+        <View style={[styles.footerButtonContainer, { bottom: footerBottom }]}>
+          {bookingStage === 'search' && (
+            <TouchableOpacity style={styles.findButton} onPress={handleFindRides} disabled={isCreatingLiveRequest}>
+              <Text style={styles.findButtonText}>
+                {isCreatingLiveRequest ? 'Sending Request...' : 'Find Rides'}
+              </Text>
             </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
+          )}
 
+          {bookingStage === 'matches' && (
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>
+                {routeSuggestions.length > 0 && driverMatches.length === 0
+                  ? 'Choose a nearby route'
+                  : 'Pick a driver to signal'}
+              </Text>
+              <Text style={styles.infoSubtext}>
+                {routeSuggestions.length > 0 && driverMatches.length === 0
+                  ? 'Tap a live route to auto-fill pickup and destination, then search again.'
+                  : 'Drivers already heading in your direction appear first.'}
+              </Text>
+            </View>
+          )}
+
+          {bookingStage === 'requested' && (
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>Sending your request...</Text>
+              <Text style={styles.infoSubtext}>Waiting for {selectedDriver?.driverName || 'driver'} to respond.</Text>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={handleCancelRequest}>
+                <Text style={styles.secondaryBtnText}>Cancel request</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {bookingStage === 'confirmed' && (
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>Driver accepted your route</Text>
+              <Text style={styles.infoSubtext}>
+                {selectedDriver?.driverName} can take your route{stops.length ? ' with stops' : ''}.
+              </Text>
+              <View style={styles.confirmActions}>
+                <TouchableOpacity style={styles.secondaryBtnHalf} onPress={handleCancelRequest}>
+                  <Text style={styles.secondaryBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.primaryBtnHalf} onPress={handleBookRide}>
+                  <Text style={styles.primaryBtnText}>Book Ride</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: SPACING.xs },
+  container: { flex: 1, paddingHorizontal: SPACING.xs, position: 'relative' },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.l, marginTop: 0 },
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center' },
@@ -243,8 +764,42 @@ const styles = StyleSheet.create({
   greenCircleIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center' },
   greenPinIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center' },
 
+  stopRow: { flexDirection: 'row', gap: 8, marginBottom: SPACING.s },
+  stopInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    backgroundColor: '#fff',
+  },
+  stopInput: { flex: 1, height: 42, marginLeft: 6, fontFamily: Fonts.rounded, fontSize: 14 },
+  addStopBtn: {
+    height: 42,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addStopText: { color: COLORS.primary, fontFamily: Fonts.semibold, fontSize: 13 },
+  stopsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: SPACING.s },
+  stopChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 18,
+    backgroundColor: '#EFF7F0',
+    gap: 4,
+  },
+  stopChipText: { fontSize: 12, color: COLORS.primary, fontFamily: Fonts.rounded, maxWidth: 150 },
+
   sectionHeader: { fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.s, fontFamily: Fonts.rounded, marginTop: SPACING.s },
   listHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  resetLink: { color: COLORS.primary, fontSize: 13, fontFamily: Fonts.semibold },
 
   suggestionItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.m, borderBottomWidth: 0.5, borderBottomColor: '#F0F0F0' },
   iconContainer: { width: 36, height: 36, backgroundColor: '#E8F5E9', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: SPACING.m },
@@ -276,12 +831,114 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.rounded,
   },
 
-  footerButtonContainer: {
-    backgroundColor: 'white',
-    paddingHorizontal: SPACING.m,
-    paddingTop: 10,
-    paddingBottom: 10,
+  matchCard: {
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
   },
-  findButton: { backgroundColor: COLORS.primary, height: 53, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 4 },
+  matchCardActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#F7FBF7',
+  },
+  matchTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  avatarBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  avatarText: { color: 'white', fontFamily: Fonts.semibold, fontSize: 12 },
+  matchDriverName: { fontFamily: Fonts.semibold, fontSize: 15, color: '#101828' },
+  matchSubtext: { fontFamily: Fonts.rounded, fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  fareText: { fontFamily: Fonts.semibold, fontSize: 16, color: COLORS.primary },
+  matchMetaRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F2F4F7',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  pillText: { fontSize: 11, color: '#344054', fontFamily: Fonts.rounded },
+  routeText: { fontSize: 12, color: '#667085', fontFamily: Fonts.rounded, marginBottom: 10 },
+  signalButton: {
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#EBF7EE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  signalButtonSelected: { backgroundColor: '#D7F2DF' },
+  signalButtonText: { color: COLORS.primary, fontFamily: Fonts.semibold, fontSize: 14 },
+
+  emptyWrap: { paddingVertical: 36, justifyContent: 'center', alignItems: 'center', gap: 8 },
+  emptyText: { color: COLORS.textSecondary, fontSize: 13, fontFamily: Fonts.rounded },
+
+  footerButtonContainer: {
+    position: 'absolute',
+    left: SPACING.m,
+    right: SPACING.m,
+  },
+  findButton: {
+    backgroundColor: COLORS.primary,
+    height: 53,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
   findButtonText: { color: 'white', fontSize: 18, fontWeight: '500', fontFamily: Fonts.rounded },
+  infoCard: {
+    borderRadius: 14,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  infoTitle: { fontFamily: Fonts.semibold, fontSize: 15, color: '#111827', marginBottom: 4 },
+  infoSubtext: { fontFamily: Fonts.rounded, fontSize: 12, color: '#6B7280', marginBottom: 10 },
+  secondaryBtn: {
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D0D5DD',
+  },
+  secondaryBtnText: { fontFamily: Fonts.semibold, color: '#344054', fontSize: 14 },
+  confirmActions: { flexDirection: 'row', gap: 10 },
+  secondaryBtnHalf: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D0D5DD',
+  },
+  primaryBtnHalf: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  primaryBtnText: { fontFamily: Fonts.semibold, color: 'white', fontSize: 14 },
 });
