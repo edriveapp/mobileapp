@@ -98,6 +98,7 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
             'New rider request',
             `${ride.origin?.address || 'A rider'} -> ${ride.destination?.address || 'Destination'}`,
             { type: 'ride_request', rideId: ride.id },
+            'default',
         );
     }
 
@@ -110,7 +111,24 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
             'Driver accepted your trip',
             'Your ride request has been accepted. Chat is now open.',
             { type: 'ride_accepted', rideId: ride.id },
+            'default',
         );
+    }
+
+    async broadcastRideRequestUpdated(ride: any) {
+        const nearbyDriverIds = ride.origin?.lat && ride.origin?.lon
+            ? await this.redisService.getNearbyDrivers(ride.origin.lat, ride.origin.lon, 15)
+            : [];
+
+        if (nearbyDriverIds.length) {
+            nearbyDriverIds.forEach((driverId) => {
+                this.server.to(`driver_${driverId}`).emit('ride_request_updated', ride);
+            });
+        } else {
+            this.server.to('drivers').emit('ride_request_updated', ride);
+        }
+
+        this.server.to(`user_${ride.passengerId}`).emit('ride_request_updated', ride);
     }
 
     async broadcastTripBooked(ride: any) {
@@ -122,6 +140,7 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
             'New trip booking',
             `${ride.passenger?.firstName || ride.passenger?.email || 'A rider'} booked ${ride.origin?.address || 'your trip'}`,
             { type: 'trip_booked', rideId: ride.id },
+            'default',
         );
     }
 

@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { create } from 'zustand';
 import { getSocketBaseUrl } from '../services/api';
+import { useChatStore } from './chatStore';
 import { presentLocalNotification } from '../services/notifications';
 import { useAuthStore } from './authStore';
 import { useTripStore } from './tripStore';
@@ -81,13 +82,34 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
           'New rider request',
           `${getPassengerName(ride)} needs a ride to ${ride?.destination?.address || 'a destination'}`,
           { type: 'ride_request', rideId: ride.id },
+          'request',
         );
       }
     });
 
+    socket.on('ride_request_updated', (ride) => {
+      const user = useAuthStore.getState().user;
+      if (user?.role === 'driver') {
+        useTripStore.getState().fetchAvailableTrips({ role: 'driver' });
+      }
+      set((state) => ({
+        latestRideRequest: state.latestRideRequest?.id === ride.id ? ride : state.latestRideRequest,
+        requestQueue: state.requestQueue.some((item) => item.id === ride.id)
+          ? state.requestQueue.map((item) => (item.id === ride.id ? ride : item))
+          : [ride, ...state.requestQueue],
+      }));
+    });
+
     socket.on('driver_accepted', (ride) => {
+      useTripStore.getState().fetchMyTrips();
       useTripStore.getState().updateRideStatus('ACCEPTED', ride);
       set({ latestAcceptedRide: ride });
+      presentLocalNotification(
+        'Driver accepted your request',
+        `${ride?.driver?.firstName || ride?.driver?.name || 'Your driver'} is on the way.`,
+        { type: 'ride_accepted', rideId: ride.id },
+        'booking',
+      );
     });
 
     socket.on('trip_booked', (ride) => {
@@ -97,10 +119,14 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
         'Trip booked',
         `${getPassengerName(ride)} booked your trip to ${ride?.destination?.address || 'a destination'}`,
         { type: 'trip_booked', rideId: ride.id },
+        'booking',
       );
     });
 
-    socket.on('receive_message', (message) => {
+    socket.on('chat_message_alert', (message) => {
+      if (message?.rideId) {
+        void useChatStore.getState().incrementUnread(message.rideId);
+      }
       set({
         latestChatMessage: {
           rideId: message?.rideId || '',

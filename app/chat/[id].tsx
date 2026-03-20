@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/app/stores/authStore';
+import { useTripStore } from '@/app/stores/tripStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -21,17 +22,56 @@ import api from '../services/api';
 
 import { Message, useChatStore } from '@/app/stores/chatStore';
 
+const getAddressText = (value: any) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    return value.address || '';
+};
+
+const getPersonName = (person: any, fallback: string) => {
+    const fullName = [person?.firstName, person?.lastName].filter(Boolean).join(' ').trim();
+    return fullName || person?.name || person?.email || fallback;
+};
+
+const isPlaceholderName = (value?: string) => {
+    if (!value) return true;
+    return ['passenger', 'driver', 'user', 'rider'].includes(value.trim().toLowerCase());
+};
+
+const getMessageParticipantName = (messages: Message[], currentUserId?: string) => {
+    const counterpart = messages.find((message) => message?.user?._id && message.user._id !== currentUserId);
+    return counterpart?.user?.name || '';
+};
+
+const normalizeFetchedMessage = (message: any): Message => ({
+    _id: String(message._id || message.id),
+    text: String(message.text || ''),
+    createdAt: message.createdAt,
+    user: {
+        _id: String(message.user?._id || message.senderId || message.sender?.id || ''),
+        name: message.user?.name || getPersonName(message.sender, 'User'),
+    },
+});
+
 export default function ChatScreen() {
     const router = useRouter();
     const { user } = useAuthStore();
+    const { trips, availableTrips, activeTrips, history } = useTripStore();
     const params = useLocalSearchParams();
     const tripId = params.id as string;
-    const recipientName = params.recipientName as string || 'User';
+    const passedRecipientName = params.recipientName as string;
     const recipientImage = params.recipientImage as string;
-
-    // Cast the store state to any if stricty typed, but implicit should work if interface matches.
-    // actually, useChatStore returns specific Message type.
-    const { messages, connect, disconnect, sendMessage, setMessages } = useChatStore();
+    const trip = [...trips, ...availableTrips, ...activeTrips, ...history].find((item: any) => item.id === tripId);
+    const { messages, connect, disconnect, sendMessage, setMessages, hydrateMessages, markRideRead } = useChatStore();
+    const derivedRecipientName = user?.role === 'driver'
+        ? getPersonName(trip?.passenger, 'Rider')
+        : getPersonName(trip?.driver, getAddressText(trip?.destination) || 'Driver');
+    const messageParticipantName = getMessageParticipantName(messages, user?.id);
+    const recipientName =
+        (!isPlaceholderName(passedRecipientName) ? passedRecipientName : '') ||
+        (!isPlaceholderName(derivedRecipientName) ? derivedRecipientName : '') ||
+        (!isPlaceholderName(messageParticipantName) ? messageParticipantName : '') ||
+        (user?.role === 'driver' ? 'Rider' : 'Driver');
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(true);
     const flatListRef = useRef<FlatList>(null);
@@ -39,7 +79,10 @@ export default function ChatScreen() {
     const fetchMessages = useCallback(async () => {
         try {
             const res = await api.get(`/chats/${tripId}/messages`);
-            setMessages(res.data);
+            const normalized = Array.isArray(res.data)
+                ? res.data.map(normalizeFetchedMessage)
+                : [];
+            await setMessages(tripId, normalized);
         } catch (error) {
             console.log("Error fetching messages", error);
         } finally {
@@ -48,13 +91,16 @@ export default function ChatScreen() {
     }, [setMessages, tripId]);
 
     useEffect(() => {
-        fetchMessages();
+        hydrateMessages(tripId).finally(() => {
+            fetchMessages();
+        });
+        void markRideRead(tripId);
         connect(tripId);
 
         return () => {
             disconnect();
         };
-    }, [connect, disconnect, fetchMessages, tripId]);
+    }, [connect, disconnect, fetchMessages, hydrateMessages, markRideRead, tripId]);
 
     const handleSend = async () => {
         if (!inputText.trim()) return;

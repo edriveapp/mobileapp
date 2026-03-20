@@ -63,8 +63,32 @@ export class RidesController {
     }
 
     @UseGuards(AuthGuard('jwt'))
+    @Post(':id/accept')
+    async acceptRideLegacyPost(@Param('id') id: string, @Request() req) {
+        const updatedRide = await this.ridesService.acceptRide(id, req.user.userId);
+        await this.ridesGateway.broadcastRideAccepted(updatedRide);
+        return updatedRide;
+    }
+
+    @UseGuards(AuthGuard('jwt'))
     @Post(':id/book')
     async bookTrip(@Param('id') id: string, @Request() req, @Body() body) {
+        const bookedRide = await this.ridesService.bookPublishedTrip(id, req.user.userId, body);
+        await this.ridesGateway.broadcastTripBooked(bookedRide);
+        return bookedRide;
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Post('book/:id')
+    async bookTripLegacyPost(@Param('id') id: string, @Request() req, @Body() body) {
+        const bookedRide = await this.ridesService.bookPublishedTrip(id, req.user.userId, body);
+        await this.ridesGateway.broadcastTripBooked(bookedRide);
+        return bookedRide;
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Patch(':id/book')
+    async bookTripLegacyPatch(@Param('id') id: string, @Request() req, @Body() body) {
         const bookedRide = await this.ridesService.bookPublishedTrip(id, req.user.userId, body);
         await this.ridesGateway.broadcastTripBooked(bookedRide);
         return bookedRide;
@@ -74,6 +98,14 @@ export class RidesController {
     @Patch(':id')
     updateRide(@Param('id') id: string, @Request() req, @Body() body) {
         return this.ridesService.updateRideDetails(id, req.user.userId, body);
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Patch(':id/request')
+    async updateRequest(@Param('id') id: string, @Request() req, @Body() body) {
+        const updatedRide = await this.ridesService.updatePassengerRequestDetails(id, req.user.userId, body);
+        await this.ridesGateway.broadcastRideRequestUpdated(updatedRide);
+        return updatedRide;
     }
 
     // Keep existing endpoints if needed for admin or general usage

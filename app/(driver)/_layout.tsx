@@ -1,13 +1,30 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
 import { Platform } from 'react-native';
 
 import { useAuthStore } from '@/app/stores/authStore';
+import { useChatStore } from '@/app/stores/chatStore';
 import { COLORS } from '@/constants/theme';
+
+const DotIcon = ({ children, showDot }: { children: React.ReactNode; showDot: boolean }) => (
+  <>
+    {children}
+    {showDot && (
+      <MaterialCommunityIcons
+        name="circle"
+        size={10}
+        color="#22C55E"
+        style={{ position: 'absolute', top: -1, right: -4 }}
+      />
+    )}
+  </>
+);
 
 export default function DriverLayout() {
   const user = useAuthStore((s) => s.user);
+  const unreadByRide = useChatStore((state) => state.unreadByRide);
+  const unreadCount = Object.keys(unreadByRide).length;
 
   // Check authentication
   if (!user) return <Redirect href="/(auth)/login" />;
@@ -20,24 +37,30 @@ export default function DriverLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: 'gray',
-        tabBarShowLabel: false, // Hides labels to match your main layout
+        tabBarInactiveTintColor: '#7B8794',
+        tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
         tabBarStyle: Platform.select({
           ios: {
             position: 'absolute',
-            backgroundColor: '#fff',
+            backgroundColor: '#F8FBFA',
             borderTopWidth: 0,
-            height: 60,
-            paddingBottom: 5,
-            shadowColor: '#000',
-            shadowOpacity: 0.1,
-            shadowRadius: 10,
+            height: 68,
+            paddingBottom: 8,
+            paddingTop: 8,
+            shadowColor: '#0B1220',
+            shadowOpacity: 0.08,
+            shadowRadius: 14,
           },
           default: {
-            backgroundColor: '#fff',
+            backgroundColor: '#F8FBFA',
             borderTopWidth: 0,
-            height: 60,
-            paddingBottom: 5,
+            height: 68,
+            paddingBottom: 8,
+            paddingTop: 8,
             elevation: 8,
           },
         }),
@@ -46,9 +69,9 @@ export default function DriverLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Dashboard',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="home" size={24} color={color} />
+            <MaterialCommunityIcons name="view-dashboard-outline" size={24} color={color} />
           ),
         }}
       />
@@ -58,8 +81,7 @@ export default function DriverLayout() {
         options={{
           title: 'New Trip',
           tabBarIcon: ({ color }) => (
-            // Using "add-circle-outline" to match the outline style of your other icons
-            <Ionicons name="add-circle-outline" size={28} color={color} />
+            <MaterialCommunityIcons name="plus-circle-outline" size={26} color={color} />
           ),
         }}
       />
@@ -67,9 +89,21 @@ export default function DriverLayout() {
       <Tabs.Screen
         name="maps"
         options={{
-          title: 'Map',
+          title: 'Dispatch',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="map-outline" size={24} color={color} />
+            <MaterialCommunityIcons name="radar" size={24} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Messages',
+          tabBarIcon: ({ color }) => (
+            <DotIcon showDot={unreadCount > 0}>
+              <Ionicons name="chatbubble-ellipses-outline" size={24} color={color} />
+            </DotIcon>
           ),
         }}
       />
@@ -101,9 +135,9 @@ export default function DriverLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Profile',
+          title: 'Account',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="person-outline" size={24} color={color} />
+            <MaterialCommunityIcons name="account-circle-outline" size={24} color={color} />
           ),
         }}
       />

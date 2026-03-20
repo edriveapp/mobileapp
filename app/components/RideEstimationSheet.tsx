@@ -1,7 +1,8 @@
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 // Export this if you need to use the type elsewhere
 export interface RideTier {
@@ -44,10 +45,12 @@ interface RideEstimationSheetProps {
     destination?: string; // Optional because logic might default to "Destination"
     visible?: boolean;    // Added to satisfy index.tsx TS error
     onClose: () => void;  // Added for closing the sheet
-    onConfirm: (tierId: string, scheduledTime?: string) => void; // Update signature
+    onConfirm: (
+        tierId: string,
+        scheduledTime?: string,
+        details?: { offerPrice: number; rideMode: 'solo' | 'shared'; note: string }
+    ) => void;
 }
-
-import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function RideEstimationSheet({
     destination = "Destination",
@@ -58,21 +61,23 @@ export default function RideEstimationSheet({
     const [date, setDate] = useState(new Date());
     const [showPicker, setShowPicker] = useState(false);
     const [isScheduled, setIsScheduled] = useState(false);
+    const [offerText, setOfferText] = useState('');
+    const [rideMode, setRideMode] = useState<'solo' | 'shared'>('solo');
+    const [driverNote, setDriverNote] = useState('');
 
     const handleSelect = (id: string) => {
         setSelectedTier(id);
     };
 
     const handleRequest = () => {
-        // Pass tier ID and optional scheduled time
-        // We cast to any or update interface in props. 
-        // Index.tsx needs to be updated to accept 2 args or object.
-        // For now, let's assume onConfirm handles it? 
-        // Wait, props definition: onConfirm: (tierId: string) => void;
-        // I need to update interface first.
-        // But replace_file_content replaces block.
-        // I'll assume index.tsx will be updated next.
-        onConfirm(selectedTier, isScheduled ? date.toISOString() : undefined);
+        const offerPrice = Number(offerText.replace(/,/g, '').trim());
+        if (!offerPrice || offerPrice <= 0) return;
+
+        onConfirm(selectedTier, isScheduled ? date.toISOString() : undefined, {
+            offerPrice,
+            rideMode,
+            note: driverNote.trim(),
+        });
     };
 
     const onDateChange = (event: any, selectedDate?: Date) => {
@@ -157,17 +162,56 @@ export default function RideEstimationSheet({
                 })}
             </ScrollView>
 
-            {/* Payment Method Preview */}
-            <View style={styles.paymentRow}>
-                <View style={styles.paymentMethod}>
-                    <Ionicons name="cash-outline" size={20} color={COLORS.text} />
-                    <Text style={styles.paymentText}>Cash</Text>
+            <View style={styles.formSection}>
+                <Text style={styles.formLabel}>Your offer for this ride</Text>
+                <View style={styles.offerInputWrap}>
+                    <Text style={styles.currency}>₦</Text>
+                    <TextInput
+                        value={offerText}
+                        onChangeText={setOfferText}
+                        keyboardType="numeric"
+                        placeholder="Enter amount for this request"
+                        placeholderTextColor={COLORS.textSecondary}
+                        style={styles.offerInput}
+                    />
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+            </View>
+
+            <View style={styles.formSection}>
+                <Text style={styles.formLabel}>Ride type</Text>
+                <View style={styles.modeRow}>
+                    <TouchableOpacity
+                        style={[styles.modeCard, rideMode === 'solo' && styles.modeCardActive]}
+                        onPress={() => setRideMode('solo')}
+                    >
+                        <Ionicons name="person-outline" size={18} color={rideMode === 'solo' ? COLORS.primary : COLORS.textSecondary} />
+                        <Text style={[styles.modeTitle, rideMode === 'solo' && styles.textSelected]}>Only me</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.modeCard, rideMode === 'shared' && styles.modeCardActive]}
+                        onPress={() => setRideMode('shared')}
+                    >
+                        <Ionicons name="people-outline" size={18} color={rideMode === 'shared' ? COLORS.primary : COLORS.textSecondary} />
+                        <Text style={[styles.modeTitle, rideMode === 'shared' && styles.textSelected]}>Shared</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            <View style={styles.formSection}>
+                <Text style={styles.formLabel}>Note for driver</Text>
+                <TextInput
+                    value={driverNote}
+                    onChangeText={setDriverNote}
+                    placeholder="Add any pickup detail or message for the driver"
+                    placeholderTextColor={COLORS.textSecondary}
+                    style={styles.noteInput}
+                    multiline
+                    textAlignVertical="top"
+                />
             </View>
 
             {/* Request Button */}
-            <TouchableOpacity style={styles.requestButton} onPress={handleRequest}>
+            <TouchableOpacity style={[styles.requestButton, !offerText.trim() && styles.requestButtonDisabled]} onPress={handleRequest} disabled={!offerText.trim()}>
                 <Text style={styles.requestButtonText}>
                     {isScheduled ? 'Schedule' : 'Confirm'} {MOCK_TIERS.find(t => t.id === selectedTier)?.name}
                 </Text>
@@ -271,25 +315,71 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         fontFamily: Fonts.rounded,
     },
-    paymentRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: 12,
-        borderTopWidth: 1,
-        borderTopColor: COLORS.border,
+    formSection: {
         marginBottom: 12,
     },
-    paymentMethod: {
+    formLabel: {
+        fontSize: 13,
+        color: COLORS.text,
+        fontFamily: Fonts.semibold,
+        marginBottom: 8,
+    },
+    offerInputWrap: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 12,
+        backgroundColor: COLORS.white,
+        paddingHorizontal: 12,
+        height: 50,
     },
-    paymentText: {
+    currency: {
+        fontSize: 18,
+        color: COLORS.text,
+        fontFamily: Fonts.semibold,
+        marginRight: 8,
+    },
+    offerInput: {
+        flex: 1,
+        color: COLORS.text,
+        fontSize: 16,
+        fontFamily: Fonts.rounded,
+    },
+    modeRow: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    modeCard: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 12,
+        paddingVertical: 14,
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: COLORS.white,
+    },
+    modeCardActive: {
+        borderColor: COLORS.primary,
+        backgroundColor: '#F0F9FF',
+    },
+    modeTitle: {
         fontSize: 14,
-        fontWeight: '500',
+        color: COLORS.text,
+        fontFamily: Fonts.semibold,
+    },
+    noteInput: {
+        minHeight: 84,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 12,
+        backgroundColor: COLORS.white,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
         color: COLORS.text,
         fontFamily: Fonts.rounded,
+        fontSize: 14,
     },
     requestButton: {
         backgroundColor: COLORS.primary,
@@ -301,6 +391,9 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 4,
+    },
+    requestButtonDisabled: {
+        opacity: 0.5,
     },
     requestButtonText: {
         fontSize: 18,

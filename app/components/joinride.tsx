@@ -17,6 +17,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LocationService } from '@/app/services/locationService';
+import RequestDetailsSheet, { RequestDetails } from '@/app/components/RequestDetailsSheet';
 import { useSettingsStore } from '@/app/stores/settingsStore';
 import { useTripStore } from '@/app/stores/tripStore';
 
@@ -99,6 +100,73 @@ const estimateFare = (baseFare: number, directionScore: number, stopsCount: numb
   return Math.max(baseFare + detourPenalty + routeDiscount, 1500);
 };
 
+const CITY_DISTANCE_KM: Record<string, number> = {
+  'port harcourt|abuja': 580,
+  'abuja|port harcourt': 580,
+  'port harcourt|lagos': 610,
+  'lagos|port harcourt': 610,
+  'lagos|abuja': 760,
+  'abuja|lagos': 760,
+  'abuja|kaduna': 190,
+  'kaduna|abuja': 190,
+  'port harcourt|aba': 65,
+  'aba|port harcourt': 65,
+  'enugu|abuja': 430,
+  'abuja|enugu': 430,
+  'owerri|abuja': 470,
+  'abuja|owerri': 470,
+};
+
+const normalizeRouteKey = (origin: string, destination: string) =>
+  `${origin.toLowerCase().trim()}|${destination.toLowerCase().trim()}`;
+
+const detectRouteDistanceKm = (origin: string, destination: string) => {
+  const routeKey = normalizeRouteKey(origin, destination);
+  const direct = CITY_DISTANCE_KM[routeKey];
+  if (direct) return direct;
+
+  const originLower = origin.toLowerCase();
+  const destinationLower = destination.toLowerCase();
+  const match = Object.entries(CITY_DISTANCE_KM).find(([key]) => {
+    const [from, to] = key.split('|');
+    return originLower.includes(from) && destinationLower.includes(to);
+  });
+
+  return match?.[1] || 0;
+};
+
+const estimatePrivateTripFare = (distanceKm: number) => {
+  if (!distanceKm) return 0;
+  const runningCost = distanceKm * 285;
+  const setupCost = 12000;
+  const returnCover = distanceKm * 28;
+  const driverPay = distanceKm * 22;
+  const subtotal = runningCost + setupCost + returnCover + driverPay;
+  return Math.round((subtotal * 1.16) / 50) * 50;
+};
+
+const estimateLiveRequestPrivatePrice = (origin: string, destination: string, trips: any[]) => {
+  const rankedTrips = trips
+    .map((trip) => ({
+      baseFare: Number(trip?.fare || trip?.price || 0),
+      score: getDirectionScore(origin, destination, trip),
+    }))
+    .filter((item) => item.baseFare > 0 && item.score > 10)
+    .sort((a, b) => b.score - a.score);
+
+  const marketAverage = rankedTrips.length
+    ? rankedTrips.slice(0, 3).reduce((sum, item) => sum + item.baseFare, 0) / Math.min(rankedTrips.length, 3)
+    : 0;
+  const routeDistanceKm = detectRouteDistanceKm(origin, destination);
+  const expenseEstimate = estimatePrivateTripFare(routeDistanceKm);
+
+  return Math.max(
+    Math.round(marketAverage / 50) * 50,
+    expenseEstimate,
+    6000
+  );
+};
+
 export default function JoinRideView({ onClose }: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -118,6 +186,7 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isCreatingLiveRequest, setIsCreatingLiveRequest] = useState(false);
+  const [showRequestDetails, setShowRequestDetails] = useState(false);
 
   const searchTimeout = useRef<any>(null);
   const requestTimeout = useRef<any>(null);
@@ -298,40 +367,7 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
         { text: 'Not now', style: 'cancel' },
         {
           text: 'Send request',
-          onPress: async () => {
-            try {
-              setIsCreatingLiveRequest(true);
-              const currentCoords = await LocationService.getCurrentCoordinates();
-              const currentState = await LocationService.getCurrentState();
-
-              await requestRide({
-                origin: {
-                  lat: currentCoords?.latitude ?? 0,
-                  lon: currentCoords?.longitude ?? 0,
-                  address: originText.trim() || currentState || 'Current location',
-                },
-                destination: {
-                  lat: currentCoords?.latitude ?? 0,
-                  lon: currentCoords?.longitude ?? 0,
-                  address: destText.trim(),
-                },
-                tier: 'Lite',
-                price: 2500,
-              });
-
-              setBookingStage('requested');
-              Alert.alert(
-                'Request sent',
-                suggestions.length
-                  ? 'Nearby drivers can now see your route request. You can also pick from live routes below.'
-                  : 'Nearby drivers can now see your route request.'
-              );
-            } catch (error: any) {
-              Alert.alert('Request failed', error?.message || 'Unable to send live request right now.');
-            } finally {
-              setIsCreatingLiveRequest(false);
-            }
-          },
+          onPress: () => setShowRequestDetails(true),
         },
       ]);
       return;
@@ -555,6 +591,47 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
 
   const selectedDriver = driverMatches.find((driver) => driver.id === selectedDriverId);
   const footerBottom = keyboardHeight > 0 ? keyboardHeight + 8 : insets.bottom + 8;
+  const estimatedPrivateRequestPrice = estimateLiveRequestPrivatePrice(originText, destText, trendingTrips);
+
+  const handleSubmitLiveRequest = async (details: RequestDetails) => {
+    try {
+      setIsCreatingLiveRequest(true);
+      const currentCoords = await LocationService.getCurrentCoordinates();
+      const currentState = await LocationService.getCurrentState();
+
+      await requestRide({
+        origin: {
+          lat: currentCoords?.latitude ?? 0,
+          lon: currentCoords?.longitude ?? 0,
+          address: originText.trim() || currentState || 'Current location',
+        },
+        destination: {
+          lat: currentCoords?.latitude ?? 0,
+          lon: currentCoords?.longitude ?? 0,
+          address: destText.trim(),
+        },
+        tier: 'Lite',
+        price: details.offerPrice,
+        notes: details.note,
+        preferences: {
+          shared: details.rideMode === 'shared',
+        },
+      });
+
+      setShowRequestDetails(false);
+      setBookingStage('requested');
+      Alert.alert(
+        'Request sent',
+        routeSuggestions.length
+          ? 'Nearby drivers can now see your route request. You can also pick from live routes below.'
+          : 'Nearby drivers can now see your route request.'
+      );
+    } catch (error: any) {
+      Alert.alert('Request failed', error?.message || 'Unable to send live request right now.');
+    } finally {
+      setIsCreatingLiveRequest(false);
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }} edges={['top']}>
@@ -746,6 +823,16 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
           )}
         </View>
       </View>
+      <RequestDetailsSheet
+        visible={showRequestDetails}
+        title="Send live route request"
+        subtitle="Set how much you want to send, whether you want a solo or shared ride, and anything the driver should know."
+        confirmText="Send live request"
+        loading={isCreatingLiveRequest}
+        estimatedPrivatePrice={estimatedPrivateRequestPrice}
+        onClose={() => setShowRequestDetails(false)}
+        onSubmit={handleSubmitLiveRequest}
+      />
     </SafeAreaView>
   );
 }

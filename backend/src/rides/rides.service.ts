@@ -55,7 +55,7 @@ export class RidesService {
         const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
 
         if (!ride) throw new NotFoundException('Ride not found'); // Use NestJS built-in exceptions
-        if (ride.status !== RideStatus.SEARCHING) throw new Error('Ride no longer available');
+        if (ride.status !== RideStatus.SEARCHING) throw new BadRequestException('Ride no longer available');
 
         ride.driverId = driverId;
         ride.status = RideStatus.ACCEPTED;
@@ -92,6 +92,29 @@ export class RidesService {
             paymentStatus: data.paymentStatus ?? ride.paymentStatus,
             pricingScenario: data.pricingScenario ?? ride.pricingScenario,
             pricingBreakdown: data.pricingBreakdown ?? ride.pricingBreakdown,
+        });
+
+        await this.ridesRepository.save(ride);
+        return (await this.findRideById(ride.id)) as Ride;
+    }
+
+    async updatePassengerRequestDetails(rideId: string, passengerId: string, data: any): Promise<Ride> {
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
+
+        if (!ride) throw new NotFoundException('Ride not found');
+        if (ride.passengerId !== passengerId) throw new ForbiddenException('You cannot edit this request');
+        if (ride.status !== RideStatus.SEARCHING) {
+            throw new ForbiddenException('Only active requests can be edited');
+        }
+
+        Object.assign(ride, {
+            fare: data.fare ?? data.price ?? ride.fare,
+            tripFare: data.tripFare ?? ride.tripFare ?? data.fare ?? data.price ?? ride.fare,
+            notes: data.notes ?? ride.notes,
+            preferences: data.preferences ?? ride.preferences,
+            departureTime: data.departureTime ?? ride.departureTime,
+            origin: data.origin ?? ride.origin,
+            destination: data.destination ?? ride.destination,
         });
 
         await this.ridesRepository.save(ride);

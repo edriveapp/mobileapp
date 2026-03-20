@@ -1,9 +1,7 @@
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { Dimensions, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface RideRequestModalProps {
     isVisible: boolean;
@@ -16,6 +14,8 @@ interface RideRequestModalProps {
         distance: string;
         price: number;
         eta: string;
+        rideType?: string;
+        note?: string;
     } | null;
     onAccept: () => void;
     onDecline: () => void;
@@ -39,7 +39,7 @@ export default function RideRequestModal({ isVisible, request, onAccept, onDecli
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [isVisible]);
+    }, [isVisible, onDecline]);
 
     if (!request) return null;
 
@@ -73,7 +73,9 @@ export default function RideRequestModal({ isVisible, request, onAccept, onDecli
                                 <Text style={styles.ratingText}>{request.passengerRating}</Text>
                             </View>
                         </View>
-                        <Text style={styles.price}>₦{request.price.toLocaleString()}</Text>
+                        <Text style={styles.price}>
+                            {request.price > 0 ? `₦${request.price.toLocaleString()}` : 'Offer pending'}
+                        </Text>
                     </View>
 
                     {/* Route Info */}
@@ -99,7 +101,20 @@ export default function RideRequestModal({ isVisible, request, onAccept, onDecli
                             <Ionicons name="navigate" size={16} color={COLORS.textSecondary} />
                             <Text style={styles.statText}>~{request.eta}</Text>
                         </View>
+                        {!!request.rideType && (
+                            <View style={styles.stat}>
+                                <Ionicons name="people-outline" size={16} color={COLORS.textSecondary} />
+                                <Text style={styles.statText}>{request.rideType}</Text>
+                            </View>
+                        )}
                     </View>
+
+                    {!!request.note && (
+                        <View style={styles.noteCard}>
+                            <Text style={styles.noteLabel}>Note for driver</Text>
+                            <Text style={styles.noteText}>{request.note}</Text>
+                        </View>
+                    )}
 
                     {/* Actions */}
                     <View style={styles.actions}>
@@ -241,6 +256,26 @@ const styles = StyleSheet.create({
     actions: {
         flexDirection: 'row',
         gap: 16,
+    },
+    noteCard: {
+        borderRadius: 14,
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E4E7EC',
+        padding: SPACING.m,
+        marginBottom: SPACING.l,
+    },
+    noteLabel: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        fontFamily: Fonts.rounded,
+        marginBottom: 6,
+    },
+    noteText: {
+        fontSize: 14,
+        color: COLORS.text,
+        fontFamily: Fonts.rounded,
+        lineHeight: 20,
     },
     declineButton: {
         flex: 1,

@@ -13,10 +13,18 @@ export interface RideRequest {
     tier: 'Lite' | 'Comfort' | 'Van';
     price: number;
     departureTime?: string; // ISO string
+    notes?: string;
+    preferences?: {
+        shared?: boolean;
+    };
 }
 
 export interface DriverLocation {
     id: string;
+    userId?: string;
+    name?: string;
+    vehicle?: string;
+    plateNumber?: string;
     coords: { latitude: number; longitude: number };
     heading: number;
 }
@@ -57,6 +65,35 @@ const normalizeTrip = (ride: any) => {
     };
 };
 
+const normalizeDriverLocation = (driver: any): DriverLocation | null => {
+    const coordinates = driver?.currentLocation?.coordinates;
+    if (!Array.isArray(coordinates) || coordinates.length < 2) {
+        return null;
+    }
+
+    const longitude = Number(coordinates[0]);
+    const latitude = Number(coordinates[1]);
+
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+        return null;
+    }
+
+    const fullName = [driver?.user?.firstName, driver?.user?.lastName].filter(Boolean).join(' ').trim();
+
+    return {
+        id: driver?.user?.id || driver?.id,
+        userId: driver?.user?.id || driver?.id,
+        name: fullName || driver?.user?.name || driver?.user?.email || 'Driver',
+        vehicle: driver?.vehicleDetails?.model || '',
+        plateNumber: driver?.vehicleDetails?.plateNumber || '',
+        coords: {
+            latitude,
+            longitude,
+        },
+        heading: Number(driver?.heading ?? 0),
+    };
+};
+
 interface TripState {
     // Lists
     trips: Trip[];
@@ -88,6 +125,7 @@ interface TripState {
     postTrip: (tripData: any) => Promise<void>;
     createTrip: (tripData: any) => Promise<void>;
     updateTrip: (rideId: string, tripData: any) => Promise<any>;
+    updateRideRequest: (rideId: string, requestData: any) => Promise<any>;
     updateTripStatus: (rideId: string, status: string) => Promise<any>;
     submitRating: (rideId: string, raterId: string, rateeId: string, value: number, comment: string) => Promise<void>;
     prependAvailableRide: (ride: any) => void;
@@ -199,7 +237,12 @@ export const useTripStore = create<TripState>((set, get) => ({
     fetchNearbyDrivers: async (lat, lon) => {
         try {
             const response = await api.get('/users/drivers/nearby', { params: { lat, lon } });
-            set({ activeDrivers: response.data });
+            const normalized = Array.isArray(response.data)
+                ? response.data
+                    .map(normalizeDriverLocation)
+                    .filter(Boolean) as DriverLocation[]
+                : [];
+            set({ activeDrivers: normalized });
         } catch (error) {
             console.log("Error fetching drivers:", error);
         }
@@ -246,7 +289,19 @@ export const useTripStore = create<TripState>((set, get) => ({
     acceptRide: async (rideId) => {
         set({ isLoading: true, error: null });
         try {
-            const response = await api.patch(`/rides/${rideId}/accept`);
+            let response;
+            try {
+                response = await api.patch(`/rides/${rideId}/accept`);
+            } catch (error: any) {
+                const message = String(error?.message || '').toLowerCase();
+                const status = Number(error?.response?.status || 0);
+
+                if (status === 404 || message.includes("can't patch")) {
+                    response = await api.post(`/rides/${rideId}/accept`);
+                } else {
+                    throw error;
+                }
+            }
             await get().fetchAvailableTrips({ role: 'driver' });
             await get().fetchMyTrips();
             return response.data;
@@ -261,7 +316,23 @@ export const useTripStore = create<TripState>((set, get) => ({
     bookTrip: async (rideId, payload) => {
         set({ isLoading: true, error: null });
         try {
-            const response = await api.post(`/rides/${rideId}/book`, payload);
+            let response;
+            try {
+                response = await api.post(`/rides/${rideId}/book`, payload);
+            } catch (error: any) {
+                const message = String(error?.message || '').toLowerCase();
+                const status = Number(error?.response?.status || 0);
+
+                if (status === 404 || message.includes("can't post")) {
+                    try {
+                        response = await api.post(`/rides/book/${rideId}`, payload);
+                    } catch {
+                        response = await api.patch(`/rides/${rideId}/book`, payload);
+                    }
+                } else {
+                    throw error;
+                }
+            }
             const normalized = normalizeTrip(response.data);
             set({
                 currentRide: normalized,
@@ -302,6 +373,25 @@ export const useTripStore = create<TripState>((set, get) => ({
             await get().fetchMyTrips();
             await get().fetchAvailableTrips({ role: 'rider' });
             return response.data;
+        } catch (error: any) {
+            set({ error: error.response?.data?.message || error.message });
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    updateRideRequest: async (rideId, requestData) => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await api.patch(`/rides/${rideId}/request`, requestData);
+            const normalized = normalizeTrip(response.data);
+            set({
+                currentRide: normalized,
+                rideStatus: 'SEARCHING',
+            });
+            await get().fetchMyTrips();
+            return normalized;
         } catch (error: any) {
             set({ error: error.response?.data?.message || error.message });
             throw error;

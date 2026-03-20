@@ -58,6 +58,8 @@ export default function DriverHome() {
         return `${trip?.date || 'Today'} • ${trip?.time || 'Any time'}`;
     };
 
+    const getRideType = (ride: any) => ride?.preferences?.shared ? 'Shared' : 'Only me';
+
     const handleLogout = () => {
         Alert.alert("Logout", "Are you sure you want to log out?", [
             { text: "Cancel", style: "cancel" },
@@ -282,6 +284,8 @@ export default function DriverHome() {
                     {activeTrips.length > 0 ? (
                         activeTrips.slice(0, 4).map((trip: any) => {
                             const isSearchTrip = String(trip.status).toLowerCase() === 'searching';
+                            const passengerName = getPassengerName(trip);
+                            const pickupAddress = getRouteAddress(trip.pickupLocation || trip.origin, 'Pickup');
                             return (
                                 <View key={trip.id} style={styles.tripManagerCard}>
                                     <View style={styles.tripManagerTop}>
@@ -302,6 +306,15 @@ export default function DriverHome() {
                                         {formatTripTime(trip)} • {trip.availableSeats ?? trip.seats ?? 0} seats left • ₦
                                         {Number(trip.fare || trip.price || 0).toLocaleString()}
                                     </Text>
+                                    {!isSearchTrip && (
+                                        <View style={styles.tripPickupCard}>
+                                            <Ionicons name="location-outline" size={16} color={COLORS.primary} />
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.tripPickupTitle}>{passengerName}</Text>
+                                                <Text style={styles.tripPickupText}>Pickup near {pickupAddress}</Text>
+                                            </View>
+                                        </View>
+                                    )}
                                     <View style={styles.tripManagerActions}>
                                         {isSearchTrip ? (
                                             <>
@@ -322,9 +335,9 @@ export default function DriverHome() {
                                             <>
                                                 <TouchableOpacity
                                                     style={styles.tripActionSecondary}
-                                                    onPress={() => router.push(`/chat/${trip.id}`)}
+                                                    onPress={() => router.push('/(driver)/maps')}
                                                 >
-                                                    <Text style={styles.tripActionSecondaryText}>Open trip</Text>
+                                                    <Text style={styles.tripActionSecondaryText}>View pickup</Text>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity
                                                     style={styles.tripActionPrimary}
@@ -363,8 +376,23 @@ export default function DriverHome() {
                                             {ride.origin?.address || 'Pickup'} to {ride.destination?.address || 'Destination'}
                                         </Text>
                                     </View>
-                                    <Text style={styles.liveRideFare}>₦{Number(ride.fare || ride.price || 2500).toLocaleString()}</Text>
+                                    <Text style={styles.liveRideFare}>
+                                        {Number(ride.fare || ride.price || 0) > 0
+                                            ? `₦${Number(ride.fare || ride.price || 0).toLocaleString()}`
+                                            : 'Offer pending'}
+                                    </Text>
                                 </View>
+                                <View style={styles.liveRideMetaRow}>
+                                    <View style={styles.liveRideMetaPill}>
+                                        <Ionicons name="people-outline" size={12} color={COLORS.primary} />
+                                        <Text style={styles.liveRideMetaText}>{getRideType(ride)}</Text>
+                                    </View>
+                                </View>
+                                {!!ride.notes && (
+                                    <Text style={styles.liveRideNote} numberOfLines={2}>
+                                        {ride.notes}
+                                    </Text>
+                                )}
                                 <View style={styles.liveRideActions}>
                                     <TouchableOpacity
                                         style={styles.liveRideSecondary}
@@ -458,8 +486,10 @@ export default function DriverHome() {
                     pickup: latestRideRequest.origin?.address || 'Unknown pickup',
                     dropoff: latestRideRequest.destination?.address || 'Unknown destination',
                     distance: 'Live request',
-                    price: Number(latestRideRequest.fare || latestRideRequest.price || 2500),
+                    price: Number(latestRideRequest.fare || latestRideRequest.price || 0),
                     eta: 'Now',
+                    rideType: getRideType(latestRideRequest),
+                    note: latestRideRequest.notes || '',
                 } : null}
                 onDecline={() => {
                     if (latestRideRequest?.id) {
@@ -712,6 +742,26 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.rounded,
         marginBottom: 12,
     },
+    tripPickupCard: {
+        marginBottom: 12,
+        borderRadius: 12,
+        backgroundColor: '#F6FBF7',
+        padding: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    tripPickupTitle: {
+        color: '#101828',
+        fontSize: 13,
+        fontFamily: Fonts.semibold,
+        marginBottom: 2,
+    },
+    tripPickupText: {
+        color: '#667085',
+        fontSize: 12,
+        fontFamily: Fonts.rounded,
+    },
     tripStatusPill: {
         backgroundColor: '#EBF7EE',
         borderRadius: 999,
@@ -839,6 +889,30 @@ const styles = StyleSheet.create({
         fontSize: 15,
         color: COLORS.primary,
         fontFamily: Fonts.bold,
+    },
+    liveRideMetaRow: {
+        flexDirection: 'row',
+        marginBottom: 10,
+    },
+    liveRideMetaPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: '#EEF6F0',
+        borderRadius: 999,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    liveRideMetaText: {
+        color: COLORS.primary,
+        fontSize: 11,
+        fontFamily: Fonts.semibold,
+    },
+    liveRideNote: {
+        color: '#667085',
+        fontSize: 12,
+        fontFamily: Fonts.rounded,
+        marginBottom: 10,
     },
     liveRideActions: {
         flexDirection: 'row',

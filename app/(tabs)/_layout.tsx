@@ -1,41 +1,61 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { HapticTab } from '@/components/haptic-tab'; // Ensure casing matches file system
 import { COLORS } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme'; // Ensure casing matches file system
 import { CustomHomeIcon } from '@/components/icon'; // Ensure casing matches file system
+import { useChatStore } from '@/app/stores/chatStore';
+
+const DotIcon = ({ children, showDot }: { children: React.ReactNode; showDot: boolean }) => (
+  <>
+    {children}
+    {showDot && (
+      <MaterialCommunityIcons
+        name="circle"
+        size={10}
+        color="#22C55E"
+        style={{ position: 'absolute', top: -1, right: -4 }}
+      />
+    )}
+  </>
+);
 
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const unreadByRide = useChatStore((state) => state.unreadByRide);
+  const unreadCount = Object.keys(unreadByRide).length;
 
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: 'gray',
+        tabBarInactiveTintColor: '#7B8794',
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
         tabBarStyle: Platform.select({
           ios: {
             position: 'absolute',
-            backgroundColor: '#fff',
+            backgroundColor: '#F8FBFA',
             borderTopWidth: 0,
-            height: 60,
-            paddingBottom: 5,
-            shadowColor: '#000',
-            shadowOpacity: 0.1,
-            shadowRadius: 10,
+            height: 68,
+            paddingBottom: 8,
+            paddingTop: 8,
+            shadowColor: '#0B1220',
+            shadowOpacity: 0.08,
+            shadowRadius: 14,
           },
           default: {
-            backgroundColor: '#fff',
+            backgroundColor: '#F8FBFA',
             borderTopWidth: 0,
-            height: 60,
-            paddingBottom: 5,
+            height: 68,
+            paddingBottom: 8,
+            paddingTop: 8,
             elevation: 8,
           },
         }),
@@ -62,8 +82,7 @@ export default function TabLayout() {
         options={{
           title: 'Trips',
           tabBarIcon: ({ color }) => (
-            // Ionicons car-sport match requested "Car icon"
-            <Ionicons name="car-sport" size={26} color={color} />
+            <MaterialCommunityIcons name="map-marker-path" size={24} color={color} />
           ),
         }}
       />
@@ -72,9 +91,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Inbox',
+          title: 'Messages',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="chatbubbles" size={24} color={color} />
+            <DotIcon showDot={unreadCount > 0}>
+              <Ionicons name="chatbubble-ellipses-outline" size={24} color={color} />
+            </DotIcon>
           ),
         }}
       />
@@ -83,9 +104,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: 'Account',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="person-outline" size={24} color={color} />
+            <MaterialCommunityIcons name="account-circle-outline" size={24} color={color} />
           ),
         }}
       />

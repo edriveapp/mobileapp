@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   Animated,
@@ -25,8 +25,8 @@ import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 // Components
 import ActiveTripSheet from '../components/ActiveTripSheet';
-import FindingDriverView from '../components/FindingDriverView';
 import JoinRideView from '../components/joinride';
+import RequestDetailsSheet, { RequestDetails } from '../components/RequestDetailsSheet';
 import RatingModal from '../components/RatingModal';
 import RideEstimationSheet from '../components/RideEstimationSheet';
 import { useAuthStore } from '../stores/authStore';
@@ -53,6 +53,86 @@ const getAddressText = (value: any) => {
   return value.address || '';
 };
 
+const getDriverName = (driver: any) => {
+  const fullName = [driver?.firstName, driver?.lastName].filter(Boolean).join(' ').trim();
+  return fullName || driver?.name || driver?.email || 'Driver';
+};
+
+const getDriverVehicle = (driver: any) =>
+  driver?.vehicle?.model || driver?.vehicleType || driver?.vehicle || 'Vehicle';
+
+const getDriverPlate = (driver: any) =>
+  driver?.vehicle?.plate || driver?.plateNumber || 'PLATE-NO';
+
+const mapRideStatusForSheet = (status?: string): 'driver_en_route' | 'driver_arrived' | 'in_progress' => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'arrived') return 'driver_arrived';
+  if (normalized === 'in_progress') return 'in_progress';
+  return 'driver_en_route';
+};
+
+const getDistanceKm = (
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+) => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(to.latitude - from.latitude);
+  const dLon = toRad(to.longitude - from.longitude);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(from.latitude)) *
+      Math.cos(toRad(to.latitude)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const CITY_DISTANCE_KM: Record<string, number> = {
+  'port harcourt|abuja': 580,
+  'abuja|port harcourt': 580,
+  'port harcourt|lagos': 610,
+  'lagos|port harcourt': 610,
+  'lagos|abuja': 760,
+  'abuja|lagos': 760,
+  'abuja|kaduna': 190,
+  'kaduna|abuja': 190,
+  'port harcourt|aba': 65,
+  'aba|port harcourt': 65,
+  'enugu|abuja': 430,
+  'abuja|enugu': 430,
+  'owerri|abuja': 470,
+  'abuja|owerri': 470,
+};
+
+const normalizeRouteKey = (origin: string, destination: string) =>
+  `${origin.toLowerCase().trim()}|${destination.toLowerCase().trim()}`;
+
+const detectRouteDistanceKm = (origin: string, destination: string) => {
+  const routeKey = normalizeRouteKey(origin, destination);
+  const direct = CITY_DISTANCE_KM[routeKey];
+  if (direct) return direct;
+
+  const originLower = origin.toLowerCase();
+  const destinationLower = destination.toLowerCase();
+  const match = Object.entries(CITY_DISTANCE_KM).find(([key]) => {
+    const [from, to] = key.split('|');
+    return originLower.includes(from) && destinationLower.includes(to);
+  });
+
+  return match?.[1] || 0;
+};
+
+const estimatePrivateTripFare = (distanceKm: number) => {
+  if (!distanceKm) return 0;
+  const runningCost = distanceKm * 285;
+  const setupCost = 12000;
+  const returnCover = distanceKm * 28;
+  const driverPay = distanceKm * 22;
+  const subtotal = runningCost + setupCost + returnCover + driverPay;
+  return Math.round((subtotal * 1.16) / 50) * 50;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
@@ -65,6 +145,7 @@ const {
     fetchNearbyDrivers,
     requestRide,
     cancelRide, // Import cancel action
+    updateRideRequest,
     currentRide,
     rideStatus,
     activeDrivers,
@@ -78,6 +159,8 @@ const {
   const sheetHeight = useRef(new Animated.Value(SHEET_COLLAPSED_HEIGHT)).current;
   const [isExpanded, setIsExpanded] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [requestIslandExpanded, setRequestIslandExpanded] = useState(false);
+  const [showRequestEditor, setShowRequestEditor] = useState(false);
 
   // --- APP STATE ---
   const [menuVisible, setMenuVisible] = useState(false);
@@ -130,7 +213,12 @@ const {
   useEffect(() => {
     if (rideStatus === 'ACCEPTED' || rideStatus === 'ARRIVING' || rideStatus === 'IN_PROGRESS') {
       setStep('ON_TRIP');
+      setRequestIslandExpanded(false);
+      setShowRequestEditor(false);
       collapseSheet(true);
+    } else if (rideStatus === 'SEARCHING') {
+      setStep('IDLE');
+      collapseSheet();
     } else if (rideStatus === 'COMPLETED') {
       setStep('IDLE');
       setShowRatingModal(true);
@@ -154,9 +242,17 @@ const {
   };
 
   // --- LOGIC HANDLERS ---
-  const handleConfirmRide = async (tier: string, scheduledTime?: string) => {
+  const handleConfirmRide = async (
+    tier: string,
+    scheduledTime?: string,
+    details?: { offerPrice: number; rideMode: 'solo' | 'shared'; note: string }
+  ) => {
     try {
       if (!currentRegion || !destination) return;
+      if (!details?.offerPrice) {
+        Alert.alert("Missing offer", "Set how much you want to pay before sending this request.");
+        return;
+      }
 
       await requestRide({
         origin: {
@@ -170,10 +266,14 @@ const {
           address: destination.name
         },
         tier: tier as any,
-        price: 2500,
-        departureTime: scheduledTime
+        price: details.offerPrice,
+        departureTime: scheduledTime,
+        notes: details.note,
+        preferences: {
+          shared: details.rideMode === 'shared',
+        },
       });
-      setStep('SEARCHING');
+      setStep('IDLE');
       collapseSheet();
     } catch {
       Alert.alert("Error", "Failed to book ride");
@@ -183,6 +283,28 @@ const {
   const handleCancelSearch = async () => {
     await cancelRide();
     setStep('IDLE');
+    setRequestIslandExpanded(false);
+    setShowRequestEditor(false);
+  };
+
+  const handleEditRequest = async (details: RequestDetails) => {
+    if (!currentRide?.id) return;
+
+    try {
+      await updateRideRequest(currentRide.id, {
+        price: details.offerPrice,
+        notes: details.note,
+        preferences: {
+          ...(currentRide.preferences || {}),
+          shared: details.rideMode === 'shared',
+        },
+      });
+      setRequestIslandExpanded(false);
+      setShowRequestEditor(false);
+      Alert.alert('Request updated', 'Drivers can now see your latest request details.');
+    } catch (error: any) {
+      Alert.alert('Update failed', error?.message || 'Could not update your request.');
+    }
   };
 
   const handleRateDriver = async (rating: number, comment: string) => {
@@ -225,7 +347,41 @@ const {
     </TouchableOpacity>
   );
 
-  const driversToDisplay = activeDrivers || [];
+  const driversToDisplay = useMemo(() => activeDrivers || [], [activeDrivers]);
+
+  const activeTripDriver = useMemo(() => {
+    if (!currentRide?.driver?.id) return null;
+    return (
+      driversToDisplay.find((driver: any) => driver.userId === currentRide.driver.id || driver.id === currentRide.driver.id) || null
+    );
+  }, [currentRide?.driver?.id, driversToDisplay]);
+
+  const activeTripEta = useMemo(() => {
+    if (!activeTripDriver?.coords) return '5 min away';
+
+    const pickupTarget = currentRide?.pickupLocation || currentRide?.origin;
+    if (!pickupTarget?.lat || !pickupTarget?.lon) return '5 min away';
+
+    const distanceKm = getDistanceKm(activeTripDriver.coords, {
+      latitude: Number(pickupTarget.lat),
+      longitude: Number(pickupTarget.lon),
+    });
+    const etaMinutes = Math.max(3, Math.round(distanceKm / 0.55));
+    return `${etaMinutes} min away`;
+  }, [activeTripDriver?.coords, currentRide?.origin, currentRide?.pickupLocation]);
+
+  const estimatedRequestPrivatePrice = useMemo(() => {
+    const routeEstimate = estimatePrivateTripFare(
+      detectRouteDistanceKm(getAddressText(currentRide?.origin), getAddressText(currentRide?.destination))
+    );
+    const liveFare = Number(currentRide?.fare || currentRide?.price || 0);
+
+    if (!liveFare) return routeEstimate;
+    if (currentRide?.preferences?.shared) {
+      return Math.max(routeEstimate, Math.round((liveFare * 3.2) / 50) * 50);
+    }
+    return Math.max(routeEstimate, liveFare);
+  }, [currentRide?.destination, currentRide?.fare, currentRide?.origin, currentRide?.preferences?.shared, currentRide?.price]);
 
   return (
     <View style={styles.container}>
@@ -249,7 +405,7 @@ const {
             anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
           >
-            <View style={styles.carMarker}><TopDownCar /></View>
+            <View style={[styles.carMarker, currentRide?.driver?.id === driver.userId && styles.activeCarMarker]}><TopDownCar /></View>
           </Marker>
         ))}
         {destination && <Marker coordinate={destination.coords} />}
@@ -269,6 +425,51 @@ const {
                 <Text style={styles.locationPillText}>{locationState}</Text>
               </TouchableOpacity>
             </View>
+
+            {rideStatus === 'SEARCHING' && currentRide && (
+              <View style={styles.requestIslandWrap}>
+                <TouchableOpacity
+                  style={styles.requestIsland}
+                  activeOpacity={0.92}
+                  onPress={() => setRequestIslandExpanded((value) => !value)}
+                >
+                  <View style={styles.requestIslandDot} />
+                  <Text style={styles.requestIslandTitle}>Request live</Text>
+                  <Text style={styles.requestIslandMeta} numberOfLines={1}>
+                    ₦{Number(currentRide.fare || currentRide.price || 0).toLocaleString()} • {currentRide?.preferences?.shared ? 'Shared' : 'Only me'}
+                  </Text>
+                  <Ionicons
+                    name={requestIslandExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={COLORS.white}
+                  />
+                </TouchableOpacity>
+
+                {requestIslandExpanded && (
+                  <View style={styles.requestIslandPanel}>
+                    <Text style={styles.requestIslandRoute}>
+                      {getAddressText(currentRide.origin)} to {getAddressText(currentRide.destination)}
+                    </Text>
+                    {!!currentRide.notes && (
+                      <Text style={styles.requestIslandNote} numberOfLines={2}>
+                        {currentRide.notes}
+                      </Text>
+                    )}
+                    <View style={styles.requestIslandActions}>
+                      <TouchableOpacity style={styles.requestIslandSecondary} onPress={() => setRequestIslandExpanded(false)}>
+                        <Text style={styles.requestIslandSecondaryText}>Hide</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.requestIslandSecondary} onPress={() => setShowRequestEditor(true)}>
+                        <Text style={styles.requestIslandSecondaryText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.requestIslandPrimary} onPress={handleCancelSearch}>
+                        <Text style={styles.requestIslandPrimaryText}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
           <TouchableOpacity style={styles.fab} onPress={loadLocationData}>
             <Ionicons name="locate" size={24} color="black" />
@@ -357,34 +558,30 @@ const {
         )}
 
         {/* CASE C: SEARCHING */}
-        {step === 'SEARCHING' && (
-          <FindingDriverView
-            onCancel={handleCancelSearch}
-          />
-        )}
+        {step === 'SEARCHING' && null}
 
         {/* CASE D: ACTIVE TRIP (FIXED) */}
         {step === 'ON_TRIP' && currentRide && (
           <ActiveTripSheet
-            status={currentRide.status}
-            // FIX: Pass the full driver object structure expected by ActiveTripSheet
+            status={mapRideStatusForSheet(currentRide.status)}
             driver={{
-              name: currentRide.driver.name,
+              name: getDriverName(currentRide.driver),
               rating: currentRide.driver.rating || 4.8,
-              vehicle: currentRide.driver.vehicle?.model || 'Vehicle',
-              plate: currentRide.driver.vehicle?.plate || 'PLATE-NO',
+              vehicle: getDriverVehicle(currentRide.driver),
+              plate: getDriverPlate(currentRide.driver),
               image: currentRide.driver.image || 'https://via.placeholder.com/150',
-              phone: currentRide.driver.phone || '0000000000'
+              phone: currentRide.driver.phone || currentRide.driver.phoneNumber || '0000000000'
             }}
-            eta="5 min"
-            destAddress={destination?.name}
+            eta={activeTripEta}
+            pickupAddress={getAddressText(currentRide.pickupLocation || currentRide.origin)}
+            destAddress={getAddressText(currentRide.destination)}
             onCall={() => Alert.alert("Call", "Calling driver...")}
             onChat={() => {
               router.push({
-                pathname: '/chat',
+                pathname: '/chat/[id]',
                 params: {
-                  tripId: currentRide.id,
-                  recipientName: currentRide.driver.name,
+                  id: currentRide.id,
+                  recipientName: getDriverName(currentRide.driver),
                   recipientImage: currentRide.driver.image
                 }
               });
@@ -413,6 +610,19 @@ const {
             setShowRatingModal(false);
             updateRideStatus('IDLE', null);
           }}
+        />
+
+        <RequestDetailsSheet
+          visible={showRequestEditor && rideStatus === 'SEARCHING' && !!currentRide}
+          title="Edit live request"
+          subtitle="Update your offer, ride type, or note. Drivers will see the changes right away."
+          confirmText="Save changes"
+          estimatedPrivatePrice={estimatedRequestPrivatePrice}
+          initialOfferPrice={Number(currentRide?.fare || currentRide?.price || 0)}
+          initialRideMode={currentRide?.preferences?.shared ? 'shared' : 'solo'}
+          initialNote={currentRide?.notes || ''}
+          onClose={() => setShowRequestEditor(false)}
+          onSubmit={handleEditRequest}
         />
 
       </Animated.View>
@@ -459,4 +669,99 @@ const styles = StyleSheet.create({
   suggestionSubtext: { fontSize: 13, color: COLORS.textSecondary, fontFamily: Fonts.rounded, fontWeight: '400' },
   arrowContainer: { backgroundColor: '#E8F5E9', padding: 6, borderRadius: 8 },
   carMarker: { width: 30, height: 60, justifyContent: 'center', alignItems: 'center' },
+  activeCarMarker: {
+    backgroundColor: 'rgba(23, 50, 28, 0.14)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  requestIslandWrap: {
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  requestIsland: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(17, 24, 39, 0.76)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  requestIslandDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4ADE80',
+  },
+  requestIslandTitle: {
+    color: COLORS.white,
+    fontFamily: Fonts.semibold,
+    fontSize: 13,
+  },
+  requestIslandMeta: {
+    maxWidth: 180,
+    color: 'rgba(255,255,255,0.78)',
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+  },
+  requestIslandPanel: {
+    width: '92%',
+    marginTop: 10,
+    borderRadius: 20,
+    padding: 14,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  requestIslandRoute: {
+    color: COLORS.text,
+    fontFamily: Fonts.semibold,
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  requestIslandNote: {
+    color: COLORS.textSecondary,
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  requestIslandActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  requestIslandSecondary: {
+    flex: 1,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D0D5DD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  requestIslandSecondaryText: {
+    color: '#344054',
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+  },
+  requestIslandPrimary: {
+    flex: 1,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+  },
+  requestIslandPrimaryText: {
+    color: COLORS.white,
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+  },
 });

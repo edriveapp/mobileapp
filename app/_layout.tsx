@@ -7,9 +7,10 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, useFonts } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
-import { syncPushToken } from './services/notifications';
+import { addNotificationResponseListener, syncPushToken } from './services/notifications';
 import AnimatedSplashScreen from './components/AnimatedSplashScreen';
 import { useAuthStore } from './stores/authStore';
+import { useChatStore } from './stores/chatStore';
 import { useRideRealtimeStore } from './stores/rideRealtimeStore';
 
 SplashScreen.preventAutoHideAsync();
@@ -25,6 +26,7 @@ export default function RootLayout() {
 
   const colorScheme = useColorScheme();
   const { isAuthenticated, hasFinishedSplash, user } = useAuthStore();
+  const hydrateUnread = useChatStore((state) => state.hydrateUnread);
   const connectRealtime = useRideRealtimeStore((state) => state.connect);
   const disconnectRealtime = useRideRealtimeStore((state) => state.disconnect);
   const latestAcceptedRide = useRideRealtimeStore((state) => state.latestAcceptedRide);
@@ -66,13 +68,55 @@ export default function RootLayout() {
 
     connectRealtime();
     syncPushToken();
-  }, [connectRealtime, disconnectRealtime, isAuthenticated, user]);
+    void hydrateUnread();
+  }, [connectRealtime, disconnectRealtime, hydrateUnread, isAuthenticated, user]);
 
   useEffect(() => {
     if (!latestAcceptedRide || user?.role !== 'passenger') return;
-    router.push(`/chat/${latestAcceptedRide.id}`);
+    Alert.alert(
+      'Driver accepted',
+      `${latestAcceptedRide?.driver?.firstName || latestAcceptedRide?.driver?.name || 'Your driver'} accepted your request.`,
+      [
+        {
+          text: 'View trip',
+          onPress: () => router.replace('/(tabs)'),
+        },
+        {
+          text: 'Open chat',
+          onPress: () => router.push(`/chat/${latestAcceptedRide.id}`),
+        },
+      ],
+    );
     clearLatestAcceptedRide();
   }, [clearLatestAcceptedRide, latestAcceptedRide, router, user?.role]);
+
+  useEffect(() => {
+    const subscription = addNotificationResponseListener((response) => {
+      const data = response.notification.request.content.data || {};
+      const rideId = typeof data.rideId === 'string' ? data.rideId : '';
+      const type = typeof data.type === 'string' ? data.type : '';
+
+      if (type === 'chat_message' && rideId) {
+        router.push(`/chat/${rideId}`);
+        return;
+      }
+
+      if ((type === 'ride_accepted' || type === 'trip_booked') && rideId) {
+        if (user?.role === 'driver') {
+          router.push('/(driver)/maps');
+        } else {
+          router.replace('/(tabs)');
+        }
+        return;
+      }
+
+      if (type === 'ride_request') {
+        router.push('/(driver)/requests');
+      }
+    });
+
+    return () => subscription.remove();
+  }, [router, user?.role]);
 
   useEffect(() => {
     if (!latestBookedTrip || user?.role !== 'driver') return;

@@ -4,7 +4,13 @@ import { Injectable, Logger } from '@nestjs/common';
 export class PushNotificationsService {
     private readonly logger = new Logger(PushNotificationsService.name);
 
-    async sendToExpoTokens(tokens: string[], title: string, body: string, data?: Record<string, any>) {
+    async sendToExpoTokens(
+        tokens: string[],
+        title: string,
+        body: string,
+        data?: Record<string, any>,
+        sound: string = 'default',
+    ) {
         const validTokens = Array.from(
             new Set(tokens.filter((token) => typeof token === 'string' && token.startsWith('ExponentPushToken['))),
         );
@@ -15,7 +21,7 @@ export class PushNotificationsService {
 
         const messages = validTokens.map((to) => ({
             to,
-            sound: 'default',
+            sound,
             title,
             body,
             data: data || {},

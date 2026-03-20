@@ -1,8 +1,10 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTripStore } from '@/app/stores/tripStore';
+import { useChatStore } from '@/app/stores/chatStore';
 import EmptyState from '../components/common/Emptystate';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     FlatList,
     StyleSheet,
@@ -14,13 +16,103 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function InboxScreen() {
     const router = useRouter();
-    const { activeTrips, fetchMyTrips, isLoading } = useTripStore();
+    const { activeTrips, history, fetchMyTrips, isLoading } = useTripStore();
+    const unreadByRide = useChatStore((state) => state.unreadByRide);
+    const hydrateUnread = useChatStore((state) => state.hydrateUnread);
+    const [cachedChats, setCachedChats] = useState<Record<string, { lastMessageText: string; lastSenderName: string; updatedAt: string | null }>>({});
 
     useEffect(() => {
         fetchMyTrips();
-    }, []);
+        void hydrateUnread();
+    }, [fetchMyTrips, hydrateUnread]);
 
-    // For now, we assume every active trip has a valid chat channel
+    useEffect(() => {
+        const loadCachedChats = async () => {
+            try {
+                const keys = await AsyncStorage.getAllKeys();
+                const chatKeys = keys.filter((key) => key.startsWith('chat_messages_'));
+                if (!chatKeys.length) {
+                    setCachedChats({});
+                    return;
+                }
+
+                const entries = await AsyncStorage.multiGet(chatKeys);
+                const nextChats: Record<string, { lastMessageText: string; lastSenderName: string; updatedAt: string | null }> = {};
+
+                entries.forEach(([key, value]) => {
+                    if (!value) return;
+                    try {
+                        const parsed = JSON.parse(value) as { text?: string; createdAt?: string; user?: { name?: string } }[];
+                        const lastMessage = parsed[parsed.length - 1];
+                        if (!lastMessage) return;
+                        const rideId = key.replace('chat_messages_', '');
+                        nextChats[rideId] = {
+                            lastMessageText: lastMessage.text || 'Open conversation',
+                            lastSenderName: lastMessage.user?.name || '',
+                            updatedAt: lastMessage.createdAt || null,
+                        };
+                    } catch {
+                        return;
+                    }
+                });
+
+                setCachedChats(nextChats);
+            } catch {
+                setCachedChats({});
+            }
+        };
+
+        void loadCachedChats();
+    }, [activeTrips, history]);
+
+    const getAddressText = (value: any) => {
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        return value.address || '';
+    };
+
+    const getDriverName = (item: any) => {
+        const fullName = [item?.driver?.firstName, item?.driver?.lastName].filter(Boolean).join(' ').trim();
+        return fullName || item?.driver?.name || item?.driver?.email || 'Driver';
+    };
+
+    const chatTrips = useMemo(() => {
+        const merged = [...activeTrips, ...history];
+        const tripMap = new Map<string, any>();
+
+        merged.forEach((item: any) => {
+            if (item?.id && (item?.driverId || item?.driver || cachedChats[item.id])) {
+                tripMap.set(item.id, item);
+            }
+        });
+
+        Object.keys(cachedChats).forEach((rideId) => {
+            if (!tripMap.has(rideId)) {
+                tripMap.set(rideId, { id: rideId });
+            }
+        });
+
+        return Array.from(tripMap.values()).sort((a: any, b: any) => {
+            const aTime = new Date(cachedChats[a.id]?.updatedAt || a.updatedAt || 0).getTime();
+            const bTime = new Date(cachedChats[b.id]?.updatedAt || b.updatedAt || 0).getTime();
+            return bTime - aTime;
+        });
+    }, [activeTrips, cachedChats, history]);
+
+    const getThreadName = (item: any) => {
+        const driverName = getDriverName(item);
+        if (driverName !== 'Driver') {
+            return driverName;
+        }
+
+        const cachedName = cachedChats[item?.id]?.lastSenderName || '';
+        if (cachedName && !['driver', 'user', 'passenger', 'rider'].includes(cachedName.trim().toLowerCase())) {
+            return cachedName;
+        }
+
+        return 'Driver';
+    };
+
     const renderChatItem = ({ item }: { item: any }) => (
         <TouchableOpacity
             style={styles.chatItem}
@@ -28,24 +120,26 @@ export default function InboxScreen() {
                 pathname: "/chat/[id]",
                 params: {
                     id: item.id,
-                    recipientName: item.driver?.name || "Driver",
-                    // recipientImage: item.driver?.photo 
+                    recipientName: getThreadName(item),
                 }
             })}
         >
             <View style={styles.avatarContainer}>
                 <Text style={styles.avatarText}>
-                    {(item.driver?.name || "D").charAt(0)}
+                    {getThreadName(item).charAt(0)}
                 </Text>
             </View>
 
             <View style={styles.content}>
                 <View style={styles.topRow}>
-                    <Text style={styles.name}>{item.driver?.name || "Driver"}</Text>
-                    <Text style={styles.time}>{new Date(item.updatedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                    <View style={styles.nameRow}>
+                        <Text style={styles.name}>{getThreadName(item)}</Text>
+                        {!!unreadByRide[item.id] && <View style={styles.unreadDot} />}
+                    </View>
+                    <Text style={styles.time}>{new Date(cachedChats[item.id]?.updatedAt || item.updatedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
                 </View>
                 <Text style={styles.messagePreview} numberOfLines={1}>
-                    Tap to chat about your trip to {item.destination}
+                    {cachedChats[item.id]?.lastMessageText || `Tap to chat about your trip to ${getAddressText(item.destination)}`}
                 </Text>
             </View>
         </TouchableOpacity>
@@ -58,7 +152,7 @@ export default function InboxScreen() {
             </View>
 
             <FlatList
-                data={activeTrips}
+                data={chatTrips}
                 renderItem={renderChatItem}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.list}
@@ -121,10 +215,21 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: 4,
     },
+    nameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     name: {
         fontSize: 16,
         fontFamily: Fonts.semibold,
         color: COLORS.text,
+    },
+    unreadDot: {
+        width: 9,
+        height: 9,
+        borderRadius: 4.5,
+        backgroundColor: '#22C55E',
     },
     time: {
         fontSize: 12,

@@ -33,6 +33,8 @@ export default function DriverRequestsScreen() {
         await fetchAvailableTrips({ role: 'driver' });
     }, [fetchAvailableTrips]);
 
+    const getRideType = (ride: any) => ride?.preferences?.shared ? 'Shared' : 'Only me';
+
     useEffect(() => {
         loadRequests();
         const interval = setInterval(() => {
@@ -57,7 +59,13 @@ export default function DriverRequestsScreen() {
                         const ride = await acceptRide(rideId);
                         dequeueRideRequest(rideId);
                         Alert.alert("Success", "Ride accepted!");
-                        router.push(`/chat/${ride.id}`);
+                        router.push({
+                            pathname: '/chat/[id]',
+                            params: {
+                                id: ride.id,
+                                recipientName: getPassengerName(ride),
+                            },
+                        });
                     } catch (error: any) {
                         Alert.alert('Accept failed', error?.message || 'Could not accept this ride.');
                     }
@@ -82,7 +90,11 @@ export default function DriverRequestsScreen() {
                         </Text>
                     </View>
                 </View>
-                <Text style={styles.price}>₦{item.fare || 2500}</Text>
+                <Text style={styles.price}>
+                    {Number(item.fare || item.price || 0) > 0
+                        ? `₦${Number(item.fare || item.price || 0).toLocaleString()}`
+                        : 'Offer pending'}
+                </Text>
             </View>
 
             <View style={styles.routeContainer}>
@@ -96,6 +108,20 @@ export default function DriverRequestsScreen() {
                     <Text style={styles.address} numberOfLines={1}>{item.destination?.address}</Text>
                 </View>
             </View>
+
+            <View style={styles.metaPills}>
+                <View style={styles.metaPill}>
+                    <Ionicons name="people-outline" size={14} color={COLORS.primary} />
+                    <Text style={styles.metaPillText}>{getRideType(item)}</Text>
+                </View>
+            </View>
+
+            {!!item.notes && (
+                <View style={styles.noteCard}>
+                    <Text style={styles.noteLabel}>Passenger note</Text>
+                    <Text style={styles.noteText}>{item.notes}</Text>
+                </View>
+            )}
 
             <TouchableOpacity style={styles.acceptButton} onPress={() => handleAccept(item.id)}>
                 <Text style={styles.acceptText}>Accept Ride</Text>
@@ -127,7 +153,13 @@ export default function DriverRequestsScreen() {
 
                 <TouchableOpacity
                     style={styles.chatButton}
-                    onPress={() => router.push(`/chat/${item.id}`)}
+                    onPress={() => router.push({
+                        pathname: '/chat/[id]',
+                        params: {
+                            id: item.id,
+                            recipientName: getPassengerName(item),
+                        },
+                    })}
                 >
                     <Ionicons name="chatbubble-ellipses-outline" size={16} color={COLORS.white} />
                     <Text style={styles.chatText}>Chat</Text>
@@ -213,6 +245,28 @@ const styles = StyleSheet.create({
     routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
     routeLine: { width: 1, height: 12, backgroundColor: '#ddd', marginLeft: 7, marginVertical: 2 },
     address: { fontSize: 14, color: COLORS.textSecondary, flex: 1, fontFamily: Fonts.rounded },
+    metaPills: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    metaPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: '#EEF6F0',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        alignSelf: 'flex-start',
+    },
+    metaPillText: { color: COLORS.primary, fontSize: 12, fontFamily: Fonts.semibold },
+    noteCard: {
+        borderRadius: 12,
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E4E7EC',
+        padding: 12,
+        marginBottom: 14,
+    },
+    noteLabel: { color: COLORS.textSecondary, fontSize: 12, fontFamily: Fonts.rounded, marginBottom: 4 },
+    noteText: { color: COLORS.text, fontSize: 13, lineHeight: 18, fontFamily: Fonts.rounded },
 
     acceptButton: {
         backgroundColor: COLORS.primary,
@@ -221,28 +275,30 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     acceptText: { color: COLORS.white, fontWeight: '600', fontSize: 14, fontFamily: Fonts.semibold },
-    actionRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+    actionRow: { flexDirection: 'row', gap: 10, marginTop: 10, alignItems: 'center' },
     callButton: {
         flex: 1,
+        height: 44,
         borderWidth: 1,
         borderColor: COLORS.primary,
         borderRadius: 10,
-        paddingVertical: 10,
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
         gap: 6,
+        alignSelf: 'center',
     },
-    callText: { color: COLORS.primary, fontFamily: Fonts.semibold, fontSize: 13 },
+    callText: { color: COLORS.primary, fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 16, includeFontPadding: false },
     chatButton: {
         flex: 1,
+        height: 44,
         backgroundColor: COLORS.primary,
         borderRadius: 10,
-        paddingVertical: 10,
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
         gap: 6,
+        alignSelf: 'center',
     },
-    chatText: { color: COLORS.white, fontFamily: Fonts.semibold, fontSize: 13 },
+    chatText: { color: COLORS.white, fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 16, includeFontPadding: false },
 });

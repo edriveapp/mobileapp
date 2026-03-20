@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, Fonts } from '@/constants/theme';
 
@@ -14,6 +14,7 @@ export interface ActiveTripSheetProps {
         phone: string;
     };
     eta?: string;
+    pickupAddress?: string;
     destAddress?: string;
     onEndTrip?: () => void; // For testing/demo
     onCall?: () => void;
@@ -25,6 +26,7 @@ export default function ActiveTripSheet({
     status,
     driver,
     eta,
+    pickupAddress,
     destAddress,
     onEndTrip,
     onCall,
@@ -36,9 +38,9 @@ export default function ActiveTripSheet({
     const getStatusInfo = () => {
         switch (status) {
             case 'driver_en_route':
-                return { title: `Driver is ${eta || 'nearby'}`, color: COLORS.text, sub: 'Meet at pickup point' };
+                return { title: `Driver is ${eta || 'nearby'}`, color: COLORS.text, sub: pickupAddress || 'Meet at pickup point' };
             case 'driver_arrived':
-                return { title: 'Driver has arrived', color: COLORS.primary, sub: 'Please meet your driver' };
+                return { title: 'Driver has arrived', color: COLORS.primary, sub: pickupAddress || 'Please meet your driver' };
             case 'in_progress':
                 return { title: 'Heading to destination', color: COLORS.success, sub: destAddress || 'On trip' };
             default:

@@ -28,24 +28,40 @@ export class ChatGateway {
     // Save to DB
     const savedMessage = await this.chatService.saveMessage(payload.rideId, payload.text, payload.senderId);
 
+    const ride = await this.ridesService.findRideById(payload.rideId);
+    const senderName =
+      payload.role === 'DRIVER'
+        ? `${ride?.driver?.firstName || ''} ${ride?.driver?.lastName || ''}`.trim() || ride?.driver?.email || 'Driver'
+        : `${ride?.passenger?.firstName || ''} ${ride?.passenger?.lastName || ''}`.trim() || ride?.passenger?.email || 'Passenger';
+
     const message = {
       _id: savedMessage.id,
       rideId: payload.rideId,
       text: savedMessage.text,
       createdAt: savedMessage.createdAt,
       user: {
-        _id: payload.senderId, // or savedMessage.senderId
-        name: payload.role === 'DRIVER' ? 'Driver' : 'Passenger',
+        _id: payload.senderId,
+        name: senderName,
       },
     };
 
     // Emit to everyone in the room
     this.server.to(`ride_${payload.rideId}`).emit('receive_message', message);
 
-    const ride = await this.ridesService.findRideById(payload.rideId);
     const recipientId = payload.senderId === ride?.driverId ? ride?.passengerId : ride?.driverId;
 
     if (recipientId) {
+      this.server.to(`user_${recipientId}`).emit('chat_message_alert', {
+        rideId: payload.rideId,
+        text: payload.text,
+        senderName,
+      });
+      this.server.to(`driver_${recipientId}`).emit('chat_message_alert', {
+        rideId: payload.rideId,
+        text: payload.text,
+        senderName,
+      });
+
       const tokens = await this.usersService.getPushTokensForUser(recipientId);
       await this.pushNotificationsService.sendToExpoTokens(
         tokens,

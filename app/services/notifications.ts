@@ -3,6 +3,15 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import api from './api';
 
+export type NotificationSoundType = 'default' | 'message' | 'booking' | 'request';
+
+const SOUND_MAP: Record<NotificationSoundType, string | undefined> = {
+  default: 'default',
+  message: 'default',
+  booking: 'default',
+  request: 'default',
+};
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -58,13 +67,19 @@ export const syncPushToken = async () => {
   }
 };
 
-export const presentLocalNotification = async (title: string, body: string, data?: Record<string, any>) => {
+export const presentLocalNotification = async (
+  title: string,
+  body: string,
+  data?: Record<string, any>,
+  soundType: NotificationSoundType = 'default',
+) => {
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
         data: data || {},
+        sound: SOUND_MAP[soundType],
       },
       trigger: null,
     });
@@ -72,3 +87,7 @@ export const presentLocalNotification = async (title: string, body: string, data
     console.warn('Local notification failed', error);
   }
 };
+
+export const addNotificationResponseListener = (
+  callback: (response: Notifications.NotificationResponse) => void,
+) => Notifications.addNotificationResponseReceivedListener(callback);
