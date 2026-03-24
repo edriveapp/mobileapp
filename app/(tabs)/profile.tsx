@@ -107,11 +107,25 @@ export default function ProfileScreen() {
                     </View>
                     <Text style={styles.userName}>{displayName}</Text>
                     <Text style={styles.userEmail}>{user.email}</Text>
-                    <View style={styles.roleBadge}>
-                        <Ionicons name="person" size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
-                        <Text style={styles.roleText}>
-                            {user.role === 'driver' ? 'Driver Account' : 'Rider Account'}
-                        </Text>
+                    <View style={styles.roleBadgeContainer}>
+                        <View style={styles.roleBadge}>
+                            <Ionicons name="person" size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
+                            <Text style={styles.roleText}>
+                                {user.role === 'driver' ? 'Driver Account' : 'Rider Account'}
+                            </Text>
+                        </View>
+                        {(user as any).isPhoneVerified && (
+                            <View style={[styles.roleBadge, { backgroundColor: '#E0F2F1' }]}>
+                                <Ionicons name="call" size={12} color="#00695C" style={{ marginRight: 4 }} />
+                                <Text style={[styles.roleText, { color: '#00695C' }]}>Phone Verified</Text>
+                            </View>
+                        )}
+                        {(user as any).isEmailVerified && (
+                            <View style={[styles.roleBadge, { backgroundColor: '#E3F2FD' }]}>
+                                <Ionicons name="mail" size={12} color="#1565C0" style={{ marginRight: 4 }} />
+                                <Text style={[styles.roleText, { color: '#1565C0' }]}>Email Verified</Text>
+                            </View>
+                        )}
                     </View>
                 </View>
 
@@ -269,9 +283,15 @@ const styles = StyleSheet.create({
         borderRadius: 12,
     },
     roleText: {
-        fontSize: 12,
+        fontSize: 10,
         fontWeight: '600',
         color: COLORS.primary,
+    },
+    roleBadgeContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 6,
     },
 
     // Section Styles

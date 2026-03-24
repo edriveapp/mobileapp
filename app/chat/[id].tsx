@@ -61,7 +61,7 @@ export default function ChatScreen() {
     const passedRecipientName = params.recipientName as string;
     const recipientImage = params.recipientImage as string;
     const trip = [...trips, ...availableTrips, ...activeTrips, ...history].find((item: any) => item.id === tripId);
-    const { messages, connect, disconnect, sendMessage, setMessages, hydrateMessages, markRideRead } = useChatStore();
+    const { messages, connect, disconnect, sendMessage, setMessages, hydrateMessages, markRideRead, isConnected } = useChatStore();
     const derivedRecipientName = user?.role === 'driver'
         ? getPersonName(trip?.passenger, 'Rider')
         : getPersonName(trip?.driver, getAddressText(trip?.destination) || 'Driver');
@@ -168,21 +168,21 @@ export default function ChatScreen() {
                     <View>
                         <Text style={styles.name}>{recipientName}</Text>
                         <View style={styles.onlineRow}>
-                            <View style={styles.onlineDot} />
-                            <Text style={styles.status}>Online</Text>
+                            <View style={[styles.onlineDot, { backgroundColor: isConnected ? COLORS.success : '#A0AEC0' }]} />
+                            <Text style={styles.status}>{isConnected ? 'Connected' : 'Connecting...'}</Text>
                         </View>
                     </View>
                 </View>
 
                 <TouchableOpacity style={styles.callButton}>
-                    <Ionicons name="call" size={20} color={COLORS.primary} />
+                    <Ionicons name="phone-portrait-outline" size={20} color={COLORS.primary} />
                 </TouchableOpacity>
             </View>
 
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 25}
             >
                 {loading ? (
                     <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -246,7 +246,6 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: COLORS.border || '#E5E7EB',
         backgroundColor: COLORS.white,
-        marginTop: Platform.OS === 'android' ? 30 : 0,
     },
     backButton: {
         padding: 8,

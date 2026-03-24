@@ -29,7 +29,7 @@ const POPULAR_ROUTES = [
   { origin: 'Port Harcourt (Aba Road)', destination: 'Lagos (Yaba)' },
   { origin: 'Abuja (Utako)', destination: 'Kaduna (Mando)' },
 ];
-const DRIVER_VERIFICATION_ON_HOLD = true;
+// Removed DRIVER_VERIFICATION_ON_HOLD bypass
 
 const COST_PER_KM = 140;
 const TRIP_SETUP_COST = 1000;
@@ -300,8 +300,8 @@ export default function CreateTripScreen() {
       return false;
     }
 
-    if (!DRIVER_VERIFICATION_ON_HOLD && driverStatus !== 'approved') {
-      Alert.alert('Verification Pending', 'You cannot create a trip until your documents have been verified.');
+    if (user?.verificationStatus !== 'approved') {
+      Alert.alert('Verification Pending', 'You cannot create a trip until your documents have been verified by an admin.');
       return false;
     }
 
@@ -593,7 +593,7 @@ export default function CreateTripScreen() {
           </View>
         </ScrollView>
 
-        <View style={[styles.footer, { bottom: tabBarHeight, paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[styles.footer, { bottom: tabBarHeight, paddingBottom: Math.max(insets.bottom, 11) }]}>
           <View>
             <Text style={styles.footerLabel}>Seat price</Text>
             <Text style={styles.footerValue}>₦{Number(price || 0).toLocaleString()}</Text>
@@ -941,7 +941,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#ECEEF0',
     paddingHorizontal: SPACING.l,
     paddingTop: 12,
-    paddingBottom: 28,
+    paddingBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -958,9 +958,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
   },
   footerButton: {
-    flex: 1,
+    flex: 0.7,
     height: 52,
-    borderRadius: 16,
+    borderRadius: 20,
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',

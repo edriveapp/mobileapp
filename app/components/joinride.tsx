@@ -195,7 +195,8 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     fetchSavedPlaces();
-    fetchAvailableTrips({ role: 'rider' });
+    // Fetch driver-published routes for riders to book
+    fetchAvailableTrips({ role: 'rider', mode: 'driver_routes' });
   }, [fetchAvailableTrips, fetchSavedPlaces]);
 
   useEffect(() => {
@@ -279,41 +280,45 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
 
   const buildDriverMatches = () => {
     const sourceTrips = trendingTrips.filter((trip: any) => {
+      // For rider side, we only want trips posted by drivers that are searching.
+      const hasDriver = !!trip.driverId || !!trip.driver;
       const availableSeats = typeof trip.availableSeats === 'number'
         ? trip.availableSeats
         : typeof trip.seats === 'number'
           ? trip.seats
-          : 1;
+          : 0;
       const tripStatus = String(trip.status || '').toLowerCase();
-      return availableSeats > 0 && ['scheduled', 'searching', 'active'].includes(tripStatus);
+      return hasDriver && availableSeats > 0 && ['searching', 'scheduled'].includes(tripStatus);
     });
 
     const matches = sourceTrips
       .map((trip, index) => {
         const directionScore = getDirectionScore(originText, destText, trip);
-        if (directionScore < 20) return null;
+        
+        // Show even lower match scores since these are real driver posts
+        if (directionScore < 10) return null;
 
-        const seed = Number((trip.id || '').replace(/\D/g, '').slice(-2)) || index + 11;
-        const etaMinutes = Math.max(4, 18 - Math.floor(directionScore / 9) + (seed % 5));
+        const driverName = trip.driver?.name || 
+                           [trip.driver?.firstName, trip.driver?.lastName].filter(Boolean).join(' ').trim() || 
+                           'Driver';
 
-        const availableSeats = typeof (trip as any).availableSeats === 'number'
-          ? (trip as any).availableSeats
-          : typeof (trip as any).seats === 'number'
-            ? (trip as any).seats
-            : 1;
-        const tripFare = Number((trip as any).price ?? (trip as any).fare ?? 2500);
+        const tripFare = Number(trip.seatFare ?? trip.fare ?? trip.price ?? 0);
+        const availableSeats = Number(trip.availableSeats ?? trip.seats ?? 1);
+
+        // ETA is just mock for UI purposes until live tracking
+        const etaMinutes = Math.max(2, Math.floor(Math.random() * 15) + 3);
 
         return {
           id: `match-${trip.id}`,
-          driverName: DRIVER_NAMES[index % DRIVER_NAMES.length],
-          rating: Number((4.2 + ((seed % 8) / 10)).toFixed(1)),
+          driverName,
+          rating: Number(trip.driver?.rating || 4.8),
           etaMinutes,
           seatsLeft: availableSeats,
           directionScore,
           baseFare: tripFare,
-          fare: estimateFare(tripFare, directionScore, stops.length),
+          fare: tripFare, // Real fare from driver post
           tripId: trip.id,
-          routeSummary: `${getAddressText((trip as any).origin)} to ${getAddressText((trip as any).destination)}`,
+          routeSummary: `${getAddressText(trip.origin)} to ${getAddressText(trip.destination)}`,
           signalState: 'idle' as DriverSignalState,
         };
       })
@@ -445,23 +450,42 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
     );
   };
 
-  const handleBookRide = () => {
+  const handleBookRide = async () => {
     const selected = driverMatches.find((driver) => driver.id === selectedDriverId);
     if (!selected) {
       Alert.alert('No driver selected', 'Pick a driver before confirming your booking.');
       return;
     }
 
-    Alert.alert(
-      'Ride booked',
-      `${selected.driverName} is now assigned to your route. You can track this trip in details.`,
-      [
-        {
-          text: 'Open trip',
-          onPress: () => router.push(`/trip-details/${selected.tripId}`),
-        },
-      ]
-    );
+    try {
+      setIsCreatingLiveRequest(true);
+      const bPayload = {
+        pickupLocation: originText.trim(),
+        paymentMethod: 'cash', // Can prompt for this later
+        stops,
+      };
+      const { bookTrip } = useTripStore.getState();
+      await bookTrip(selected.tripId, bPayload);
+      
+      Alert.alert(
+        'Ride booked!',
+        `${selected.driverName} has been booked for your route.`,
+        [
+          {
+            text: 'Open trip details',
+            onPress: () => {
+              setBookingStage('search');
+              router.push(`/trip-details/${selected.tripId}`);
+            },
+          },
+        ]
+      );
+    } catch (e: any) {
+      Alert.alert('Booking failed', e?.message || 'Could not book this trip.');
+      setBookingStage('matches');
+    } finally {
+      setIsCreatingLiveRequest(false);
+    }
   };
 
   const renderSearchResult = ({ item }: { item: PlaceResult }) => (
@@ -477,9 +501,14 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
   );
 
   const renderTrendingItem = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.suggestionItem} onPress={() => router.push(`/trip-details/${item.id}`)}>
+    <TouchableOpacity style={styles.suggestionItem} onPress={() => {
+      // Pre-fill the search with this trending trip's origin/dest to find matches
+      setOriginText(getAddressText(item.origin));
+      setDestText(getAddressText(item.destination));
+      handleFindRides();
+    }}>
       <View style={styles.iconContainer}>
-        <Ionicons name="location-sharp" size={20} color={COLORS.success} />
+        <Ionicons name="car-sport" size={20} color={COLORS.success} />
       </View>
       <View style={styles.suggestionTextContainer}>
         <Text style={styles.suggestionTitle}>{getAddressText(item.destination)}</Text>
@@ -542,7 +571,7 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
             <Text style={styles.pillText}>{item.rating.toFixed(1)}</Text>
           </View>
           <View style={styles.pill}>
-            <MaterialCommunityIcons name="source-branch" size={12} color={COLORS.primary} />
+            <Ionicons name="navigate-circle-outline" size={12} color={COLORS.primary} style={{ marginRight: 2 }} />
             <Text style={styles.pillText}>Route fit {item.directionScore}%</Text>
           </View>
           <View style={styles.pill}>

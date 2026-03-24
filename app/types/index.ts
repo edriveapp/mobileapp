@@ -7,6 +7,9 @@ export interface User {
   role: UserRole;
   phoneNumber: string;
   isVerified: boolean;
+  isPhoneVerified?: boolean;
+  isEmailVerified?: boolean;
+  verificationStatus?: 'unverified' | 'pending' | 'approved' | 'rejected';
   token?: string;
 }
 

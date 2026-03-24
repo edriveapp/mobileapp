@@ -6,6 +6,13 @@ export enum UserRole {
     ADMIN = 'admin',
 }
 
+export enum VerificationStatus {
+    UNVERIFIED = 'unverified',
+    PENDING = 'pending',
+    APPROVED = 'approved',
+    REJECTED = 'rejected',
+}
+
 @Entity('users')
 export class User {
     @PrimaryGeneratedColumn('uuid')
@@ -29,6 +36,19 @@ export class User {
 
     @Column({ type: 'float', default: 5.0 })
     rating: number;
+
+    @Column({
+        type: 'enum',
+        enum: VerificationStatus,
+        default: VerificationStatus.UNVERIFIED,
+    })
+    verificationStatus: VerificationStatus;
+
+    @Column('decimal', { precision: 12, scale: 2, default: 0 })
+    balance: number;
+
+    @Column('decimal', { precision: 12, scale: 2, default: 0 })
+    pendingRemittance: number;
 
     @Column({ nullable: true })
     firstName: string;

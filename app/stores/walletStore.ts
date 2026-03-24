@@ -19,6 +19,7 @@ interface WalletState {
     payCommission: () => void;
     addCommissionDebt: (amount: number) => void;
     isAccountAtRisk: () => boolean; // Checks the 30-day rule
+    fetchWallet: () => Promise<void>;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -93,5 +94,18 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         const daysSince = (now - lastPaid) / (1000 * 60 * 60 * 24);
 
         return daysSince > 30;
+    },
+
+    fetchWallet: async () => {
+        try {
+            const response = await api.get('/users/wallet');
+            set({
+                balance: Number(response.data.balance || 0),
+                commissionDue: Number(response.data.commissionDue || 0),
+                transactions: response.data.transactions || [],
+            });
+        } catch (error) {
+            console.error("Fetch wallet error:", error);
+        }
     },
 }));

@@ -107,6 +107,12 @@ export class Ride {
         seatFare?: number;
     };
 
+    @Column('decimal', { precision: 10, scale: 2, nullable: true })
+    driverEarnings: number;
+
+    @Column('decimal', { precision: 10, scale: 2, nullable: true })
+    platformCut: number;
+
     @Column({ nullable: true })
     departureTime: Date;
 

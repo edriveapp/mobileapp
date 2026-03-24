@@ -10,11 +10,12 @@ export class ChatService {
         private messageRepository: Repository<Message>,
     ) { }
 
-    async saveMessage(rideId: string, text: string, senderId: string) {
+    async saveMessage(rideId: string, text: string, senderId: string, senderName?: string) {
         const message = this.messageRepository.create({
             rideId,
             text,
             senderId,
+            senderName,
         });
         return this.messageRepository.save(message);
     }

@@ -101,10 +101,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name="create-trip"
         options={{
-          title: 'New Trip',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="plus-circle-outline" size={26} color={color} />
-          ),
+          href: null,
         }}
       />
 

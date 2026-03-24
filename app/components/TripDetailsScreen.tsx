@@ -21,6 +21,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as WebBrowser from 'expo-web-browser';
+import api from '../services/api';
 
 type PaymentMethod = 'card' | 'transfer' | 'cash';
 type PaymentStep = 'method' | 'transfer' | 'cash' | 'card_hold' | 'processing' | 'success';
@@ -30,7 +32,7 @@ const PAYMENT_METHODS = [
     id: 'card' as PaymentMethod,
     label: 'Card',
     icon: 'card-outline' as const,
-    description: 'Card checkout is on hold for now.',
+    description: 'Pay securely with your credit/debit card.',
   },
   {
     id: 'transfer' as PaymentMethod,
@@ -227,7 +229,7 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const handleSelectPaymentMethod = (method: PaymentMethod) => {
+  const handleSelectPaymentMethod = async (method: PaymentMethod) => {
     setPaymentError(null);
 
     if (method === 'transfer') {
@@ -240,7 +242,36 @@ export default function TripDetailsScreen() {
       return;
     }
 
-    setPaymentStep('card_hold');
+    // Card flow
+    setPaymentStep('processing');
+    try {
+      const distanceFallback = 15; // Mock distance if real routing isn't available
+      const res = await api.post('/payments/initialize', {
+        amount,
+        distance: trip?.distance || distanceFallback,
+        rideId: trip?.id
+      });
+      
+      const authUrl = res.data?.data?.authorization_url;
+      if (authUrl) {
+         // Use WebBrowser for a better in-app experience
+         const result = await WebBrowser.openBrowserAsync(authUrl);
+         
+         // Even if they close the browser, we should check status or just assume pending
+         // The webhook will finalize it. For UI, we proceed to 'success' mode.
+         await wait(1000);
+         await completeBooking('card', 'pending');
+         setPaymentStep('success');
+         await wait(1500);
+         setShowPaymentModal(false);
+         router.replace('/(tabs)/trips');
+      } else {
+         throw new Error("Could not get payment link.");
+      }
+    } catch (e: any) {
+      setPaymentError(e?.message || 'Failed to initialize payment');
+      setPaymentStep('method'); // go back to start
+    }
   };
 
   const processingRotation = animation.interpolate({

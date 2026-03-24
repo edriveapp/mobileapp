@@ -14,6 +14,8 @@ const normalizeUser = (rawUser: any): User => ({
     role: rawUser?.role === 'driver' ? 'driver' : 'passenger',
     phoneNumber: String(rawUser?.phoneNumber || rawUser?.phone || ''),
     isVerified: Boolean(rawUser?.isVerified ?? rawUser?.role === 'driver'),
+    isPhoneVerified: Boolean(rawUser?.isPhoneVerified ?? false),
+    isEmailVerified: Boolean(rawUser?.isEmailVerified ?? false),
     token: rawUser?.token,
 });
 

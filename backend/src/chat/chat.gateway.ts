@@ -25,14 +25,16 @@ export class ChatGateway {
 
   @SubscribeMessage('send_message')
   async handleMessage(@MessageBody() payload: { rideId: string; text: string; senderId: string; role: 'DRIVER' | 'PASSENGER' }) {
-    // Save to DB
-    const savedMessage = await this.chatService.saveMessage(payload.rideId, payload.text, payload.senderId);
-
     const ride = await this.ridesService.findRideById(payload.rideId);
+    
+    // Derive sendername
     const senderName =
       payload.role === 'DRIVER'
         ? `${ride?.driver?.firstName || ''} ${ride?.driver?.lastName || ''}`.trim() || ride?.driver?.email || 'Driver'
         : `${ride?.passenger?.firstName || ''} ${ride?.passenger?.lastName || ''}`.trim() || ride?.passenger?.email || 'Passenger';
+
+    // Save to DB WITH senderName
+    const savedMessage = await this.chatService.saveMessage(payload.rideId, payload.text, payload.senderId, senderName);
 
     const message = {
       _id: savedMessage.id,

@@ -39,6 +39,27 @@ export class UsersService {
         return this.usersRepository.save(user);
     }
 
+    async updateVerificationStatus(userId: string, status: 'unverified' | 'pending' | 'approved' | 'rejected'): Promise<User> {
+        const user = await this.findOneById(userId);
+        if (!user) throw new NotFoundException('User not found');
+        await this.usersRepository.update(userId, { verificationStatus: status as any });
+        return this.findOneById(userId); // Return the updated user
+    }
+
+    async getWallet(userId: string) {
+        const user = await this.usersRepository.findOne({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        // We could fetch actual transactions from a Transaction entity if we had one.
+        // For now, let's derive some "credits" from completed rides.
+        return {
+            balance: Number(user.balance || 0),
+            pendingRemittance: Number(user.pendingRemittance || 0),
+            commissionDue: Number(user.pendingRemittance || 0), // Same thing in this context
+            transactions: [], // To be populated if needed
+        };
+    }
+
     async registerExpoPushToken(userId: string, token: string): Promise<User> {
         const user = await this.findOneById(userId);
         if (!user) throw new NotFoundException('User not found');

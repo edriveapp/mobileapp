@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import { Message } from './chat/message.entity';
@@ -41,6 +42,7 @@ import { UsersModule } from './users/users.module';
         ChatModule,
         PaymentsModule,
         RatingsModule,
+        AdminModule,
     ],
     controllers: [],
     providers: [],

@@ -104,8 +104,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   connect: (rideId: string) => {
     const existingSocket = get().socket;
-    if (existingSocket && get().currentRideId === rideId) {
-      if (!existingSocket.connected) existingSocket.connect();
+
+    if (existingSocket && get().currentRideId === rideId && existingSocket.connected) {
+      // Already connected to this exact ride, do nothing
       return;
     }
 
@@ -125,16 +126,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       void get().markRideRead(rideId);
     });
 
+    // Remove old listeners to prevent duplication on manual reconnects
+    socket.off('receive_message');
     socket.on('receive_message', (message: Message) => {
-      const currentId = get().currentRideId;
-      // Always use the rideId captured in closure for this socket
-      void get().addMessage(currentId || rideId, message);
+      // addMessage handles the check against the store and persists
+      void get().addMessage(rideId, message);
     });
 
     socket.on('disconnect', () => {
       set({ isConnected: false });
-      // Do NOT clear currentRideId or messages on disconnect —
-      // we want messages to persist for display and unread tracking
+      // We purposefully DO NOT clear messages so they persist on screen during a blip
     });
 
     set({ socket, currentRideId: rideId });
@@ -155,7 +156,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const user = useAuthStore.getState().user;
     if (!user) return;
 
-    // 1. Optimistic append — user sees message immediately
+    // 1. Send via REST or Optimistic append
     const optimisticId = `optimistic_${Date.now()}`;
     const optimisticMsg: Message = {
       _id: optimisticId,
@@ -164,43 +165,55 @@ export const useChatStore = create<ChatState>((set, get) => ({
       user: { _id: user.id, name: user.name || 'Me' },
       pending: true,
     };
-    const nextMessages = [...get().messages, optimisticMsg].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
+    
+    // Add optimistic message to the UI immediately
+    const nextMessages = [...get().messages, optimisticMsg];
     set({ messages: nextMessages });
 
     // 2. Emit over socket
-    if (socket) {
+    if (socket && socket.connected) {
       socket.emit('send_message', {
         rideId,
         text,
         senderId: user.id,
         role: user.role === 'driver' ? 'DRIVER' : 'PASSENGER',
       });
+    } else {
+      console.warn("Socket not connected, message might not send until reconnected");
     }
   },
 
-  addMessage: async (rideId, msg) => {
-    const currentMessages = get().messages;
-    // Remove any optimistic message that looks like this one (same text + sender within 10s)
-    const withoutOptimistic = currentMessages.filter((m) => {
-      if (!m.pending) return true;
-      const sameUser = m.user._id === msg.user?._id;
-      const sameText = m.text === msg.text;
-      const timeDiff = Math.abs(new Date(m.createdAt).getTime() - new Date(msg.createdAt).getTime());
-      return !(sameUser && sameText && timeDiff < 10000);
-    });
+  addMessage: async (incomingRideId, msg) => {
+    const state = get();
+    
+    // Only update the active chat list if the incoming message is for the currently open chat screen
+    if (state.currentRideId === incomingRideId) {
+      const currentMessages = state.messages;
+      
+      // Remove any optimistic message from the same user within last 10 seconds that perfectly matches text
+      const withoutOptimistic = currentMessages.filter((m) => {
+        if (!m.pending) return true;
+        const sameUser = m.user._id === msg.user?._id;
+        const sameText = m.text === msg.text;
+        return !(sameUser && sameText);
+      });
 
-    const nextMessages = normalizeMessages([...withoutOptimistic, { ...msg, pending: false }]);
-    set({ messages: nextMessages, currentRideId: rideId });
-    await persistMessages(rideId, nextMessages);
+      // Avoid duplication if we already have the confirmed server message
+      const alreadyHaveConfirmed = withoutOptimistic.some(m => !m.pending && m._id === msg._id);
+      
+      if (!alreadyHaveConfirmed) {
+        const nextMessages = normalizeMessages([...withoutOptimistic, { ...msg, pending: false }]);
+        set({ messages: nextMessages });
+        await persistMessages(incomingRideId, nextMessages);
+      }
+    }
 
     const user = useAuthStore.getState().user;
     const isOwnMessage = msg.user?._id === user?.id;
-    const isActiveChat = get().currentRideId === rideId;
+    const isActiveChat = state.currentRideId === incomingRideId;
 
     if (!isOwnMessage && !isActiveChat) {
-      await get().incrementUnread(rideId);
+      await get().incrementUnread(incomingRideId);
     }
   },
 

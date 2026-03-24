@@ -8,9 +8,9 @@ export class PaymentsController {
 
     @UseGuards(AuthGuard('jwt'))
     @Post('initialize')
-    async initialize(@Request() req, @Body() body: { amount: number }) {
+    async initialize(@Request() req, @Body() body: { amount: number; distance: number; rideId: string }) {
         // Use user email from JWT
-        return this.paymentsService.initializePayment(req.user.email, body.amount);
+        return this.paymentsService.initializePayment(req.user.email, body.amount, body.distance || 0, body.rideId);
     }
 
     @Get('verify')

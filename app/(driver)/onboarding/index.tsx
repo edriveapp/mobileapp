@@ -147,11 +147,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.m,
+    marginBottom: SPACING.l,
   },
   backButton: {
     padding: 4,
-    marginLeft: -4, // alignment correction
+    marginLeft: 0,
+    marginTop: 30, // alignment correction
   },
   stepIndicator: {
     fontSize: 14,

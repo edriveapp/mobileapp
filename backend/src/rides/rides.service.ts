@@ -2,12 +2,15 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Ride, RideStatus } from './ride.entity';
+import { User } from '../users/user.entity';
 
 @Injectable()
 export class RidesService {
     constructor(
         @InjectRepository(Ride)
         private ridesRepository: Repository<Ride>,
+        @InjectRepository(User)
+        private usersRepository: Repository<User>,
     ) { }
 
     async createRide(data: any): Promise<Ride> {
@@ -145,7 +148,6 @@ export class RidesService {
     async updateStatus(rideId: string, status: RideStatus): Promise<Ride> {
         await this.ridesRepository.update(rideId, { status });
 
-        // FIX: Ensure you are using findOne (not find) and handle the null case
         const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
 
         if (!ride) {
@@ -153,6 +155,26 @@ export class RidesService {
         }
 
         return ride;
+    }
+
+    async updatePaymentDetails(rideId: string, status: string, driverEarnings?: number, platformCut?: number): Promise<Ride> {
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId }, relations: ['driver'] });
+        if (!ride) throw new NotFoundException('Ride not found');
+
+        ride.paymentStatus = status;
+        if (driverEarnings !== undefined) ride.driverEarnings = driverEarnings;
+        if (platformCut !== undefined) ride.platformCut = platformCut;
+
+        const savedRide = await this.ridesRepository.save(ride);
+
+        if (status === 'paid' && ride.driver) {
+            await this.usersRepository.update(ride.driverId, {
+                balance: () => `balance + ${driverEarnings || 0}`,
+                pendingRemittance: () => `pendingRemittance + ${platformCut || 0}`
+            });
+        }
+
+        return savedRide;
     }
     async getActiveRides(userId: string, role: string) {
         const query = this.ridesRepository.createQueryBuilder('ride')

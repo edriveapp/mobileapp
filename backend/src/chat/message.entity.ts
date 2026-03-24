@@ -18,6 +18,9 @@ export class Message {
     @ManyToOne(() => User)
     sender: User;
 
+    @Column({ nullable: true })
+    senderName: string;
+
     @CreateDateColumn()
     createdAt: Date;
 }

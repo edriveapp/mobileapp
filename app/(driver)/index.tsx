@@ -36,8 +36,8 @@ export default function DriverHome() {
         activeTrips: activeTrips.length,
         totalTrips: activeTrips.length + history.length,
         rating: Number((user as any)?.rating || 4.8).toFixed(1),
-        earnings: '--',
-        remittance: '--',
+        earnings: (user as any)?.totalEarnings ? `₦${Number((user as any).totalEarnings).toLocaleString()}` : '₦0',
+        remittance: (user as any)?.pendingRemittance ? `₦${Number((user as any).pendingRemittance).toLocaleString()}` : '₦0',
     };
 
     const getPassengerName = (ride: any) => {
@@ -239,9 +239,29 @@ export default function DriverHome() {
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
                 {/* Verification Banner */}
-                {!hasCompletedOnboarding && (
-                    <TouchableOpacity style={styles.alertBanner} onPress={() => router.push('/(driver)/onboarding')}>
-                        <Text style={styles.alertText}>⚠️ Complete your profile to start driving</Text>
+                {user?.verificationStatus !== 'approved' && (
+                    <TouchableOpacity 
+                        style={[
+                            styles.alertBanner, 
+                            user?.verificationStatus === 'pending' ? styles.alertBannerPending : styles.alertBannerUnverified
+                        ]} 
+                        onPress={() => router.push('/(driver)/onboarding')}
+                    >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Ionicons 
+                                name={user?.verificationStatus === 'pending' ? "time" : "alert-circle"} 
+                                size={20} 
+                                color={user?.verificationStatus === 'pending' ? "#B54708" : "#B42318"} 
+                            />
+                            <Text style={[
+                                styles.alertText,
+                                user?.verificationStatus === 'pending' ? styles.alertTextPending : styles.alertTextUnverified
+                            ]}>
+                                {user?.verificationStatus === 'pending' 
+                                    ? "Verification pending. We're reviewing your docs." 
+                                    : "Complete verification to start accepting rides."}
+                            </Text>
+                        </View>
                     </TouchableOpacity>
                 )}
 
@@ -267,11 +287,11 @@ export default function DriverHome() {
 
                 <View style={styles.quickActionsRow}>
                     <TouchableOpacity style={styles.quickActionCard} onPress={() => router.push('/(driver)/create-trip')}>
-                        <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                        <Ionicons name="car-sport" size={18} color={COLORS.primary} />
                         <Text style={styles.quickActionText}>Post Trip</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.quickActionCard} onPress={() => router.push('/(driver)/requests')}>
-                        <Ionicons name="flash-outline" size={18} color={COLORS.primary} />
+                        <Ionicons name="radio" size={18} color={COLORS.primary} />
                         <Text style={styles.quickActionText}>Live Requests</Text>
                     </TouchableOpacity>
                 </View>
@@ -299,16 +319,20 @@ export default function DriverHome() {
                                             </Text>
                                         </View>
                                         <View style={styles.tripStatusPill}>
+                                            <Ionicons name="speedometer-outline" size={12} color="#475467" style={{ marginRight: 4 }} />
                                             <Text style={styles.tripStatusPillText}>{String(trip.status || 'active')}</Text>
                                         </View>
                                     </View>
-                                    <Text style={styles.tripManagerMeta}>
-                                        {formatTripTime(trip)} • {trip.availableSeats ?? trip.seats ?? 0} seats left • ₦
-                                        {Number(trip.fare || trip.price || 0).toLocaleString()}
-                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                                        <Ionicons name="people" size={14} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
+                                        <Text style={styles.tripManagerMeta}>
+                                            {formatTripTime(trip)} • {trip.availableSeats ?? trip.seats ?? 0} seats left • ₦
+                                            {Number(trip.fare || trip.price || 0).toLocaleString()}
+                                        </Text>
+                                    </View>
                                     {!isSearchTrip && (
                                         <View style={styles.tripPickupCard}>
-                                            <Ionicons name="location-outline" size={16} color={COLORS.primary} />
+                                            <Ionicons name="pin" size={16} color={COLORS.primary} />
                                             <View style={{ flex: 1 }}>
                                                 <Text style={styles.tripPickupTitle}>{passengerName}</Text>
                                                 <Text style={styles.tripPickupText}>Pickup near {pickupAddress}</Text>
@@ -533,7 +557,31 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: SPACING.l,
-        paddingTop: SPACING.m, // Add spacing since header is removed from scrollview
+        paddingTop: SPACING.m,
+    },
+    alertBanner: {
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 16,
+        borderWidth: 1,
+    },
+    alertBannerUnverified: {
+        backgroundColor: '#FEF3F2',
+        borderColor: '#FECDCA',
+    },
+    alertBannerPending: {
+        backgroundColor: '#FFFAEB',
+        borderColor: '#FEDF89',
+    },
+    alertText: {
+        fontSize: 14,
+        fontFamily: Fonts.semibold,
+    },
+    alertTextUnverified: {
+        color: '#B42318',
+    },
+    alertTextPending: {
+        color: '#B54708',
     },
 
     menuButton: {

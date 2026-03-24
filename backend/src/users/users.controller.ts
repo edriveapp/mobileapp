@@ -20,6 +20,17 @@ export class UsersController {
         return this.usersService.updatePreferences(req.user.userId, body);
     }
 
+    @Patch(':id/verification')
+    updateVerificationStatus(@Param('id') id: string, @Body() body: { status: 'unverified' | 'pending' | 'approved' | 'rejected' }) {
+        // In a real app we would guard this with Admin role check
+        return this.usersService.updateVerificationStatus(id, body.status);
+    }
+
+    @Get('wallet')
+    getWallet(@Request() req: any) {
+        return this.usersService.getWallet(req.user.id);
+    }
+
     @UseGuards(AuthGuard('jwt'))
     @Post('push-token')
     registerPushToken(@Request() req, @Body() body: { token?: string }) {

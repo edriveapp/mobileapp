@@ -94,11 +94,11 @@ export default function RideRequestModal({ isVisible, request, onAccept, onDecli
                     {/* Stats */}
                     <View style={styles.statsRow}>
                         <View style={styles.stat}>
-                            <Ionicons name="resize" size={16} color={COLORS.textSecondary} />
+                            <Ionicons name="navigate-circle-outline" size={16} color={COLORS.textSecondary} />
                             <Text style={styles.statText}>{request.distance}</Text>
                         </View>
                         <View style={styles.stat}>
-                            <Ionicons name="navigate" size={16} color={COLORS.textSecondary} />
+                            <Ionicons name="hourglass-outline" size={16} color={COLORS.textSecondary} />
                             <Text style={styles.statText}>~{request.eta}</Text>
                         </View>
                         {!!request.rideType && (
