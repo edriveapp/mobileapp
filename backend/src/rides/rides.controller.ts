@@ -116,7 +116,10 @@ export class RidesController {
 
     @UseGuards(AuthGuard('jwt'))
     @Patch(':id/status')
-    updateStatus(@Param('id') id: string, @Body('status') status: any) {
-        return this.ridesService.updateStatus(id, status);
+    async updateStatus(@Param('id') id: string, @Body('status') status: any) {
+        const ride = await this.ridesService.updateStatus(id, status);
+        const detailedRide = await this.ridesService.findRideById(ride.id);
+        await this.ridesGateway.broadcastRideStatusUpdate(detailedRide);
+        return detailedRide;
     }
 }

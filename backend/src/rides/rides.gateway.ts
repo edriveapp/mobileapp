@@ -115,6 +115,28 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
         );
     }
 
+    async broadcastRideStatusUpdate(ride: any) {
+        // Emit to passenger
+        if (ride.passengerId) {
+            this.server.to(`user_${ride.passengerId}`).emit('ride_status_update', ride);
+        }
+        // Emit to driver
+        if (ride.driverId) {
+            this.server.to(`driver_${ride.driverId}`).emit('ride_status_update', ride);
+        }
+
+        // Push notification for key status changes
+        if (ride.status === 'arrived' && ride.passengerId) {
+            const tokens = await this.usersService.getPushTokensForUser(ride.passengerId);
+            await this.pushNotificationsService.sendToExpoTokens(
+                tokens,
+                'Driver Arrived',
+                'Your driver has arrived at the pickup location.',
+                { type: 'ride_status', status: 'arrived', rideId: ride.id },
+            );
+        }
+    }
+
     async broadcastRideRequestUpdated(ride: any) {
         const nearbyDriverIds = ride.origin?.lat && ride.origin?.lon
             ? await this.redisService.getNearbyDrivers(ride.origin.lat, ride.origin.lon, 15)

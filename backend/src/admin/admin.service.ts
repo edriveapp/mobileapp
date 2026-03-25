@@ -27,11 +27,29 @@ export class AdminService {
         };
     }
 
-    async getPendingDrivers() {
+    async getPendingDrivers(): Promise<User[]> {
         return this.usersRepository.find({
             where: { verificationStatus: VerificationStatus.PENDING },
+            relations: ['driverProfile'],
             order: { createdAt: 'DESC' }
         });
+    }
+
+    async updateUserVerificationStatus(userId: string, status: VerificationStatus): Promise<User> {
+        const user = await this.usersRepository.findOne({ 
+            where: { id: userId },
+            relations: ['driverProfile']
+        });
+        if (!user) throw new Error('User not found');
+        
+        user.verificationStatus = status;
+        // If approved, also update the driver profile's verified flag
+        if (status === VerificationStatus.APPROVED && user.driverProfile) {
+            user.driverProfile.isVerified = true;
+            await this.usersRepository.manager.save(user.driverProfile);
+        }
+        
+        return this.usersRepository.save(user);
     }
 
     async getUsers() {

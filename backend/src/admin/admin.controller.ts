@@ -1,4 +1,5 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { VerificationStatus } from '../users/user.entity';
 import { AuthGuard } from '@nestjs/passport';
 import { AdminService } from './admin.service';
 
@@ -25,5 +26,10 @@ export class AdminController {
     @Get('rides')
     getRides() {
         return this.adminService.getRides();
+    }
+
+    @Post('users/:id/verify')
+    verifyUser(@Param('id') id: string, @Body() body: { status: VerificationStatus }) {
+        return this.adminService.updateUserVerificationStatus(id, body.status);
     }
 }

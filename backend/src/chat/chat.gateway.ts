@@ -23,6 +23,12 @@ export class ChatGateway {
     console.log(`Client ${client.id} joined chat for ride ${data.rideId}`);
   }
 
+  @SubscribeMessage('leave_chat')
+  handleLeaveChat(@MessageBody() data: { rideId: string }, @ConnectedSocket() client: Socket) {
+    client.leave(`ride_${data.rideId}`);
+    console.log(`Client ${client.id} left chat for ride ${data.rideId}`);
+  }
+
   @SubscribeMessage('send_message')
   async handleMessage(@MessageBody() payload: { rideId: string; text: string; senderId: string; role: 'DRIVER' | 'PASSENGER' }) {
     const ride = await this.ridesService.findRideById(payload.rideId);

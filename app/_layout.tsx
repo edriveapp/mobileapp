@@ -13,6 +13,7 @@ import AnimatedSplashScreen from './components/AnimatedSplashScreen';
 import { useAuthStore } from './stores/authStore';
 import { useChatStore } from './stores/chatStore';
 import { useRideRealtimeStore } from './stores/rideRealtimeStore';
+import { useSocketStore } from './stores/socketStore';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -28,8 +29,9 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { isAuthenticated, hasFinishedSplash, user } = useAuthStore();
   const hydrateUnread = useChatStore((state) => state.hydrateUnread);
-  const connectRealtime = useRideRealtimeStore((state) => state.connect);
-  const disconnectRealtime = useRideRealtimeStore((state) => state.disconnect);
+  const { connect: connectSocket, disconnect: disconnectSocket, isConnected: isSocketConnected } = useSocketStore();
+  const setupRealtimeListeners = useRideRealtimeStore((state) => state.setupListeners);
+  const disconnectRealtime = () => disconnectSocket();
   const latestAcceptedRide = useRideRealtimeStore((state) => state.latestAcceptedRide);
   const latestBookedTrip = useRideRealtimeStore((state) => state.latestBookedTrip);
   const latestChatMessage = useRideRealtimeStore((state) => state.latestChatMessage);
@@ -63,14 +65,20 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!isAuthenticated || !user) {
-      disconnectRealtime();
+      disconnectSocket();
       return;
     }
 
-    connectRealtime();
+    connectSocket();
     syncPushToken();
     void hydrateUnread();
-  }, [connectRealtime, disconnectRealtime, hydrateUnread, isAuthenticated, user]);
+  }, [connectSocket, disconnectSocket, hydrateUnread, isAuthenticated, user]);
+
+  useEffect(() => {
+    if (isSocketConnected) {
+      setupRealtimeListeners();
+    }
+  }, [isSocketConnected, setupRealtimeListeners]);
 
   useEffect(() => {
     if (!latestAcceptedRide || user?.role !== 'passenger') return;

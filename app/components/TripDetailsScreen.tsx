@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
+import { useAuthStore } from '../stores/authStore';
 import api from '../services/api';
 
 type PaymentMethod = 'card' | 'transfer' | 'cash';
@@ -90,6 +91,7 @@ export default function TripDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { trips, availableTrips, activeTrips, history, bookTrip, isLoading } = useTripStore();
+  const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [showDriverModal, setShowDriverModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -392,16 +394,42 @@ export default function TripDetailsScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        {(trip.availableSeats === 0 || trip.seats === 0) ? (
-          <View style={[styles.bookButton, { backgroundColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
-            <Ionicons name="close-circle-outline" size={20} color="#64748B" />
-            <Text style={[styles.bookButtonText, { color: '#64748B' }]}>No seats available</Text>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.bookButton} onPress={openPaymentFlow}>
-            <Text style={styles.bookButtonText}>Continue to Payment</Text>
-          </TouchableOpacity>
-        )}
+        {(() => {
+          const isPassenger = trip.passengerId === user?.id;
+          const isPaid = (trip.paymentStatus || '').toLowerCase() === 'paid';
+          const noSeats = (trip.availableSeats === 0 || trip.seats === 0);
+
+          if (noSeats && !isPassenger) {
+            return (
+              <View style={[styles.bookButton, { backgroundColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+                <Ionicons name="close-circle-outline" size={20} color="#64748B" />
+                <Text style={[styles.bookButtonText, { color: '#64748B' }]}>No seats available</Text>
+              </View>
+            );
+          }
+
+          if (isPassenger) {
+            if (isPaid) {
+              return (
+                <View style={[styles.bookButton, { backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Text style={styles.bookButtonText}>Seat Reserved (Paid)</Text>
+                </View>
+              );
+            }
+            return (
+              <TouchableOpacity style={[styles.bookButton, { backgroundColor: '#F59E0B' }]} onPress={openPaymentFlow}>
+                <Text style={styles.bookButtonText}>Complete Payment</Text>
+              </TouchableOpacity>
+            );
+          }
+
+          return (
+            <TouchableOpacity style={styles.bookButton} onPress={openPaymentFlow}>
+              <Text style={styles.bookButtonText}>Continue to Payment</Text>
+            </TouchableOpacity>
+          );
+        })()}
       </View>
 
       <Modal visible={showDriverModal} transparent animationType="slide" onRequestClose={() => setShowDriverModal(false)}>

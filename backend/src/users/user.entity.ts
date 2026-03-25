@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { DriverProfile } from './driver-profile.entity';
 
 export enum UserRole {
     PASSENGER = 'passenger',
@@ -17,6 +18,9 @@ export enum VerificationStatus {
 export class User {
     @PrimaryGeneratedColumn('uuid')
     id: string;
+
+    @OneToOne(() => DriverProfile, (profile) => profile.user)
+    driverProfile: DriverProfile;
 
     @Column({ unique: true })
     email: string;

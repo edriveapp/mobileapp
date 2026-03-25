@@ -8,16 +8,49 @@ const INITIAL_DRIVERS = [
 ];
 
 export default function Drivers() {
-  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleApprove = (id: string) => {
-    setDrivers(drivers.filter(d => d.id !== id));
-    // Implementation would call PATCH /users/:id/verification with status: 'approved'
+  React.useEffect(() => {
+    fetchDrivers();
+  }, []);
+
+  const fetchDrivers = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/admin/drivers/pending');
+      const data = await res.json();
+      setDrivers(data);
+    } catch (err) {
+      console.error('Failed to fetch drivers', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleReject = (id: string) => {
-    setDrivers(drivers.filter(d => d.id !== id));
-    // Implementation would call PATCH /users/:id/verification with status: 'rejected'
+  const handleApprove = async (id: string) => {
+    try {
+      await fetch(`http://localhost:3000/admin/users/${id}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'approved' }),
+      });
+      setDrivers(drivers.filter(d => d.id !== id));
+    } catch (err) {
+      alert('Failed to approve driver');
+    }
+  };
+
+  const handleReject = async (id: string) => {
+    try {
+      await fetch(`http://localhost:3000/admin/users/${id}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'rejected' }),
+      });
+      setDrivers(drivers.filter(d => d.id !== id));
+    } catch (err) {
+      alert('Failed to reject driver');
+    }
   };
 
   return (
@@ -58,14 +91,30 @@ export default function Drivers() {
                 </tr>
               ) : drivers.map(driver => (
                 <tr key={driver.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="p-4 pl-6 font-medium text-gray-900">{driver.name}</td>
-                  <td className="p-4 text-gray-600 font-mono text-xs">{driver.license}</td>
-                  <td className="p-4 text-gray-500">{driver.uploaded}</td>
+                  <td className="p-4 pl-6 font-medium text-gray-900">
+                    {driver.firstName} {driver.lastName}
+                    <div className="text-xs text-gray-400 font-normal">{driver.email}</div>
+                  </td>
+                  <td className="p-4 text-gray-600 font-mono text-xs">
+                    {driver.driverProfile?.licenseDetails?.number || 'N/A'}
+                  </td>
+                  <td className="p-4 text-gray-500">
+                    {new Date(driver.createdAt).toLocaleDateString()}
+                  </td>
                   <td className="p-4">
-                    <button className="flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-medium">
-                      <FileText className="w-4 h-4" />
-                      View Files
-                    </button>
+                    {driver.driverProfile?.licenseDetails?.documentUrl ? (
+                      <a 
+                        href={driver.driverProfile.licenseDetails.documentUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-medium"
+                      >
+                        <FileText className="w-4 h-4" />
+                        View ID
+                      </a>
+                    ) : (
+                      <span className="text-gray-400 italic text-xs">No files</span>
+                    )}
                   </td>
                   <td className="p-4 pr-6 flex justify-end gap-2">
                     <button 

@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
 
 import { Message, useChatStore } from '@/app/stores/chatStore';
+import { useSocketStore } from '@/app/stores/socketStore';
 
 const getAddressText = (value: any) => {
     if (!value) return '';
@@ -61,7 +62,9 @@ export default function ChatScreen() {
     const passedRecipientName = params.recipientName as string;
     const recipientImage = params.recipientImage as string;
     const trip = [...trips, ...availableTrips, ...activeTrips, ...history].find((item: any) => item.id === tripId);
-    const { messages, connect, disconnect, sendMessage, setMessages, hydrateMessages, markRideRead, isConnected } = useChatStore();
+    const { messages, setupChat, leaveChat, sendMessage, setMessages, hydrateMessages, markRideRead } = useChatStore();
+    // Use the global socket's connection status
+    const isConnected = useSocketStore((state) => state.isConnected);
     const derivedRecipientName = user?.role === 'driver'
         ? getPersonName(trip?.passenger, 'Rider')
         : getPersonName(trip?.driver, getAddressText(trip?.destination) || 'Driver');
@@ -98,12 +101,12 @@ export default function ChatScreen() {
             fetchMessages();
         });
         void markRideRead(tripId);
-        connect(tripId);
+        setupChat(tripId);
 
         return () => {
-            disconnect();
+            leaveChat(tripId);
         };
-    }, [connect, disconnect, fetchMessages, hydrateMessages, markRideRead, tripId]);
+    }, [fetchMessages, hydrateMessages, leaveChat, markRideRead, setupChat, tripId]);
 
     // Scroll to bottom when new messages arrive
     useEffect(() => {

@@ -1,8 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { io, Socket } from 'socket.io-client';
 import { create } from 'zustand';
-import { getSocketBaseUrl } from '../services/api';
 import { useAuthStore } from './authStore';
+import { useSocketStore } from './socketStore';
 
 export interface Message {
   _id: string;
@@ -17,12 +16,11 @@ export interface Message {
 
 interface ChatState {
   messages: Message[];
-  socket: Socket | null;
   isConnected: boolean;
   currentRideId: string | null;
   unreadByRide: Record<string, number>;
-  connect: (rideId: string) => void;
-  disconnect: () => void;
+  setupChat: (rideId: string) => void;
+  leaveChat: (rideId: string) => void;
   sendMessage: (rideId: string, text: string) => void;
   addMessage: (rideId: string, msg: Message) => Promise<void>;
   setMessages: (rideId: string, msgs: Message[]) => Promise<void>;
@@ -57,7 +55,6 @@ const persistMessages = async (rideId: string, messages: Message[]) => {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
-  socket: null,
   isConnected: false,
   currentRideId: null,
   unreadByRide: {},
@@ -102,57 +99,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await persistMessages(rideId, normalized);
   },
 
-  connect: (rideId: string) => {
-    const existingSocket = get().socket;
-
-    if (existingSocket && get().currentRideId === rideId && existingSocket.connected) {
-      // Already connected to this exact ride, do nothing
+  setupChat: (rideId: string) => {
+    const socket = useSocketStore.getState().socket;
+    if (!socket) {
+      console.warn("Socket not initialized. Retrying in 1s...");
+      setTimeout(() => get().setupChat(rideId), 1000);
       return;
     }
 
-    if (existingSocket) {
-      existingSocket.disconnect();
-    }
+    set({ currentRideId: rideId });
+    socket.emit('join_chat', { rideId });
+    void get().markRideRead(rideId);
 
-    const token = useAuthStore.getState().token;
-    const socket = io(getSocketBaseUrl(), {
-      transports: ['websocket'],
-      auth: token ? { token } : undefined,
-    });
-
-    socket.on('connect', () => {
-      set({ isConnected: true, currentRideId: rideId });
-      socket.emit('join_chat', { rideId });
-      void get().markRideRead(rideId);
-    });
-
-    // Remove old listeners to prevent duplication on manual reconnects
-    socket.off('receive_message');
+    // Register active message listener
+    socket.off('receive_message'); // Avoid dups
     socket.on('receive_message', (message: Message) => {
-      // addMessage handles the check against the store and persists
       void get().addMessage(rideId, message);
     });
-
-    socket.on('disconnect', () => {
-      set({ isConnected: false });
-      // We purposefully DO NOT clear messages so they persist on screen during a blip
-    });
-
-    set({ socket, currentRideId: rideId });
   },
 
-  disconnect: () => {
-    const { socket } = get();
+  leaveChat: (rideId: string) => {
+    const socket = useSocketStore.getState().socket;
     if (socket) {
-      socket.disconnect();
+        socket.off('receive_message');
+        // socket.emit('leave_chat', { rideId }); // If backend supports it
     }
-    // Only clear socket state; keep messages and currentRideId intact
-    // so the inbox can still read cached messages after leaving the chat screen
-    set({ socket: null, isConnected: false });
+    set({ currentRideId: null });
   },
 
   sendMessage: (rideId, text) => {
-    const { socket } = get();
+    const socket = useSocketStore.getState().socket;
     const user = useAuthStore.getState().user;
     if (!user) return;
 
@@ -227,10 +203,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   markRideRead: async (rideId) => {
+    if (!rideId) return;
     const nextUnread = { ...get().unreadByRide };
     if (!(rideId in nextUnread)) return;
+    
     delete nextUnread[rideId];
     set({ unreadByRide: nextUnread });
-    await AsyncStorage.setItem(getUnreadStorageKey(), JSON.stringify(nextUnread));
+    
+    try {
+      await AsyncStorage.setItem(getUnreadStorageKey(), JSON.stringify(nextUnread));
+    } catch (err) {
+      console.error('Failed to persist unread counts', err);
+    }
   },
 }));

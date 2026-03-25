@@ -1,10 +1,9 @@
-import { io, Socket } from 'socket.io-client';
 import { create } from 'zustand';
-import { getSocketBaseUrl } from '../services/api';
-import { useChatStore } from './chatStore';
-import { presentLocalNotification } from '../services/notifications';
 import { useAuthStore } from './authStore';
 import { useTripStore } from './tripStore';
+import { useSocketStore } from './socketStore';
+import { useChatStore } from './chatStore';
+import { presentLocalNotification } from '../services/notifications';
 
 const getPassengerName = (ride: any) => {
   const passenger = ride?.passenger;
@@ -13,15 +12,13 @@ const getPassengerName = (ride: any) => {
 };
 
 interface RideRealtimeState {
-  socket: Socket | null;
   isConnected: boolean;
   requestQueue: any[];
   latestRideRequest: any | null;
   latestBookedTrip: any | null;
   latestAcceptedRide: any | null;
   latestChatMessage: { rideId: string; text: string } | null;
-  connect: () => void;
-  disconnect: () => void;
+  setupListeners: () => void;
   dequeueRideRequest: (rideId: string) => void;
   clearLatestRideRequest: () => void;
   clearLatestBookedTrip: () => void;
@@ -30,7 +27,6 @@ interface RideRealtimeState {
 }
 
 export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
-  socket: null,
   isConnected: false,
   requestQueue: [],
   latestRideRequest: null,
@@ -38,36 +34,9 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
   latestAcceptedRide: null,
   latestChatMessage: null,
 
-  connect: () => {
-    const existing = get().socket;
-    if (existing) return;
-
-    const auth = useAuthStore.getState();
-    if (!auth.token || !auth.user) return;
-
-    const rawSocketUrl = getSocketBaseUrl();
-    const socketUrl =
-      typeof rawSocketUrl === 'string' && rawSocketUrl.trim().length > 0
-        ? rawSocketUrl.trim()
-        : 'http://10.0.2.2:3000';
-
-    const socket = io(socketUrl, {
-      transports: ['websocket'],
-      auth: {
-        token: auth.token,
-      },
-    });
-
-    socket.on('connect', () => {
-      const user = useAuthStore.getState().user;
-      set({ isConnected: true });
-      if (!user) return;
-
-      socket.emit('join_user_room', user.id);
-      if (user.role === 'driver') {
-        socket.emit('join_driver_room', user.id);
-      }
-    });
+  setupListeners: () => {
+    const socket = useSocketStore.getState().socket;
+    if (!socket) return;
 
     socket.on('ride_request', (ride) => {
       const user = useAuthStore.getState().user;
@@ -116,11 +85,24 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
       useTripStore.getState().fetchMyTrips();
       set({ latestBookedTrip: ride });
       presentLocalNotification(
-        'Trip booked',
+        'New trip booking',
         `${getPassengerName(ride)} booked your trip to ${ride?.destination?.address || 'a destination'}`,
         { type: 'trip_booked', rideId: ride.id },
         'booking',
       );
+    });
+
+    socket.on('ride_status_update', (ride) => {
+      useTripStore.getState().updateRideStatus(ride.status.toUpperCase(), ride);
+      // If it's the current ride, refresh trips to be safe
+      useTripStore.getState().fetchMyTrips();
+      
+      if (ride.status === 'completed' || ride.status === 'cancelled') {
+        const user = useAuthStore.getState().user;
+        if (user?.role === 'driver') {
+          useTripStore.getState().fetchAvailableTrips({ role: 'driver' });
+        }
+      }
     });
 
     socket.on('chat_message_alert', (message) => {
@@ -140,28 +122,6 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
           text: message?.text || 'New message',
         },
       });
-    });
-
-    socket.on('disconnect', () => {
-      set({ isConnected: false });
-    });
-
-    set({ socket });
-  },
-
-  disconnect: () => {
-    const socket = get().socket;
-    if (socket) {
-      socket.disconnect();
-    }
-    set({
-      socket: null,
-      isConnected: false,
-      requestQueue: [],
-      latestRideRequest: null,
-      latestBookedTrip: null,
-      latestAcceptedRide: null,
-      latestChatMessage: null,
     });
   },
 

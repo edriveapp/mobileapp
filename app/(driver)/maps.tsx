@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
@@ -12,6 +13,7 @@ import {
     TextInput,
     Alert,
     Keyboard,
+    Dimensions,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,7 +57,15 @@ const getDirections = async (startLoc: any, destinationLoc: any) => {
 export default function DriverMapScreen() {
     const mapRef = useRef<MapView>(null);
     const insets = useSafeAreaInsets();
-    const { availableTrips, activeTrips, fetchAvailableTrips, fetchMyTrips, acceptRide } = useTripStore();
+    const router = useRouter();
+    const { 
+        availableTrips, 
+        activeTrips, 
+        fetchAvailableTrips, 
+        fetchMyTrips, 
+        acceptRide,
+        updateTripStatus 
+    } = useTripStore();
     const requestQueue = useRideRealtimeStore((state) => state.requestQueue);
     const dequeueRideRequest = useRideRealtimeStore((state) => state.dequeueRideRequest);
 
@@ -75,6 +85,8 @@ export default function DriverMapScreen() {
     const [isSearching, setIsSearching] = useState(false);
     const [activeDestination, setActiveDestination] = useState<PlaceResult | null>(null);
     const [selectedRideRequestId, setSelectedRideRequestId] = useState<string | null>(null);
+    const [notchMinimized, setNotchMinimized] = useState(false);
+    const [updatingStatus, setUpdatingStatus] = useState(false);
     
     const searchTimeout = useRef<any>(null);
 
@@ -98,8 +110,11 @@ export default function DriverMapScreen() {
     );
 
     const activePickupTrips = activeTrips.filter(
-        (ride: any) => ride?.pickupLocation?.lat && ride?.pickupLocation?.lon,
+        (ride: any) => ['accepted', 'arriving', 'in_progress'].includes(String(ride.status).toLowerCase())
     );
+    
+    // Most relevant active ride
+    const currentActiveRide = activePickupTrips[0] || null;
 
     const selectedRideRequest = liveRideRequests.find((ride: any) => ride.id === selectedRideRequestId) || null;
 
@@ -174,6 +189,21 @@ export default function DriverMapScreen() {
             }, { duration: 1000 });
         } else {
             Alert.alert("Error", "Could not calculate route.");
+        }
+    };
+
+    const handleUpdateStatus = async (rideId: string, status: string) => {
+        setUpdatingStatus(true);
+        try {
+            await updateTripStatus(rideId, status);
+            // If completed, move camera back
+            if (status === 'completed') {
+                handleStopNavigation();
+            }
+        } catch (error: any) {
+            Alert.alert('Status update failed', error?.message || 'Could not update ride status.');
+        } finally {
+            setUpdatingStatus(false);
         }
     };
 
@@ -387,7 +417,17 @@ export default function DriverMapScreen() {
                                                 await acceptRide(selectedRideRequest.id);
                                                 dequeueRideRequest(selectedRideRequest.id);
                                                 setSelectedRideRequestId(null);
-                                                Alert.alert('Ride accepted', 'Passenger removed from live queue.');
+                                                // Automatically start navigation to pickup
+                                                const destCoords = {
+                                                    latitude: Number(selectedRideRequest.origin.lat),
+                                                    longitude: Number(selectedRideRequest.origin.lon)
+                                                };
+                                                handleSelectDestination({
+                                                    place_id: selectedRideRequest.id,
+                                                    display_name: selectedRideRequest.origin.address,
+                                                    lat: String(destCoords.latitude),
+                                                    lon: String(destCoords.longitude)
+                                                });
                                             } catch (error: any) {
                                                 Alert.alert('Accept failed', error?.message || 'Could not accept this request.');
                                             }
@@ -401,6 +441,102 @@ export default function DriverMapScreen() {
                     </View>
                 )}
             </View>
+
+            {/* Active Ride Notch */}
+            {currentActiveRide && (
+                <View style={[styles.notchContainer, { bottom: insets.bottom + 10 }]}>
+                    {notchMinimized ? (
+                        <TouchableOpacity 
+                            style={styles.minimizedNotch} 
+                            activeOpacity={0.9}
+                            onPress={() => setNotchMinimized(false)}
+                        >
+                            <View style={styles.notchStatusDot} />
+                            <Text style={styles.notchStatusText}>
+                                {String(currentActiveRide.status).toUpperCase()} • {getPassengerName(currentActiveRide)}
+                            </Text>
+                            <Ionicons name="chevron-up" size={18} color={COLORS.white} />
+                        </TouchableOpacity>
+                    ) : (
+                        <View style={styles.maximizedNotch}>
+                            <View style={styles.notchHeader}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.notchTitleText}>Current Trip</Text>
+                                    <Text style={styles.notchPassengerName}>{getPassengerName(currentActiveRide)}</Text>
+                                </View>
+                                <TouchableOpacity 
+                                    style={styles.minimizeBtn}
+                                    onPress={() => setNotchMinimized(true)}
+                                >
+                                    <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.notchBody}>
+                                <View style={styles.routePreview}>
+                                    <View style={styles.routeLine} />
+                                    <View style={styles.routeItem}>
+                                        <View style={[styles.dot, { backgroundColor: COLORS.primary }]} />
+                                        <Text style={styles.routeText} numberOfLines={1}>
+                                            {currentActiveRide.origin?.address}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.routeItem}>
+                                        <View style={[styles.dot, { backgroundColor: '#FF5722' }]} />
+                                        <Text style={styles.routeText} numberOfLines={1}>
+                                            {currentActiveRide.destination?.address}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+
+                            <View style={styles.notchActions}>
+                                {String(currentActiveRide.status).toLowerCase() === 'accepted' && (
+                                    <TouchableOpacity 
+                                        style={styles.primaryActionBtn}
+                                        onPress={() => handleUpdateStatus(currentActiveRide.id, 'arrived')}
+                                        disabled={updatingStatus}
+                                    >
+                                        <Text style={styles.actionBtnText}>Mark Arrived</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {String(currentActiveRide.status).toLowerCase() === 'arrived' && (
+                                    <TouchableOpacity 
+                                        style={styles.primaryActionBtn}
+                                        onPress={() => handleUpdateStatus(currentActiveRide.id, 'in_progress')}
+                                        disabled={updatingStatus}
+                                    >
+                                        <Text style={styles.actionBtnText}>Start Trip</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {String(currentActiveRide.status).toLowerCase() === 'in_progress' && (
+                                    <TouchableOpacity 
+                                        style={[styles.primaryActionBtn, { backgroundColor: '#D32F2F' }]}
+                                        onPress={() => handleUpdateStatus(currentActiveRide.id, 'completed')}
+                                        disabled={updatingStatus}
+                                    >
+                                        <Text style={styles.actionBtnText}>Complete Trip</Text>
+                                    </TouchableOpacity>
+                                )}
+                                <TouchableOpacity 
+                                    style={styles.secondaryActionBtn}
+                                    onPress={() => {
+                                        router.push({
+                                            pathname: '/chat/[id]',
+                                            params: { 
+                                                id: currentActiveRide.id,
+                                                recipientName: getPassengerName(currentActiveRide)
+                                            }
+                                        });
+                                    }}
+                                >
+                                    <Ionicons name="chatbubble" size={20} color={COLORS.primary} />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+                </View>
+            )}
 
             {/* SEARCH MODAL */}
             <Modal
@@ -595,4 +731,77 @@ const styles = StyleSheet.create({
     destName: { fontSize: 16, fontWeight: '600' },
     destAddress: { fontSize: 12, color: COLORS.textSecondary },
     destMarker: { backgroundColor: COLORS.primary, padding: 8, borderRadius: 20, borderWidth: 2, borderColor: 'white' },
+
+    // Notch Styles
+    notchContainer: {
+        position: 'absolute',
+        left: 15,
+        right: 15,
+        zIndex: 100,
+    },
+    minimizedNotch: {
+        backgroundColor: '#111827',
+        borderRadius: 30,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, elevation: 12,
+    },
+    notchStatusDot: {
+        width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ADE80', marginRight: 10,
+    },
+    notchStatusText: {
+        flex: 1, color: 'white', fontSize: 13, fontWeight: '600', fontFamily: Fonts.semibold,
+    },
+    maximizedNotch: {
+        backgroundColor: 'white',
+        borderRadius: 24,
+        padding: 20,
+        shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 15, elevation: 20,
+        borderWidth: 1, borderColor: '#F0F0F0',
+    },
+    notchHeader: {
+        flexDirection: 'row', alignItems: 'center', marginBottom: 15,
+    },
+    notchTitleText: {
+        fontSize: 12, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2,
+    },
+    notchPassengerName: {
+        fontSize: 18, fontWeight: 'bold', color: COLORS.text,
+    },
+    minimizeBtn: {
+        width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center',
+    },
+    notchBody: {
+        marginBottom: 20,
+    },
+    routePreview: {
+        backgroundColor: '#FAFAFA', padding: 15, borderRadius: 16,
+    },
+    routeLine: {
+        position: 'absolute', left: 21, top: 30, bottom: 30, width: 1, backgroundColor: '#DDD',
+    },
+    routeItem: {
+        flexDirection: 'row', alignItems: 'center', marginVertical: 4,
+    },
+    dot: {
+        width: 8, height: 8, borderRadius: 4, marginRight: 12, zIndex: 1,
+    },
+    routeText: {
+        fontSize: 14, color: COLORS.text, flex: 1,
+    },
+    notchActions: {
+        flexDirection: 'row', gap: 12,
+    },
+    primaryActionBtn: {
+        flex: 1, backgroundColor: COLORS.primary, height: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center',
+    },
+    actionBtnText: {
+        color: 'white', fontSize: 16, fontWeight: 'bold',
+    },
+    secondaryActionBtn: {
+        width: 52, height: 52, borderRadius: 14, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center',
+    },
 });
