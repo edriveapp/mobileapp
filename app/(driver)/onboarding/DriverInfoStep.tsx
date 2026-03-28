@@ -89,6 +89,22 @@ export default function DriverInfoStep() {
                         />
                     </View>
 
+                    {/* NIN */}
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>NIN (11 digits) *</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={driverInfo.nin}
+                            onChangeText={(text) =>
+                                setDriverInfo({ nin: text.replace(/\D/g, '').slice(0, 11) })
+                            }
+                            placeholder="Enter your 11-digit NIN"
+                            placeholderTextColor={COLORS.textSecondary}
+                            keyboardType="number-pad"
+                            maxLength={11}
+                        />
+                    </View>
+
                     {/* Address */}
                     <View style={styles.inputGroup}>
                         <Text style={styles.label}>Address *</Text>
@@ -129,6 +145,54 @@ export default function DriverInfoStep() {
                             placeholderTextColor={COLORS.textSecondary}
                             keyboardType="number-pad"
                             maxLength={10}
+                        />
+                    </View>
+
+                    {/* Guarantor */}
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Guarantor Name *</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={driverInfo.guarantorName}
+                            onChangeText={(text) => setDriverInfo({ guarantorName: text })}
+                            placeholder="Enter guarantor's full name"
+                            placeholderTextColor={COLORS.textSecondary}
+                        />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Guarantor Phone *</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={driverInfo.guarantorPhone}
+                            onChangeText={(text) => setDriverInfo({ guarantorPhone: text })}
+                            placeholder="e.g., 08012345678"
+                            placeholderTextColor={COLORS.textSecondary}
+                            keyboardType="phone-pad"
+                        />
+                    </View>
+
+                    {/* Next of Kin */}
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Next of Kin Name *</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={driverInfo.nextOfKinName}
+                            onChangeText={(text) => setDriverInfo({ nextOfKinName: text })}
+                            placeholder="Enter next-of-kin full name"
+                            placeholderTextColor={COLORS.textSecondary}
+                        />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Next of Kin Phone *</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={driverInfo.nextOfKinPhone}
+                            onChangeText={(text) => setDriverInfo({ nextOfKinPhone: text })}
+                            placeholder="e.g., 08012345678"
+                            placeholderTextColor={COLORS.textSecondary}
+                            keyboardType="phone-pad"
                         />
                     </View>
                 </View>

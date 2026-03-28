@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PaymentsService } from './payments.service';
 
@@ -15,6 +15,11 @@ export class PaymentsController {
 
     @Get('verify')
     async verify(@Query('reference') reference: string) {
+        return this.paymentsService.verifyPayment(reference);
+    }
+
+    @Get('verify/:reference')
+    async verifyByPath(@Param('reference') reference: string) {
         return this.paymentsService.verifyPayment(reference);
     }
 

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -27,7 +28,7 @@ export default function PaymentScreen() {
         seats: string;
     }>();
 
-    const { processPayment, isProcessing } = usePaymentStore();
+    const { processPayment, verifyPayment, isProcessing } = usePaymentStore();
     const [selectedMethod, setSelectedMethod] = useState<'paystack' | 'wallet'>('paystack');
     const price = parseFloat(params.price || '0');
 
@@ -38,9 +39,18 @@ export default function PaymentScreen() {
         }
 
         try {
-            const authUrl = await processPayment(price);
-            // In production, open authUrl in WebBrowser for Paystack checkout
-            // For now, show success
+            const { authorization_url, reference } = await processPayment(price, {
+                rideId: params.tripId,
+                distance: 0,
+            });
+            await WebBrowser.openBrowserAsync(authorization_url);
+            const isVerified = await verifyPayment(reference);
+
+            if (!isVerified) {
+                Alert.alert('Payment Pending', 'We could not confirm payment yet. Please check your trip status shortly.');
+                return;
+            }
+
             Alert.alert(
                 '✅ Booking Confirmed',
                 `You've successfully booked your trip from ${params.origin} to ${params.destination}.`,

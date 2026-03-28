@@ -7,6 +7,7 @@ export interface User {
   role: UserRole;
   phoneNumber: string;
   isVerified: boolean;
+  avatarUrl?: string;
   isPhoneVerified?: boolean;
   isEmailVerified?: boolean;
   verificationStatus?: 'unverified' | 'pending' | 'approved' | 'rejected';
@@ -34,6 +35,24 @@ export interface Trip {
   };
   autoAccept?: boolean;
   description?: string;
+  notes?: string;
+  fare?: number;
+  seatFare?: number;
+  driver?: {
+    id?: string;
+    name?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    rating?: number;
+    image?: string;
+    avatarUrl?: string;
+    phone?: string;
+    phoneNumber?: string;
+    vehicle?: { model?: string; plate?: string };
+    vehicleType?: string;
+    plateNumber?: string;
+  };
 }
 
 export interface DriverOnboardingData {
@@ -43,6 +62,11 @@ export interface DriverOnboardingData {
   address: string;
   licenseNumber: string;
   licenseExpiry: string;
+  nin: string;
+  guarantorName: string;
+  guarantorPhone: string;
+  nextOfKinName: string;
+  nextOfKinPhone: string;
 }
 
 export interface VehicleData {
@@ -51,9 +75,12 @@ export interface VehicleData {
   model: string;
   year: string;
   plateNumber: string;
+  capacity?: string; // for buses
 }
 
 export interface OnboardingDocuments {
   licenseImageUri: string | null;
+  insuranceImageUri: string | null;
+  worthinessImageUri: string | null;
   vehiclePhotos: string[]; // array of image URIs
 }

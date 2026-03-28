@@ -13,7 +13,33 @@ export class RidesService {
         private usersRepository: Repository<User>,
     ) { }
 
+    private getRiderOfferFloor(estimatedPrivateFare: number, isShared: boolean): number {
+        if (!estimatedPrivateFare || estimatedPrivateFare <= 0) {
+            return isShared ? 1200 : 3000;
+        }
+        if (isShared) {
+            return Math.max(1200, Math.round((estimatedPrivateFare / 4.8) / 50) * 50);
+        }
+        return Math.max(2500, Math.round((estimatedPrivateFare * 0.82) / 50) * 50);
+    }
+
+    private enforcePassengerRequestFloor(data: any) {
+        const isShared = Boolean(data?.preferences?.shared);
+        const estimatedPrivateFare = Number(data?.tripFare ?? data?.estimatedPrivateFare ?? 0);
+        const offeredFare = Number(data?.fare ?? data?.price ?? 0);
+        const floor = this.getRiderOfferFloor(estimatedPrivateFare, isShared);
+
+        if (offeredFare > 0 && offeredFare < floor) {
+            throw new BadRequestException(
+                `Offer is below floor price. Minimum for ${isShared ? 'shared' : 'private'} request is ${floor}.`
+            );
+        }
+    }
+
     async createRide(data: any): Promise<Ride> {
+        if (data?.passengerId) {
+            this.enforcePassengerRequestFloor(data);
+        }
         const seats = Number(data.seats) > 0 ? Number(data.seats) : 1;
         const fare = Number(data.fare ?? data.price ?? 0) || 0;
         const tripFare = Number(data.tripFare ?? fare) || fare;
@@ -109,6 +135,13 @@ export class RidesService {
         if (ride.status !== RideStatus.SEARCHING) {
             throw new ForbiddenException('Only active requests can be edited');
         }
+
+        this.enforcePassengerRequestFloor({
+            ...ride,
+            ...data,
+            tripFare: data?.tripFare ?? ride.tripFare,
+            preferences: { ...(ride.preferences || {}), ...(data.preferences || {}) },
+        });
 
         Object.assign(ride, {
             fare: data.fare ?? data.price ?? ride.fare,

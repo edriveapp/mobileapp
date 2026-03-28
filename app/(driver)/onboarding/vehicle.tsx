@@ -16,7 +16,7 @@ export default function VehicleInfoScreen() {
 
       <TouchableOpacity
         style={styles.button}
-        onPress={() => router.push('/(driver)/onboarding/documents')}
+        onPress={() => router.push('/(driver)/onboarding')}
       >
         <Text style={styles.buttonText}>Continue</Text>
       </TouchableOpacity>

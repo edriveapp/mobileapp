@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
+    Image,
     StatusBar,
     StyleSheet,
     Text,
@@ -53,7 +54,11 @@ export default function ProfileDetailsScreen() {
             {/* Profile Avatar */}
             <View style={styles.avatarSection}>
                 <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                    {user.avatarUrl ? (
+                        <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+                    ) : (
+                        <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                    )}
                 </View>
                 <Text style={styles.nameText}>{displayName}</Text>
                 <View style={styles.roleBadge}>
@@ -126,6 +131,11 @@ const styles = StyleSheet.create({
         fontSize: 36,
         fontWeight: 'bold',
         color: '#fff',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 45,
     },
     nameText: {
         fontSize: 22,

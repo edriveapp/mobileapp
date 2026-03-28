@@ -1,5 +1,7 @@
 // stores/driverStore.ts
 import { create } from 'zustand';
+import api from '../services/api';
+import { useAuthStore } from '../stores/authStore';
 import { DriverOnboardingData, OnboardingDocuments, VehicleData } from '../types';
 
 interface DriverState {
@@ -16,7 +18,7 @@ interface DriverState {
   setDriverInfo: (info: Partial<DriverOnboardingData>) => void;
   setVehicleInfo: (info: Partial<VehicleData>) => void;
   setDocuments: (docs: Partial<OnboardingDocuments>) => void;
-  completeOnboarding: () => void;
+  completeOnboarding: () => Promise<void>;
   setStatus: (status: 'pending' | 'approved' | 'rejected') => void;
 }
 
@@ -29,9 +31,14 @@ export const useDriverStore = create<DriverState>((set) => ({
     fullName: '',
     phoneNumber: '',
     dateOfBirth: '',
+    nin: '',
     address: '',
     licenseNumber: '',
     licenseExpiry: '',
+    guarantorName: '',
+    guarantorPhone: '',
+    nextOfKinName: '',
+    nextOfKinPhone: '',
   },
 
   vehicleInfo: {
@@ -40,10 +47,13 @@ export const useDriverStore = create<DriverState>((set) => ({
     model: '',
     year: '',
     plateNumber: '',
+    capacity: '',
   },
 
   documents: {
     licenseImageUri: null,
+    insuranceImageUri: null,
+    worthinessImageUri: null,
     vehiclePhotos: [],
   },
 
@@ -63,8 +73,48 @@ export const useDriverStore = create<DriverState>((set) => ({
       documents: { ...state.documents, ...docs },
     })),
 
-  completeOnboarding: () =>
-    set({ hasCompletedOnboarding: true }),
+  completeOnboarding: async () => {
+    const { driverInfo, vehicleInfo, documents } = useDriverStore.getState();
+
+    const payload = {
+      vehicleDetails: {
+        type: vehicleInfo.type,
+        make: vehicleInfo.make,
+        model: vehicleInfo.model,
+        year: vehicleInfo.year,
+        plateNumber: vehicleInfo.plateNumber,
+        capacity: vehicleInfo.capacity || '',
+        insuranceDocumentUrl: documents.insuranceImageUri || '',
+        worthinessCertificateUrl: documents.worthinessImageUri || '',
+        vehiclePhotoUrls: documents.vehiclePhotos || [],
+      },
+      licenseDetails: {
+        number: driverInfo.licenseNumber,
+        expiryDate: driverInfo.licenseExpiry,
+        documentUrl: documents.licenseImageUri || '',
+      },
+      onboardingMeta: {
+        fullName: driverInfo.fullName,
+        phoneNumber: driverInfo.phoneNumber,
+        dateOfBirth: driverInfo.dateOfBirth,
+        nin: driverInfo.nin,
+        address: driverInfo.address,
+        guarantorName: driverInfo.guarantorName,
+        guarantorPhone: driverInfo.guarantorPhone,
+        nextOfKinName: driverInfo.nextOfKinName,
+        nextOfKinPhone: driverInfo.nextOfKinPhone,
+      },
+    };
+
+    // Submit onboarding payload to existing backend route.
+    await api.post('/users/driver-profile', payload);
+    await useAuthStore.getState().refreshProfile();
+
+    set({
+      hasCompletedOnboarding: true,
+      status: 'pending',
+    });
+  },
 
   setStatus: (status) => set({ status }),
 }));

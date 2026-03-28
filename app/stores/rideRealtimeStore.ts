@@ -4,6 +4,7 @@ import { useTripStore } from './tripStore';
 import { useSocketStore } from './socketStore';
 import { useChatStore } from './chatStore';
 import { presentLocalNotification } from '../services/notifications';
+import { NavigatrService } from '../services/navigatrService';
 
 const getPassengerName = (ride: any) => {
   const passenger = ride?.passenger;
@@ -18,6 +19,7 @@ interface RideRealtimeState {
   latestBookedTrip: any | null;
   latestAcceptedRide: any | null;
   latestChatMessage: { rideId: string; text: string } | null;
+  driverEta: string | null;
   setupListeners: () => void;
   dequeueRideRequest: (rideId: string) => void;
   clearLatestRideRequest: () => void;
@@ -33,6 +35,7 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
   latestBookedTrip: null,
   latestAcceptedRide: null,
   latestChatMessage: null,
+  driverEta: null,
 
   setupListeners: () => {
     const socket = useSocketStore.getState().socket;
@@ -102,6 +105,24 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
         if (user?.role === 'driver') {
           useTripStore.getState().fetchAvailableTrips({ role: 'driver' });
         }
+      }
+    });
+
+    socket.on('driver_location_update', async (data: { lat: number; lon: number; rideId?: string }) => {
+      const currentRide = useTripStore.getState().currentRide;
+      if (!currentRide) return;
+
+      const dest = currentRide.pickupLocation || currentRide.origin;
+      if (!dest?.lat || !dest?.lon) return;
+
+      try {
+        const eta = await NavigatrService.recalculateETA(
+          { lat: data.lat, lng: data.lon },
+          { lat: Number(dest.lat), lng: Number(dest.lon) },
+        );
+        set({ driverEta: eta.durationText });
+      } catch {
+        // Keep existing ETA on error
       }
     });
 

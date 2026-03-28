@@ -26,9 +26,28 @@ export class UsersController {
         return this.usersService.updateVerificationStatus(id, body.status);
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Get('wallet')
     getWallet(@Request() req: any) {
-        return this.usersService.getWallet(req.user.id);
+        return this.usersService.getWallet(req.user.userId);
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Post('wallet/fund')
+    fundWallet(@Request() req: any, @Body() body: { amount: number }) {
+        return this.usersService.fundWallet(req.user.userId, Number(body?.amount || 0));
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Post('wallet/pay-commission')
+    payCommission(@Request() req: any, @Body() body: { amount?: number }) {
+        return this.usersService.payCommission(req.user.userId, body?.amount ? Number(body.amount) : undefined);
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Post('wallet/add-debt')
+    addCommissionDebt(@Request() req: any, @Body() body: { amount: number }) {
+        return this.usersService.addCommissionDebt(req.user.userId, Number(body?.amount || 0));
     }
 
     @UseGuards(AuthGuard('jwt'))
@@ -38,6 +57,12 @@ export class UsersController {
             return { success: false };
         }
         return this.usersService.registerExpoPushToken(req.user.userId, body.token);
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Patch('me')
+    updateProfile(@Request() req, @Body() body: { firstName?: string; lastName?: string; phone?: string; avatarUrl?: string }) {
+        return this.usersService.updateProfile(req.user.userId, body);
     }
 
     // --- Saved Places ---
@@ -69,7 +94,7 @@ export class UsersController {
 
     @UseGuards(AuthGuard('jwt'))
     @Post('driver-profile')
-    createDriverProfile(@Request() req, @Body() body) {
-        return this.usersService.createDriverProfile(req.user, body);
+    createDriverProfile(@Request() req: any, @Body() body: any) {
+        return this.usersService.createDriverProfile(req.user.userId, body);
     }
 }

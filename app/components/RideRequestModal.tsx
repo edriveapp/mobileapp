@@ -1,7 +1,7 @@
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface RideRequestModalProps {
     isVisible: boolean;
@@ -50,8 +50,8 @@ export default function RideRequestModal({ isVisible, request, onAccept, onDecli
             visible={isVisible}
             onRequestClose={onDecline}
         >
-            <View style={styles.overlay}>
-                <View style={styles.container}>
+            <Pressable style={styles.overlay} onPress={onDecline}>
+                <Pressable style={styles.container} onPress={() => {}}>
                     {/* Header: Timer */}
                     <View style={styles.header}>
                         <Text style={styles.title}>New Request</Text>
@@ -125,8 +125,8 @@ export default function RideRequestModal({ isVisible, request, onAccept, onDecli
                             <Text style={styles.acceptText}>Accept Ride</Text>
                         </TouchableOpacity>
                     </View>
-                </View>
-            </View>
+                </Pressable>
+            </Pressable>
         </Modal>
     );
 }

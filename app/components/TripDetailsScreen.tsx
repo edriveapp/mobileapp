@@ -247,10 +247,9 @@ export default function TripDetailsScreen() {
     // Card flow
     setPaymentStep('processing');
     try {
-      const distanceFallback = 15; // Mock distance if real routing isn't available
       const res = await api.post('/payments/initialize', {
         amount,
-        distance: trip?.distance || distanceFallback,
+        distance: Number(trip?.distance || trip?.distanceKm || 0),
         rideId: trip?.id
       });
       

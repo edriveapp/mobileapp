@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -16,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useSettingsStore } from '@/app/stores/settingsStore';
+import { NavigatrService } from '@/app/services/navigatrService';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 interface PlaceResult {
@@ -63,14 +65,16 @@ export default function SavedPlacesScreen() {
         searchTimeout.current = setTimeout(async () => {
             setIsSearching(true);
             try {
-                const API_KEY = 'pk.b2973113f0eed13c609ab7a517220e92';
-                const url = `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&countrycodes=ng`;
-                const response = await fetch(url);
-                const data = await response.json();
-                if (Array.isArray(data)) setSearchResults(data);
-                else setSearchResults([]);
+                const results = await NavigatrService.autocomplete(text, 5);
+                setSearchResults(results.map((r, i) => ({
+                    place_id: String(i),
+                    display_name: r.displayName || r.name,
+                    lat: String(r.lat),
+                    lon: String(r.lng),
+                })));
             } catch (error) {
                 console.error('Search Error:', error);
+                setSearchResults([]);
             } finally {
                 setIsSearching(false);
             }
@@ -88,21 +92,18 @@ export default function SavedPlacesScreen() {
             const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
             const { latitude, longitude } = loc.coords;
 
-            // Reverse geocode via LocationIQ
-            const API_KEY = 'pk.b2973113f0eed13c609ab7a517220e92';
-            const url = `https://us1.locationiq.com/v1/reverse.php?key=${API_KEY}&lat=${latitude}&lon=${longitude}&format=json`;
-            const response = await fetch(url);
-            const data = await response.json();
+            // Reverse geocode
+            const data = await NavigatrService.reverseGeocode(latitude, longitude);
 
-            if (data?.display_name) {
+            if (data?.displayName) {
                 const place: PlaceResult = {
                     place_id: `current_${Date.now()}`,
-                    display_name: data.display_name,
+                    display_name: data.displayName,
                     lat: String(latitude),
                     lon: String(longitude),
                 };
                 setSelectedPlace(place);
-                setSearchText(data.display_name.split(',')[0]);
+                setSearchText(data.displayName.split(',')[0]);
                 setSearchResults([]);
                 Keyboard.dismiss();
             } else {

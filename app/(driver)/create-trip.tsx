@@ -1,9 +1,10 @@
 import { useAuthStore } from '@/app/stores/authStore';
 import { useDriverStore } from '@/app/stores/driverStore';
 import { useTripStore } from '@/app/stores/tripStore';
+import { NavigatrService } from '@/app/services/navigatrService';
+import { getDriverSeatFloor, roundFare } from '@/app/utils/pricing';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -21,8 +22,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const LOCATION_IQ_KEY = 'pk.b2973113f0eed13c609ab7a517220e92';
 const VEHICLE_TYPES = ['Toyota Sienna', 'Toyota Corolla', '18-Seater Bus'];
 const POPULAR_ROUTES = [
   { origin: 'Lagos (Jibowu)', destination: 'Abuja (Utako)' },
@@ -36,55 +35,38 @@ const TRIP_SETUP_COST = 1000;
 const EMPTY_RETURN_BUFFER_PER_KM = 35;
 const PROFIT_MARGIN = 0.1;
 
-interface PlaceResult {
-  lat: string;
-  lon: string;
-}
-
 type RouteLookupStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-const roundFare = (value: number) => Math.ceil(value / 50) * 50;
-
-const geocodePlace = async (query: string): Promise<PlaceResult | null> => {
-  const url = `https://us1.locationiq.com/v1/search.php?key=${LOCATION_IQ_KEY}&q=${encodeURIComponent(
-    query
-  )}&format=json&addressdetails=1&limit=1&countrycodes=ng`;
-  const response = await fetch(url);
-  const data = await response.json();
-  return Array.isArray(data) && data.length > 0 ? data[0] : null;
-};
+let DateTimePickerNative: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    DateTimePickerNative = require('@react-native-community/datetimepicker').default;
+  } catch {
+    DateTimePickerNative = null;
+  }
+}
 
 const fetchRouteMetrics = async (originQuery: string, destinationQuery: string) => {
   const [originPlace, destinationPlace] = await Promise.all([
-    geocodePlace(originQuery),
-    geocodePlace(destinationQuery),
+    NavigatrService.geocode(originQuery),
+    NavigatrService.geocode(destinationQuery),
   ]);
 
-  if (!originPlace || !destinationPlace) {
-    throw new Error('We could not pin both route points yet.');
-  }
+  const result = await NavigatrService.route(
+    { lat: originPlace.lat, lng: originPlace.lng },
+    { lat: destinationPlace.lat, lng: destinationPlace.lng },
+    { maneuvers: true }
+  );
 
-  const routeUrl = `https://us1.locationiq.com/v1/directions/driving/${originPlace.lon},${originPlace.lat};${destinationPlace.lon},${destinationPlace.lat}?key=${LOCATION_IQ_KEY}&steps=false&alternatives=false&geometries=polyline&overview=false`;
-  const routeResponse = await fetch(routeUrl);
-  const routeData = await routeResponse.json();
-  const meters = Number(routeData?.routes?.[0]?.distance ?? 0);
-
-  if (!meters) {
+  const distanceKm = Math.round(result.distanceMeters / 1000);
+  if (!distanceKm) {
     throw new Error('Route distance is unavailable right now.');
   }
 
   return {
-    distanceKm: Math.round(meters / 1000),
-    originCoords: {
-      lat: Number(originPlace.lat),
-      lon: Number(originPlace.lon),
-      address: originQuery.trim(),
-    },
-    destinationCoords: {
-      lat: Number(destinationPlace.lat),
-      lon: Number(destinationPlace.lon),
-      address: destinationQuery.trim(),
-    },
+    distanceKm,
+    originCoords: { lat: originPlace.lat, lon: originPlace.lng, address: originQuery.trim() },
+    destinationCoords: { lat: destinationPlace.lat, lon: destinationPlace.lng, address: destinationQuery.trim() },
   };
 };
 
@@ -169,6 +151,10 @@ export default function CreateTripScreen() {
   );
   const seatsCount = Math.max(parseInt(seats || '1', 10) || 1, 1);
   const priceModel = useMemo(() => buildPriceModel(routeDistanceKm, seatsCount), [routeDistanceKm, seatsCount]);
+  const seatPriceFloor = useMemo(
+    () => getDriverSeatFloor(priceModel.totalTripFare, seatsCount),
+    [priceModel.totalTripFare, seatsCount]
+  );
 
   useEffect(() => {
     if (tripId && activeTrips.length === 0) {
@@ -300,6 +286,15 @@ export default function CreateTripScreen() {
       return false;
     }
 
+    const numericSeatPrice = Number(price);
+    if (!numericSeatPrice || numericSeatPrice < seatPriceFloor) {
+      Alert.alert(
+        'Price too low',
+        `Minimum seat price for this route is ₦${seatPriceFloor.toLocaleString()} to protect trip costs.`
+      );
+      return false;
+    }
+
     if (user?.verificationStatus !== 'approved') {
       Alert.alert('Verification Pending', 'You cannot create a trip until your documents have been verified by an admin.');
       return false;
@@ -380,7 +375,7 @@ export default function CreateTripScreen() {
     routeLookupStatus === 'idle'
       ? 'Distance starts from 0 until both route points are known.'
       : routeLookupStatus === 'loading'
-        ? 'Checking LocationIQ for driving distance...'
+        ? 'Calculating driving distance...'
         : routeLookupStatus === 'ready'
           ? `${routeDistanceKm} km route confirmed.`
           : routeError || 'Could not calculate this route yet.';
@@ -471,17 +466,35 @@ export default function CreateTripScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.scheduleRow}>
-              <TouchableOpacity style={styles.scheduleButton} onPress={() => setShowDatePicker(true)}>
+              <TouchableOpacity
+                style={styles.scheduleButton}
+                onPress={() => {
+                  if (!DateTimePickerNative) {
+                    Alert.alert('Unavailable', 'Date/Time picker is not available in this runtime. Use a development build.');
+                    return;
+                  }
+                  setShowDatePicker(true);
+                }}
+              >
                 <Text style={styles.scheduleLabel}>Date</Text>
                 <Text style={styles.scheduleValue}>{formatDate(selectedDate)}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.scheduleButton} onPress={() => setShowTimePicker(true)}>
+              <TouchableOpacity
+                style={styles.scheduleButton}
+                onPress={() => {
+                  if (!DateTimePickerNative) {
+                    Alert.alert('Unavailable', 'Date/Time picker is not available in this runtime. Use a development build.');
+                    return;
+                  }
+                  setShowTimePicker(true);
+                }}
+              >
                 <Text style={styles.scheduleLabel}>Time</Text>
                 <Text style={styles.scheduleValue}>{formatTime(selectedDate)}</Text>
               </TouchableOpacity>
             </View>
-            {showDatePicker && (
-              <DateTimePicker
+            {showDatePicker && DateTimePickerNative && (
+              <DateTimePickerNative
                 value={selectedDate}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'inline' : 'default'}
@@ -489,8 +502,8 @@ export default function CreateTripScreen() {
                 minimumDate={new Date()}
               />
             )}
-            {showTimePicker && (
-              <DateTimePicker
+            {showTimePicker && DateTimePickerNative && (
+              <DateTimePickerNative
                 value={selectedDate}
                 mode="time"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
@@ -540,6 +553,9 @@ export default function CreateTripScreen() {
 
             <Text style={styles.helpText}>
               Simple pricing: trip running cost + small return cover + 10% margin, then divided by seats.
+            </Text>
+            <Text style={styles.floorText}>
+              Minimum allowed seat fare: ₦{seatPriceFloor.toLocaleString()}
             </Text>
 
             <View style={styles.suggestionRow}>
@@ -873,6 +889,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: Fonts.rounded,
     lineHeight: 18,
+    marginBottom: 6,
+  },
+  floorText: {
+    color: '#B54708',
+    fontSize: 12,
+    fontFamily: Fonts.semibold,
     marginBottom: 10,
   },
   suggestionRow: {

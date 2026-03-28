@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import api from '../services/api';
 
 export interface Transaction {
     id: string;
@@ -15,73 +16,32 @@ interface WalletState {
     transactions: Transaction[];
 
     // Actions
-    fundWallet: (amount: number) => void;
-    payCommission: () => void;
-    addCommissionDebt: (amount: number) => void;
+    fundWallet: (amount: number) => Promise<void>;
+    payCommission: (amount?: number) => Promise<void>;
+    addCommissionDebt: (amount: number) => Promise<void>;
     isAccountAtRisk: () => boolean; // Checks the 30-day rule
     fetchWallet: () => Promise<void>;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
-    balance: 25000, // Mock initial balance
-    commissionDue: 4500, // Mock initial debt
-    lastCommissionPaymentDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toISOString(), // 15 days ago
-    transactions: [
-        {
-            id: 'tx-1',
-            type: 'credit',
-            amount: 50000,
-            date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-            description: 'Wallet Funding',
-        },
-        {
-            id: 'tx-2',
-            type: 'commission_deduction',
-            amount: 2500,
-            date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
-            description: 'Commission Payment - Trip #1023',
-        },
-    ],
+    balance: 0,
+    commissionDue: 0,
+    lastCommissionPaymentDate: null,
+    transactions: [],
 
-    fundWallet: (amount) => {
-        set((state) => ({
-            balance: state.balance + amount,
-            transactions: [
-                {
-                    id: `tx-${Date.now()}`,
-                    type: 'credit',
-                    amount,
-                    date: new Date().toISOString(),
-                    description: 'Wallet Funding',
-                },
-                ...state.transactions,
-            ],
-        }));
+    fundWallet: async (amount) => {
+        await api.post('/users/wallet/fund', { amount });
+        await get().fetchWallet();
     },
 
-    payCommission: () => {
-        const { balance, commissionDue } = get();
-        if (balance >= commissionDue && commissionDue > 0) {
-            set((state) => ({
-                balance: state.balance - commissionDue,
-                commissionDue: 0,
-                lastCommissionPaymentDate: new Date().toISOString(),
-                transactions: [
-                    {
-                        id: `tx-${Date.now()}`,
-                        type: 'commission_deduction',
-                        amount: commissionDue,
-                        date: new Date().toISOString(),
-                        description: 'Full Commission Payment',
-                    },
-                    ...state.transactions,
-                ],
-            }));
-        }
+    payCommission: async (amount) => {
+        await api.post('/users/wallet/pay-commission', { amount });
+        await get().fetchWallet();
     },
 
-    addCommissionDebt: (amount) => {
-        set((state) => ({ commissionDue: state.commissionDue + amount }));
+    addCommissionDebt: async (amount) => {
+        await api.post('/users/wallet/add-debt', { amount });
+        await get().fetchWallet();
     },
 
     isAccountAtRisk: () => {
@@ -101,7 +61,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
             const response = await api.get('/users/wallet');
             set({
                 balance: Number(response.data.balance || 0),
-                commissionDue: Number(response.data.commissionDue || 0),
+                commissionDue: Number(response.data.commissionDue ?? response.data.pendingRemittance ?? 0),
+                lastCommissionPaymentDate: response.data.lastCommissionPaymentDate || null,
                 transactions: response.data.transactions || [],
             });
         } catch (error) {

@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Point } from 'geojson';
 import { Repository } from 'typeorm';
+import { MailerService } from '../common/mailer.service';
 import { DriverProfile } from './driver-profile.entity';
 import { SavedPlace } from './saved-place.entity';
-import { User, UserRole } from './user.entity';
+import { AdminScope, User, UserRole, VerificationStatus } from './user.entity';
 
 @Injectable()
 export class UsersService {
@@ -15,6 +16,7 @@ export class UsersService {
         private driverProfileRepository: Repository<DriverProfile>,
         @InjectRepository(SavedPlace)
         private savedPlaceRepository: Repository<SavedPlace>,
+        private readonly mailerService: MailerService,
     ) { }
 
     async findOneByEmail(email: string): Promise<User | null> {
@@ -56,8 +58,77 @@ export class UsersService {
             balance: Number(user.balance || 0),
             pendingRemittance: Number(user.pendingRemittance || 0),
             commissionDue: Number(user.pendingRemittance || 0), // Same thing in this context
+            lastCommissionPaymentDate: null,
             transactions: [], // To be populated if needed
         };
+    }
+
+    async fundWallet(userId: string, amount: number) {
+        if (!amount || amount <= 0) {
+            throw new BadRequestException('Invalid amount');
+        }
+        await this.usersRepository.update(userId, {
+            balance: () => `balance + ${amount}`,
+        });
+        return this.getWallet(userId);
+    }
+
+    async payCommission(userId: string, amount?: number) {
+        const user = await this.findOneById(userId);
+        if (!user) throw new NotFoundException('User not found');
+
+        const due = Number(user.pendingRemittance || 0);
+        const payAmount = amount && amount > 0 ? Math.min(amount, due) : due;
+
+        if (payAmount <= 0) return this.getWallet(userId);
+        if (Number(user.balance || 0) < payAmount) {
+            throw new BadRequestException('Insufficient wallet balance');
+        }
+
+        await this.usersRepository.update(userId, {
+            balance: () => `balance - ${payAmount}`,
+            pendingRemittance: () => `pendingRemittance - ${payAmount}`,
+        });
+        return this.getWallet(userId);
+    }
+
+    async addCommissionDebt(userId: string, amount: number) {
+        if (!amount || amount <= 0) {
+            throw new BadRequestException('Invalid amount');
+        }
+        await this.usersRepository.update(userId, {
+            pendingRemittance: () => `pendingRemittance + ${amount}`,
+        });
+        return this.getWallet(userId);
+    }
+
+    async updateProfile(userId: string, profile: { firstName?: string; lastName?: string; phone?: string; avatarUrl?: string }): Promise<User> {
+        const user = await this.findOneById(userId);
+        if (!user) throw new NotFoundException('User not found');
+
+        const updatePayload: Partial<User> = {};
+
+        if (typeof profile.firstName === 'string') {
+            updatePayload.firstName = profile.firstName.trim();
+        }
+        if (typeof profile.lastName === 'string') {
+            updatePayload.lastName = profile.lastName.trim();
+        }
+        if (typeof profile.phone === 'string') {
+            updatePayload.phone = profile.phone.trim();
+        }
+        if (typeof profile.avatarUrl === 'string') {
+            updatePayload.avatarUrl = profile.avatarUrl.trim();
+        }
+
+        // Avoid TypeORM "update values are not defined" when nothing was provided.
+        if (Object.keys(updatePayload).length > 0) {
+            await this.usersRepository.update(userId, updatePayload);
+        }
+
+        const updated = await this.findOneById(userId);
+        if (!updated) throw new NotFoundException('User not found');
+        return updated;
     }
 
     async registerExpoPushToken(userId: string, token: string): Promise<User> {
@@ -113,18 +184,91 @@ export class UsersService {
         return this.driverProfileRepository.findOne({ where: { user: { id: userId } }, relations: ['user'] });
     }
 
-    async createDriverProfile(user: User, details: any): Promise<DriverProfile> {
+    async createDriverProfile(userId: string, details: any): Promise<DriverProfile> {
+        const user = await this.findOneById(userId);
+        if (!user) throw new NotFoundException('User not found');
+
+        const userUpdatePayload: Partial<User> = {};
         if (user.role !== UserRole.DRIVER) {
-            user.role = UserRole.DRIVER;
-            await this.usersRepository.save(user);
+            userUpdatePayload.role = UserRole.DRIVER;
+        }
+        if (user.verificationStatus !== VerificationStatus.PENDING) {
+            userUpdatePayload.verificationStatus = VerificationStatus.PENDING;
+        }
+        if (Object.keys(userUpdatePayload).length > 0) {
+            await this.usersRepository.update(userId, userUpdatePayload);
+            if (userUpdatePayload.role) {
+                user.role = userUpdatePayload.role;
+            }
+            if (userUpdatePayload.verificationStatus) {
+                user.verificationStatus = userUpdatePayload.verificationStatus;
+            }
+        }
+
+        const existing = await this.driverProfileRepository.findOne({
+            where: { user: { id: userId } },
+            relations: ['user'],
+        });
+
+        const nextVehicleDetails = details?.vehicleDetails;
+        const nextLicenseDetails = details?.licenseDetails;
+        const nextOnboardingMeta = details?.onboardingMeta;
+
+        if (existing) {
+            const updatePayload: Partial<DriverProfile> = {};
+
+            if (nextVehicleDetails && JSON.stringify(existing.vehicleDetails || {}) !== JSON.stringify(nextVehicleDetails)) {
+                updatePayload.vehicleDetails = nextVehicleDetails;
+            }
+
+            if (nextLicenseDetails && JSON.stringify(existing.licenseDetails || {}) !== JSON.stringify(nextLicenseDetails)) {
+                updatePayload.licenseDetails = nextLicenseDetails;
+            }
+            if (nextOnboardingMeta && JSON.stringify(existing.onboardingMeta || {}) !== JSON.stringify(nextOnboardingMeta)) {
+                updatePayload.onboardingMeta = nextOnboardingMeta;
+            }
+
+            if (Object.keys(updatePayload).length === 0) {
+                return existing;
+            }
+
+            await this.driverProfileRepository.update(existing.id, updatePayload);
+
+            const refreshed = await this.driverProfileRepository.findOne({
+                where: { id: existing.id },
+                relations: ['user'],
+            });
+            if (!refreshed) throw new NotFoundException('Driver profile not found after update');
+
+            const recipients = await this.getVerificationNotificationEmails();
+            await this.mailerService.sendEmail(
+                recipients,
+                `Driver verification submitted: ${user.email}`,
+                `<p>Driver <strong>${user.email}</strong> submitted/updated onboarding details for verification.</p>`,
+                `Driver ${user.email} submitted onboarding details.`,
+            );
+
+            return refreshed;
         }
 
         const profile = this.driverProfileRepository.create({
             user,
-            ...details
+            vehicleDetails: nextVehicleDetails || null,
+            licenseDetails: nextLicenseDetails || null,
+            onboardingMeta: nextOnboardingMeta || null,
         } as Partial<DriverProfile>);
 
-        return this.driverProfileRepository.save(profile);
+        const savedProfile = await this.driverProfileRepository.save(profile);
+
+        const recipients = await this.getVerificationNotificationEmails();
+        await this.mailerService.sendEmail(
+            recipients,
+            `New driver verification request: ${user.email}`,
+            `<p>Driver <strong>${user.email}</strong> submitted onboarding details for verification.</p>`,
+            `Driver ${user.email} submitted onboarding details.`,
+        );
+
+        return savedProfile;
     }
 
     async updateDriverLocation(driverId: string, lat: number, lon: number): Promise<void> {
@@ -150,5 +294,16 @@ export class UsersService {
             })
             .andWhere('driver.isOnline = :isOnline', { isOnline: true })
             .getMany();
+    }
+
+    private async getVerificationNotificationEmails() {
+        const admins = await this.usersRepository.find({
+            where: { role: UserRole.ADMIN },
+        });
+
+        return admins
+            .filter((admin) => [AdminScope.SUPER_ADMIN, AdminScope.VERIFICATION, AdminScope.OPERATIONS].includes(admin.adminScope))
+            .map((admin) => admin.email)
+            .filter(Boolean);
     }
 }

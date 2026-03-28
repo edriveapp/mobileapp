@@ -1,27 +1,52 @@
 import React, { useState } from 'react';
 import { CheckCircle, XCircle, Search, FileText } from 'lucide-react';
+import { apiRequest } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 
-const INITIAL_DRIVERS = [
-  { id: 'usr_1', name: 'John Doe', status: 'pending', license: 'DF-9823-1', uploaded: '2026-03-24' },
-  { id: 'usr_2', name: 'Althea James', status: 'pending', license: 'NG-1920-5', uploaded: '2026-03-23' },
-  { id: 'usr_3', name: 'Michael Olu', status: 'pending', license: 'ABJ-3841-9', uploaded: '2026-03-23' },
-];
+type PendingDriver = {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  createdAt: string;
+  driverProfile?: {
+    onboardingMeta?: {
+      nin?: string;
+      guarantorName?: string;
+      guarantorPhone?: string;
+      nextOfKinName?: string;
+      nextOfKinPhone?: string;
+    };
+    vehicleDetails?: {
+      insuranceDocumentUrl?: string;
+      worthinessCertificateUrl?: string;
+      vehiclePhotoUrls?: string[];
+    };
+    licenseDetails?: {
+      number?: string;
+      documentUrl?: string;
+    };
+  };
+};
 
 export default function Drivers() {
-  const [drivers, setDrivers] = useState<any[]>([]);
+  const { token } = useAuth();
+  const [drivers, setDrivers] = useState<PendingDriver[]>([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   React.useEffect(() => {
-    fetchDrivers();
-  }, []);
+    fetchDrivers(token);
+  }, [token]);
 
-  const fetchDrivers = async () => {
+  const fetchDrivers = async (authToken: string | null) => {
     try {
-      const res = await fetch('http://localhost:3000/admin/drivers/pending');
-      const data = await res.json();
+      setError(null);
+      const data = await apiRequest<PendingDriver[]>('/admin/drivers/pending', { token: authToken });
       setDrivers(data);
-    } catch (err) {
-      console.error('Failed to fetch drivers', err);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to fetch drivers');
     } finally {
       setLoading(false);
     }
@@ -29,29 +54,39 @@ export default function Drivers() {
 
   const handleApprove = async (id: string) => {
     try {
-      await fetch(`http://localhost:3000/admin/users/${id}/verify`, {
+      await apiRequest(`/admin/users/${id}/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'approved' }),
+        token,
+        body: { status: 'approved' },
       });
       setDrivers(drivers.filter(d => d.id !== id));
-    } catch (err) {
-      alert('Failed to approve driver');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to approve driver');
     }
   };
 
   const handleReject = async (id: string) => {
     try {
-      await fetch(`http://localhost:3000/admin/users/${id}/verify`, {
+      await apiRequest(`/admin/users/${id}/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'rejected' }),
+        token,
+        body: { status: 'rejected' },
       });
       setDrivers(drivers.filter(d => d.id !== id));
-    } catch (err) {
-      alert('Failed to reject driver');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to reject driver');
     }
   };
+
+  const filteredDrivers = drivers.filter((driver) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      `${driver.firstName || ''} ${driver.lastName || ''}`.toLowerCase().includes(q) ||
+      driver.email.toLowerCase().includes(q) ||
+      (driver.driverProfile?.licenseDetails?.number || '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="p-8 space-y-6">
@@ -65,10 +100,14 @@ export default function Drivers() {
           <input 
             type="text" 
             placeholder="Search drivers..." 
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
             className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 w-64 shadow-sm"
           />
         </div>
       </div>
+      {loading ? <p className="text-sm text-gray-500">Loading pending drivers...</p> : null}
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
@@ -77,19 +116,20 @@ export default function Drivers() {
               <tr className="bg-gray-50 border-b border-gray-100 text-sm font-medium text-gray-500">
                 <th className="p-4 pl-6">Driver Name</th>
                 <th className="p-4">License / ID Number</th>
+                <th className="p-4">Verification Details</th>
                 <th className="p-4">Submitted Date</th>
                 <th className="p-4">Documents</th>
                 <th className="p-4 text-right pr-6">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
-              {drivers.length === 0 ? (
+              {filteredDrivers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500">
+                  <td colSpan={6} className="p-8 text-center text-gray-500">
                     No drivers pending verification. Great job!
                   </td>
                 </tr>
-              ) : drivers.map(driver => (
+              ) : filteredDrivers.map(driver => (
                 <tr key={driver.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="p-4 pl-6 font-medium text-gray-900">
                     {driver.firstName} {driver.lastName}
@@ -98,23 +138,70 @@ export default function Drivers() {
                   <td className="p-4 text-gray-600 font-mono text-xs">
                     {driver.driverProfile?.licenseDetails?.number || 'N/A'}
                   </td>
+                  <td className="p-4 text-xs text-gray-600">
+                    <div>NIN: {driver.driverProfile?.onboardingMeta?.nin || 'N/A'}</div>
+                    <div>
+                      Guarantor: {driver.driverProfile?.onboardingMeta?.guarantorName || 'N/A'}
+                      {driver.driverProfile?.onboardingMeta?.guarantorPhone ? ` (${driver.driverProfile?.onboardingMeta?.guarantorPhone})` : ''}
+                    </div>
+                  </td>
                   <td className="p-4 text-gray-500">
                     {new Date(driver.createdAt).toLocaleDateString()}
                   </td>
-                  <td className="p-4">
-                    {driver.driverProfile?.licenseDetails?.documentUrl ? (
-                      <a 
-                        href={driver.driverProfile.licenseDetails.documentUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-medium"
-                      >
-                        <FileText className="w-4 h-4" />
-                        View ID
-                      </a>
-                    ) : (
-                      <span className="text-gray-400 italic text-xs">No files</span>
-                    )}
+                  <td className="p-4 text-xs">
+                    <div className="flex flex-col gap-1">
+                      {driver.driverProfile?.licenseDetails?.documentUrl ? (
+                        <a
+                          href={driver.driverProfile.licenseDetails.documentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-medium"
+                        >
+                          <FileText className="w-4 h-4" />
+                          License
+                        </a>
+                      ) : null}
+                      {driver.driverProfile?.vehicleDetails?.insuranceDocumentUrl ? (
+                        <a
+                          href={driver.driverProfile.vehicleDetails.insuranceDocumentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-medium"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Insurance
+                        </a>
+                      ) : null}
+                      {driver.driverProfile?.vehicleDetails?.worthinessCertificateUrl ? (
+                        <a
+                          href={driver.driverProfile.vehicleDetails.worthinessCertificateUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-medium"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Worthiness
+                        </a>
+                      ) : null}
+                      {(driver.driverProfile?.vehicleDetails?.vehiclePhotoUrls || []).map((url, index) => (
+                        <a
+                          key={url + index}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-medium"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Vehicle Photo {index + 1}
+                        </a>
+                      ))}
+                      {!driver.driverProfile?.licenseDetails?.documentUrl &&
+                      !driver.driverProfile?.vehicleDetails?.insuranceDocumentUrl &&
+                      !driver.driverProfile?.vehicleDetails?.worthinessCertificateUrl &&
+                      (driver.driverProfile?.vehicleDetails?.vehiclePhotoUrls || []).length === 0 ? (
+                        <span className="text-gray-400 italic">No files</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="p-4 pr-6 flex justify-end gap-2">
                     <button 

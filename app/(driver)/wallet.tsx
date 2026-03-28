@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -25,11 +25,16 @@ export default function WalletScreen() {
         transactions,
         payCommission,
         fundWallet,
+        fetchWallet,
         isAccountAtRisk
     } = useWalletStore();
 
     const [loading, setLoading] = useState(false);
     const atRisk = isAccountAtRisk();
+
+    useEffect(() => {
+        fetchWallet();
+    }, [fetchWallet]);
 
     const handlePayCommission = () => {
         if (balance < commissionDue) {
@@ -46,12 +51,14 @@ export default function WalletScreen() {
                     text: "Pay Now",
                     onPress: async () => {
                         setLoading(true);
-                        // Simulate API call
-                        setTimeout(() => {
-                            payCommission();
-                            setLoading(false);
+                        try {
+                            await payCommission(commissionDue);
                             Alert.alert("Success", "Commission paid successfully!");
-                        }, 1500);
+                        } catch (error: any) {
+                            Alert.alert("Payment failed", error?.message || "Could not complete commission payment.");
+                        } finally {
+                            setLoading(false);
+                        }
                     }
                 }
             ]
@@ -59,9 +66,22 @@ export default function WalletScreen() {
     };
 
     const handleFundWallet = () => {
-        Alert.alert("Fund Wallet", "This feature will integrate with a payment gateway. Simulating ₦10,000.", [
+        Alert.alert("Fund Wallet", "Add ₦10,000 to your wallet now?", [
             { text: "Cancel", style: "cancel" },
-            { text: "Simulate Fund", onPress: () => fundWallet(10000) }
+            {
+                text: "Fund ₦10,000",
+                onPress: async () => {
+                    try {
+                        setLoading(true);
+                        await fundWallet(10000);
+                        Alert.alert("Wallet funded", "₦10,000 was added to your wallet.");
+                    } catch (error: any) {
+                        Alert.alert("Funding failed", error?.message || "Could not fund wallet.");
+                    } finally {
+                        setLoading(false);
+                    }
+                }
+            }
         ]);
     };
 

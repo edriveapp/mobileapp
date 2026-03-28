@@ -1,33 +1,21 @@
 import { User } from '../types';
-
-// Mock delay to simulate network request
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import api from './api';
 
 export const AuthService = {
     login: async (email: string, password: string): Promise<User> => {
-        await delay(1000); // Simulate API call
-
-        // Mock successful login
-        return {
-            id: 'user-123',
-            name: 'John Doe',
-            email: email,
-            role: 'rider', // Default mock role
-            phoneNumber: '+2348012345678',
-            isVerified: true,
-        };
+        const response = await api.post('/auth/login', { email, password });
+        return response.data?.user;
     },
 
-    signup: async (name: string, email: string, phoneNumber: string, role: 'driver' | 'rider'): Promise<User> => {
-        await delay(1500); // Simulate API call
-
-        return {
-            id: `user-${Math.floor(Math.random() * 1000)}`,
+    signup: async (name: string, email: string, phoneNumber: string, role: 'driver' | 'passenger', password?: string): Promise<User> => {
+        const payload = {
             name,
             email,
+            phone: phoneNumber,
             role,
-            phoneNumber,
-            isVerified: false,
+            password,
         };
+        const response = await api.post('/auth/register', payload);
+        return response.data?.user;
     },
 };

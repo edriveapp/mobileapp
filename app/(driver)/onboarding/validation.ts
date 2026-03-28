@@ -11,6 +11,11 @@ export const validateLicenseNumber = (license: string): boolean => {
     return license.trim().length >= 5;
 };
 
+export const validateNIN = (nin: string): boolean => {
+    // Exactly 11 digits
+    return /^\d{11}$/.test(nin.trim());
+};
+
 export const validateDate = (date: string): boolean => {
     // Basic date validation (format: YYYY-MM-DD or DD/MM/YYYY)
     if (!date) return false;
@@ -50,6 +55,11 @@ export const validateDriverInfoStep = (driverInfo: {
     address: string;
     licenseNumber: string;
     licenseExpiry: string;
+    nin: string;
+    guarantorName: string;
+    guarantorPhone: string;
+    nextOfKinName: string;
+    nextOfKinPhone: string;
 }): boolean => {
     return (
         validateRequired(driverInfo.fullName) &&
@@ -57,7 +67,12 @@ export const validateDriverInfoStep = (driverInfo: {
         validateDate(driverInfo.dateOfBirth) &&
         validateRequired(driverInfo.address) &&
         validateLicenseNumber(driverInfo.licenseNumber) &&
-        validateFutureDate(driverInfo.licenseExpiry)
+        validateFutureDate(driverInfo.licenseExpiry) &&
+        validateNIN(driverInfo.nin) &&
+        validateRequired(driverInfo.guarantorName) &&
+        validatePhoneNumber(driverInfo.guarantorPhone) &&
+        validateRequired(driverInfo.nextOfKinName) &&
+        validatePhoneNumber(driverInfo.nextOfKinPhone)
     );
 };
 
@@ -67,17 +82,24 @@ export const validateVehicleStep = (vehicleInfo: {
     model: string;
     year: string;
     plateNumber: string;
+    capacity?: string;
 }, documents: {
     licenseImageUri: string | null;
+    insuranceImageUri: string | null;
+    worthinessImageUri: string | null;
     vehiclePhotos: string[];
 }): boolean => {
+    const isBus = ['Van', 'Minibus', 'Coaster Bus'].includes(vehicleInfo.type);
     return (
         validateRequired(vehicleInfo.type) &&
         validateRequired(vehicleInfo.make) &&
         validateRequired(vehicleInfo.model) &&
         validateYear(vehicleInfo.year) &&
         validateRequired(vehicleInfo.plateNumber) &&
+        (!isBus || validateRequired(vehicleInfo.capacity || '')) &&
         documents.licenseImageUri !== null &&
+        documents.insuranceImageUri !== null &&
+        documents.worthinessImageUri !== null &&
         documents.vehiclePhotos.length > 0
     );
 };

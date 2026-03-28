@@ -1,43 +1,60 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { 
-  Users, 
   CarFront, 
   LayoutDashboard, 
   ShieldCheck, 
-  LifeBuoy
+  LifeBuoy,
+  LogOut,
+  UserCog,
 } from 'lucide-react';
 
 import Overview from './pages/Overview.tsx';
 import Drivers from './pages/Drivers.tsx';
 import UsersRides from './pages/UsersRides.tsx';
 import Support from './pages/Support.tsx';
+import Login from './pages/Login.tsx';
+import { AuthProvider, useAuth } from './lib/auth.tsx';
 
 const App = () => {
   return (
-    <Router>
-      <div className="flex h-screen bg-gray-50 font-sans">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto">
-          <Routes>
-            <Route path="/" element={<Overview />} />
-            <Route path="/drivers" element={<Drivers />} />
-            <Route path="/users-rides" element={<UsersRides />} />
-            <Route path="/support" element={<Support />} />
-          </Routes>
-        </main>
-      </div>
-    </Router>
+    <AuthProvider>
+      <Router>
+        <AppRoutes />
+      </Router>
+    </AuthProvider>
+  );
+};
+
+const AppRoutes = () => {
+  const { token } = useAuth();
+  if (!token) {
+    return <Login />;
+  }
+
+  return (
+    <div className="flex h-screen bg-gray-50 font-sans">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        <Routes>
+          <Route path="/" element={<Overview />} />
+          <Route path="/drivers" element={<Drivers />} />
+          <Route path="/users-rides" element={<UsersRides />} />
+          <Route path="/support" element={<Support />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </div>
   );
 };
 
 const Sidebar = () => {
   const location = useLocation();
+  const { user, logout } = useAuth();
 
   const navItems = [
     { name: 'Overview', path: '/', icon: LayoutDashboard },
     { name: 'Drivers Verification', path: '/drivers', icon: ShieldCheck },
-    { name: 'Users & Rides', path: '/users-rides', icon: Users },
+    { name: 'Users, Rides & Roles', path: '/users-rides', icon: UserCog },
     { name: 'Customer Support', path: '/support', icon: LifeBuoy },
   ];
 
@@ -66,8 +83,18 @@ const Sidebar = () => {
           );
         })}
       </nav>
-      <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">
-        eDrive Admin Panel
+      <div className="p-4 border-t border-slate-800">
+        <div className="mb-3">
+          <p className="text-xs text-slate-400">{user?.email}</p>
+          <p className="text-[11px] text-emerald-400 uppercase tracking-wide">{user?.role}</p>
+        </div>
+        <button
+          onClick={logout}
+          className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-sm flex items-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          Sign Out
+        </button>
       </div>
     </div>
   );

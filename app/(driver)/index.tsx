@@ -1,5 +1,4 @@
 import { useAuthStore } from '@/app/stores/authStore';
-import { useDriverStore } from '@/app/stores/driverStore';
 import { useRideRealtimeStore } from '@/app/stores/rideRealtimeStore';
 import { useTripStore } from '@/app/stores/tripStore';
 import RideRequestModal from '@/app/components/RideRequestModal';
@@ -15,12 +14,12 @@ import {
 } from 'react-native';
 // 1. FIX: Import SafeAreaView from the correct library
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function DriverHome() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { user, logout } = useAuthStore();
-    const hasCompletedOnboarding = useDriverStore((s) => s.hasCompletedOnboarding);
     const { availableTrips, activeTrips, history, fetchAvailableTrips, fetchMyTrips, acceptRide, cancelRide, updateTripStatus } = useTripStore();
     const latestRideRequest = useRideRealtimeStore((state) => state.latestRideRequest);
     const requestQueue = useRideRealtimeStore((state) => state.requestQueue);
@@ -73,6 +72,18 @@ export default function DriverHome() {
                 }
             }
         ]);
+    };
+
+    const openOnboarding = () => {
+        if (user?.verificationStatus === 'pending') {
+            Alert.alert(
+                'Verification In Progress',
+                'Your profile is pending review. Editing is locked until approval or rejection.'
+            );
+            router.push('/(driver)/onboarding/review');
+            return;
+        }
+        router.push('/(driver)/onboarding');
     };
 
     const handleEditTrip = (tripId: string) => {
@@ -154,7 +165,7 @@ export default function DriverHome() {
                 onRequestClose={() => setMenuVisible(false)}
             >
                 <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
-                    <View style={styles.sideMenu}>
+                    <View style={[styles.sideMenu, { paddingTop: insets.top + 28 }]}>
                         {/* Menu Header */}
                         <View style={styles.menuHeader}>
                             <View style={styles.menuUserContainer}>
@@ -191,7 +202,7 @@ export default function DriverHome() {
                             style={styles.menuItem}
                             onPress={() => {
                                 setMenuVisible(false);
-                                router.push('/(driver)/onboarding'); // Re-visit onboarding to edit
+                                openOnboarding();
                             }}
                         >
                             <Ionicons name="person-outline" size={22} color={COLORS.text} />
@@ -207,6 +218,17 @@ export default function DriverHome() {
                         >
                             <Ionicons name="settings-outline" size={22} color={COLORS.text} />
                             <Text style={styles.menuItemText}>Settings</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => {
+                                setMenuVisible(false);
+                                router.push('/support');
+                            }}
+                        >
+                            <Ionicons name="help-circle-outline" size={22} color={COLORS.text} />
+                            <Text style={styles.menuItemText}>Help & Support</Text>
                         </TouchableOpacity>
 
                         {/* Spacer to push logout to bottom */}
@@ -245,7 +267,7 @@ export default function DriverHome() {
                             styles.alertBanner, 
                             user?.verificationStatus === 'pending' ? styles.alertBannerPending : styles.alertBannerUnverified
                         ]} 
-                        onPress={() => router.push('/(driver)/onboarding')}
+                        onPress={openOnboarding}
                     >
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                             <Ionicons 
@@ -474,28 +496,28 @@ export default function DriverHome() {
                 {/* 4. Earnings Card */}
                 <TouchableOpacity
                     style={[styles.card, styles.cardBorderGreen]}
-                    onPress={() => console.log('View Earnings')}
+                    onPress={() => router.push('/(driver)/earnings')}
                 >
                     <View style={styles.cardRow}>
                         <View>
                             <Text style={styles.cardTitle}>Earnings</Text>
                             <Text style={styles.cardSubtitle}>Total Earnings</Text>
                         </View>
-                        <Text style={styles.seeDetails}>see details</Text>
+                        <Text style={styles.seeDetails}>{stats.earnings}</Text>
                     </View>
                 </TouchableOpacity>
 
                 {/* 5. Remittance Card */}
                 <TouchableOpacity
                     style={[styles.card, styles.cardBgRed]}
-                    onPress={() => console.log('View Remittance')}
+                    onPress={() => router.push('/(driver)/remittance')}
                 >
                     <View style={styles.cardRow}>
                         <View>
                             <Text style={styles.cardTitle}>Remittance</Text>
                             <Text style={styles.cardSubtitle}>Total Remittance</Text>
                         </View>
-                        <Text style={styles.seeDetails}>see details</Text>
+                        <Text style={styles.seeDetails}>{stats.remittance}</Text>
                     </View>
                 </TouchableOpacity>
 
@@ -614,7 +636,6 @@ const styles = StyleSheet.create({
         height: '100%',
         backgroundColor: '#fff',
         padding: SPACING.l,
-        paddingTop: 60,
     },
     menuHeader: {
         flexDirection: 'row',
@@ -1004,18 +1025,5 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.rounded,
         fontSize: 13,
         textAlign: 'center',
-    },
-    alertBanner: {
-        backgroundColor: '#FFF3CD',
-        borderColor: '#FFEEBA',
-        borderWidth: 1,
-        padding: 10,
-        borderRadius: 8,
-        marginBottom: 20,
-        alignItems: 'center',
-    },
-    alertText: {
-        color: '#856404',
-        fontSize: 14,
     },
 });

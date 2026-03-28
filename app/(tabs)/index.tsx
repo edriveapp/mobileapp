@@ -9,6 +9,7 @@ import {
   Easing,
   FlatList,
   Keyboard, Pressable,
+  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -21,6 +22,7 @@ import Svg, { Path } from 'react-native-svg';
 // --- IMPORTS FROM YOUR LOGIC SNIPPET ---
 import { LocationService } from '@/app/services/locationService';
 import { useTripStore } from '@/app/stores/tripStore';
+import { useRideRealtimeStore } from '@/app/stores/rideRealtimeStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 // Components
@@ -28,7 +30,7 @@ import ActiveTripSheet from '../components/ActiveTripSheet';
 import JoinRideView from '../components/joinride';
 import RequestDetailsSheet, { RequestDetails } from '../components/RequestDetailsSheet';
 import RatingModal from '../components/RatingModal';
-import RideEstimationSheet from '../components/RideEstimationSheet';
+
 import { useAuthStore } from '../stores/authStore';
 
 const { height } = Dimensions.get('window');
@@ -143,7 +145,6 @@ const {
     trips,
     fetchTrips,
     fetchNearbyDrivers,
-    requestRide,
     cancelRide, // Import cancel action
     updateRideRequest,
     currentRide,
@@ -154,6 +155,7 @@ const {
   } = useTripStore();
 
   const { user } = useAuthStore();
+  const driverEta = useRideRealtimeStore((state) => state.driverEta);
 
   // --- ANIMATION STATE ---
   const sheetHeight = useRef(new Animated.Value(SHEET_COLLAPSED_HEIGHT)).current;
@@ -161,6 +163,7 @@ const {
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [requestIslandExpanded, setRequestIslandExpanded] = useState(false);
   const [showRequestEditor, setShowRequestEditor] = useState(false);
+  const [showActiveTripSheet, setShowActiveTripSheet] = useState(true);
 
   // --- APP STATE ---
   const [menuVisible, setMenuVisible] = useState(false);
@@ -168,8 +171,7 @@ const {
   const [emergencyContacts, setEmergencyContacts] = useState<{ police: string; ambulance: string; fire: string } | null>(null);
 
   // --- FLOW STATE ---
-  const [step, setStep] = useState<'IDLE' | 'ESTIMATING' | 'SEARCHING' | 'ON_TRIP'>('IDLE');
-  const [destination] = useState<any>(null);
+  const [step, setStep] = useState<'IDLE' | 'ON_TRIP'>('IDLE');
   const [currentRegion, setCurrentRegion] = useState({ latitude: 4.8156, longitude: 7.0498, latitudeDelta: 0.015, longitudeDelta: 0.015 });
 
   // 1. INITIAL LOAD
@@ -196,10 +198,16 @@ const {
       await fetchNearbyDrivers(coords.latitude, coords.longitude);
     }
 
-    const stateName = await LocationService.getCurrentState();
-    setLocationState(stateName || "Unknown");
-    setEmergencyContacts(LocationService.getEmergencyNumbers(stateName));
+    const details = await LocationService.getCurrentLocationDetails();
+    setLocationState(details.area || "Unknown");
+    setEmergencyContacts(LocationService.getEmergencyNumbersFromParts(details.city, details.state));
   }, [fetchNearbyDrivers]);
+
+  const callEmergencyLine = useCallback(async (number: string) => {
+    const firstLine = number.split(',')[0]?.trim();
+    if (!firstLine) return;
+    await Linking.openURL(`tel:${firstLine.replace(/\s+/g, '')}`);
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -213,6 +221,7 @@ const {
   useEffect(() => {
     if (rideStatus === 'ACCEPTED' || rideStatus === 'ARRIVING' || rideStatus === 'IN_PROGRESS') {
       setStep('ON_TRIP');
+      setShowActiveTripSheet(true);
       setRequestIslandExpanded(false);
       setShowRequestEditor(false);
       collapseSheet(true);
@@ -242,43 +251,7 @@ const {
   };
 
   // --- LOGIC HANDLERS ---
-  const handleConfirmRide = async (
-    tier: string,
-    scheduledTime?: string,
-    details?: { offerPrice: number; rideMode: 'solo' | 'shared'; note: string }
-  ) => {
-    try {
-      if (!currentRegion || !destination) return;
-      if (!details?.offerPrice) {
-        Alert.alert("Missing offer", "Set how much you want to pay before sending this request.");
-        return;
-      }
 
-      await requestRide({
-        origin: {
-          lat: currentRegion.latitude,
-          lon: currentRegion.longitude,
-          address: locationState
-        },
-        destination: {
-          lat: destination.coords.latitude,
-          lon: destination.coords.longitude,
-          address: destination.name
-        },
-        tier: tier as any,
-        price: details.offerPrice,
-        departureTime: scheduledTime,
-        notes: details.note,
-        preferences: {
-          shared: details.rideMode === 'shared',
-        },
-      });
-      setStep('IDLE');
-      collapseSheet();
-    } catch {
-      Alert.alert("Error", "Failed to book ride");
-    }
-  };
 
   const handleCancelSearch = async () => {
     await cancelRide();
@@ -357,18 +330,20 @@ const {
   }, [currentRide?.driver?.id, driversToDisplay]);
 
   const activeTripEta = useMemo(() => {
-    if (!activeTripDriver?.coords) return '5 min away';
+    // Prefer real-time ETA from Navigatr (updated via socket as driver moves)
+    if (driverEta) return driverEta;
 
+    // Fallback: Haversine estimate until first real-time update arrives
+    if (!activeTripDriver?.coords) return '5 min away';
     const pickupTarget = currentRide?.pickupLocation || currentRide?.origin;
     if (!pickupTarget?.lat || !pickupTarget?.lon) return '5 min away';
-
     const distanceKm = getDistanceKm(activeTripDriver.coords, {
       latitude: Number(pickupTarget.lat),
       longitude: Number(pickupTarget.lon),
     });
     const etaMinutes = Math.max(3, Math.round(distanceKm / 0.55));
     return `${etaMinutes} min away`;
-  }, [activeTripDriver?.coords, currentRide?.origin, currentRide?.pickupLocation]);
+  }, [driverEta, activeTripDriver?.coords, currentRide?.origin, currentRide?.pickupLocation]);
 
   const estimatedRequestPrivatePrice = useMemo(() => {
     const routeEstimate = estimatePrivateTripFare(
@@ -408,7 +383,7 @@ const {
             <View style={[styles.carMarker, currentRide?.driver?.id === driver.userId && styles.activeCarMarker]}><TopDownCar /></View>
           </Marker>
         ))}
-        {destination && <Marker coordinate={destination.coords} />}
+
       </MapView>
 
       {/* 2. TOP OVERLAY */}
@@ -476,6 +451,9 @@ const {
           </TouchableOpacity>
         </>
       )}
+      {!isExpanded && step === 'IDLE' && requestIslandExpanded && rideStatus === 'SEARCHING' && (
+        <Pressable style={styles.requestIslandBackdrop} onPress={() => setRequestIslandExpanded(false)} />
+      )}
 
       {/* 3. SIDE MENU */}
       {menuVisible && (
@@ -496,20 +474,24 @@ const {
             <Text style={styles.sectionLabel}>Emergency Numbers</Text>
             {emergencyContacts ? (
               <View style={styles.numbersContainer}>
-                <TouchableOpacity style={styles.emergencyItem}>
+                <TouchableOpacity style={styles.emergencyItem} onPress={() => callEmergencyLine(emergencyContacts.police)}>
                   <View style={styles.emergencyIcon}><Text>👮</Text></View>
                   <View><Text style={styles.emergencyLabel}>Police</Text><Text style={styles.emergencyValue}>{emergencyContacts.police}</Text></View>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.emergencyItem}>
+                <TouchableOpacity style={styles.emergencyItem} onPress={() => callEmergencyLine(emergencyContacts.ambulance)}>
                   <View style={styles.emergencyIcon}><Text>🚑</Text></View>
                   <View><Text style={styles.emergencyLabel}>Ambulance</Text><Text style={styles.emergencyValue}>{emergencyContacts.ambulance}</Text></View>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.emergencyItem} onPress={() => callEmergencyLine(emergencyContacts.fire)}>
+                  <View style={styles.emergencyIcon}><Text>🔥</Text></View>
+                  <View><Text style={styles.emergencyLabel}>Fire</Text><Text style={styles.emergencyValue}>{emergencyContacts.fire}</Text></View>
                 </TouchableOpacity>
               </View>
             ) : (
               <ActivityIndicator size="small" color={COLORS.primary} />
             )}
             <View style={styles.divider} />
-            <TouchableOpacity style={styles.supportButton}>
+            <TouchableOpacity style={styles.supportButton} onPress={() => router.push('/support')}>
               <Ionicons name="headset" size={20} color="black" style={{ marginRight: 10 }} />
               <Text style={styles.supportText}>Customer Support</Text>
             </TouchableOpacity>
@@ -547,59 +529,50 @@ const {
           )
         )}
 
-        {/* CASE B: ESTIMATING */}
-        {step === 'ESTIMATING' && (
-          <RideEstimationSheet
-            visible={true}
-            destination={destination?.name}
-            onClose={() => { setStep('IDLE'); collapseSheet(); }}
-            onConfirm={handleConfirmRide}
-          />
-        )}
 
-        {/* CASE C: SEARCHING */}
-        {step === 'SEARCHING' && null}
 
         {/* CASE D: ACTIVE TRIP (FIXED) */}
         {step === 'ON_TRIP' && currentRide && (
-          <ActiveTripSheet
-            status={mapRideStatusForSheet(currentRide.status)}
-            driver={{
-              name: getDriverName(currentRide.driver),
-              rating: currentRide.driver.rating || 4.8,
-              vehicle: getDriverVehicle(currentRide.driver),
-              plate: getDriverPlate(currentRide.driver),
-              image: currentRide.driver.image || 'https://via.placeholder.com/150',
-              phone: currentRide.driver.phone || currentRide.driver.phoneNumber || '0000000000'
-            }}
-            eta={activeTripEta}
-            pickupAddress={getAddressText(currentRide.pickupLocation || currentRide.origin)}
-            destAddress={getAddressText(currentRide.destination)}
-            onCall={() => Alert.alert("Call", "Calling driver...")}
-            onChat={() => {
-              router.push({
-                pathname: '/chat/[id]',
-                params: {
-                  id: currentRide.id,
-                  recipientName: getDriverName(currentRide.driver),
-                  recipientImage: currentRide.driver.image
-                }
-              });
-            }}
-            onCancel={() => cancelRide(currentRide.id)}
-          />
+          showActiveTripSheet ? (
+            <ActiveTripSheet
+              status={mapRideStatusForSheet(currentRide.status)}
+              driver={{
+                name: getDriverName(currentRide.driver),
+                rating: currentRide.driver.rating || 4.8,
+                vehicle: getDriverVehicle(currentRide.driver),
+                plate: getDriverPlate(currentRide.driver),
+                image: currentRide.driver.image || currentRide.driver.avatarUrl || '',
+                phone: currentRide.driver.phone || currentRide.driver.phoneNumber || '0000000000'
+              }}
+              eta={activeTripEta}
+              pickupAddress={getAddressText(currentRide.pickupLocation || currentRide.origin)}
+              destAddress={getAddressText(currentRide.destination)}
+              bottomInset={insets.bottom}
+              onClose={() => setShowActiveTripSheet(false)}
+              onCall={() => Alert.alert("Call", "Calling driver...")}
+              onChat={() => {
+                router.push({
+                  pathname: '/chat/[id]',
+                  params: {
+                    id: currentRide.id,
+                    recipientName: getDriverName(currentRide.driver),
+                    recipientImage: currentRide.driver.image || currentRide.driver.avatarUrl || ''
+                  }
+                });
+              }}
+              onCancel={() => cancelRide(currentRide.id)}
+            />
+          ) : (
+            <TouchableOpacity
+              style={[styles.reopenTripCard, { marginBottom: Math.max(insets.bottom, 8) }]}
+              onPress={() => setShowActiveTripSheet(true)}
+            >
+              <View style={styles.reopenTripDot} />
+              <Text style={styles.reopenTripText}>{activeTripEta || 'Trip active'} • tap to expand</Text>
+              <Ionicons name="chevron-up" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          )
         )}
-
-        {/* 5. RATING MODAL */}
-        <RatingModal
-          visible={showRatingModal}
-          driverName={currentRide?.driver?.name || "Driver"}
-          onSubmit={handleRateDriver}
-          onClose={() => {
-            setShowRatingModal(false);
-            updateRideStatus('IDLE', null);
-          }}
-        />
 
         {/* 5. RATING MODAL */}
         <RatingModal
@@ -678,6 +651,7 @@ const styles = StyleSheet.create({
   requestIslandWrap: {
     alignItems: 'center',
     marginTop: 14,
+    zIndex: 20,
   },
   requestIsland: {
     flexDirection: 'row',
@@ -761,6 +735,34 @@ const styles = StyleSheet.create({
   },
   requestIslandPrimaryText: {
     color: COLORS.white,
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+  },
+  requestIslandBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9,
+  },
+  reopenTripCard: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#D0D5DD',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    marginTop: 8,
+  },
+  reopenTripDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22C55E',
+  },
+  reopenTripText: {
+    color: '#101828',
     fontFamily: Fonts.semibold,
     fontSize: 12,
   },

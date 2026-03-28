@@ -31,19 +31,9 @@ export class PaymentsService {
     async initializePayment(email: string, amount: number, distanceInKm: number, rideId: string) {
         const split = this.calculatePaymentSplit(amount, distanceInKm);
         const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
-        
+
         if (!secretKey) {
-            console.warn('PAYSTACK_SECRET_KEY not found. Using mock payment.');
-            return {
-                status: true,
-                message: 'Authorization URL created',
-                data: {
-                    authorization_url: 'https://checkout.paystack.com/mock-url', // Mock URL
-                    access_code: 'mock_code',
-                    reference: 'mock_ref_' + Date.now(),
-                    metadata: { rideId, distanceInKm, split }
-                },
-            };
+            throw new InternalServerErrorException('PAYSTACK_SECRET_KEY is not configured');
         }
 
         const url = 'https://api.paystack.co/transaction/initialize';
@@ -56,6 +46,8 @@ export class PaymentsService {
             amount: amount * 100, // Paystack expects kobo
             callback_url: 'http://localhost:3000/payments/verify', // Or deep link to app
             metadata: {
+                rideId,
+                distanceInKm,
                 custom_fields: [
                     { display_name: "Ride ID", variable_name: "ride_id", value: rideId },
                     { display_name: "Distance (km)", variable_name: "distance_km", value: distanceInKm },
@@ -77,7 +69,7 @@ export class PaymentsService {
     async verifyPayment(reference: string) {
         const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
         if (!secretKey) {
-            return { status: true, message: 'Verification successful', data: { status: 'success' } };
+            throw new InternalServerErrorException('PAYSTACK_SECRET_KEY is not configured');
         }
 
         const url = `https://api.paystack.co/transaction/verify/${reference}`;
@@ -91,9 +83,15 @@ export class PaymentsService {
 
             if (data.status && data.data.status === 'success') {
                 const metadata = data.data.metadata;
-                const rideId = metadata?.rideId;
+                const customFields = Array.isArray(metadata?.custom_fields) ? metadata.custom_fields : [];
+                const customMap = customFields.reduce((acc: Record<string, any>, field: any) => {
+                    if (field?.variable_name) acc[field.variable_name] = field?.value;
+                    return acc;
+                }, {});
+
+                const rideId = metadata?.rideId || customMap?.ride_id;
                 const amount = data.data.amount / 100; // Convert back from kobo
-                const distance = metadata?.distanceInKm || 0;
+                const distance = Number(metadata?.distanceInKm ?? customMap?.distance_km ?? 0);
 
                 if (rideId) {
                     const split = this.calculatePaymentSplit(amount, distance);

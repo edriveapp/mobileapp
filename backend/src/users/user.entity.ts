@@ -7,6 +7,14 @@ export enum UserRole {
     ADMIN = 'admin',
 }
 
+export enum AdminScope {
+    NONE = 'none',
+    SUPER_ADMIN = 'super_admin',
+    VERIFICATION = 'verification',
+    SUPPORT = 'support',
+    OPERATIONS = 'operations',
+}
+
 export enum VerificationStatus {
     UNVERIFIED = 'unverified',
     PENDING = 'pending',
@@ -38,6 +46,13 @@ export class User {
     })
     role: UserRole;
 
+    @Column({
+        type: 'enum',
+        enum: AdminScope,
+        default: AdminScope.NONE,
+    })
+    adminScope: AdminScope;
+
     @Column({ type: 'float', default: 5.0 })
     rating: number;
 
@@ -59,6 +74,9 @@ export class User {
 
     @Column({ nullable: true })
     lastName: string;
+
+    @Column({ nullable: true })
+    avatarUrl: string;
 
     @Column({
         type: 'jsonb',

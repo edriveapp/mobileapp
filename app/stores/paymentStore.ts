@@ -5,7 +5,8 @@ interface PaymentState {
     amount: number;
     isProcessing: boolean;
     paymentStatus: 'idle' | 'success' | 'failed';
-    processPayment: (amount: number) => Promise<any>;
+    processPayment: (amount: number, options?: { rideId?: string; distance?: number }) => Promise<{ authorization_url: string; reference: string }>;
+    verifyPayment: (reference: string) => Promise<boolean>;
     resetStatus: () => void;
 }
 
@@ -14,23 +15,42 @@ export const usePaymentStore = create<PaymentState>((set) => ({
     isProcessing: false,
     paymentStatus: 'idle',
 
-    processPayment: async (amount: number) => {
+    processPayment: async (amount: number, options) => {
         set({ isProcessing: true, amount });
         try {
-            const response = await api.post('/payments/initialize', { amount });
+            const response = await api.post('/payments/initialize', {
+                amount,
+                rideId: options?.rideId,
+                distance: options?.distance || 0,
+            });
             const { authorization_url, reference } = response.data.data;
-
-            // In a real app, open authorization_url in Browser/WebView
-            console.log("Payment URL:", authorization_url);
-
-            // For MVP, if using mock:
-            // If reference starts with mock, just succeed.
-            // Else, await verification or polling.
-
-            set({ isProcessing: false, paymentStatus: 'success' });
-            return authorization_url; // Return URL for component to handle (e.g. open WebBrowser)
+            set({ isProcessing: false, paymentStatus: 'idle' });
+            return { authorization_url, reference };
         } catch (error) {
             console.error("Payment Error:", error);
+            set({ isProcessing: false, paymentStatus: 'failed' });
+            throw error;
+        }
+    },
+
+    verifyPayment: async (reference: string) => {
+        set({ isProcessing: true });
+        try {
+            let response;
+            try {
+                response = await api.get(`/payments/verify/${reference}`);
+            } catch {
+                response = await api.get('/payments/verify', { params: { reference } });
+            }
+
+            const isSuccess =
+                response?.data?.data?.status === 'success' ||
+                response?.data?.status === true;
+
+            set({ isProcessing: false, paymentStatus: isSuccess ? 'success' : 'failed' });
+            return isSuccess;
+        } catch (error) {
+            console.error('Payment verification error:', error);
             set({ isProcessing: false, paymentStatus: 'failed' });
             throw error;
         }

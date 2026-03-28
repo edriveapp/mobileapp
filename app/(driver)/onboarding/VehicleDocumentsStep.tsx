@@ -19,6 +19,7 @@ const VEHICLE_TYPES = ['Sedan', 'SUV', 'Van', 'Minibus', 'Coaster Bus'];
 
 export default function VehicleDocumentsStep() {
     const { vehicleInfo, documents, setVehicleInfo, setDocuments } = useDriverStore();
+    const isBusType = ['Van', 'Minibus', 'Coaster Bus'].includes(vehicleInfo.type);
 
     const formatPlateNumber = (value: string) => {
         const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
@@ -27,11 +28,11 @@ export default function VehicleDocumentsStep() {
         return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
     };
 
-    const pickLicenseImage = async () => {
+    const pickSingleDocument = async (targetField: 'licenseImageUri' | 'insuranceImageUri' | 'worthinessImageUri') => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
         if (status !== 'granted') {
-            Alert.alert('Permission Required', 'Please grant camera roll permissions to upload your license.');
+            Alert.alert('Permission Required', 'Please grant camera roll permissions to upload documents.');
             return;
         }
 
@@ -43,7 +44,14 @@ export default function VehicleDocumentsStep() {
         });
 
         if (!result.canceled && result.assets[0]) {
-            setDocuments({ licenseImageUri: result.assets[0].uri });
+            const uri = result.assets[0].uri;
+            if (targetField === 'licenseImageUri') {
+                setDocuments({ licenseImageUri: uri });
+            } else if (targetField === 'insuranceImageUri') {
+                setDocuments({ insuranceImageUri: uri });
+            } else {
+                setDocuments({ worthinessImageUri: uri });
+            }
         }
     };
 
@@ -168,10 +176,26 @@ export default function VehicleDocumentsStep() {
                         />
                     </View>
 
+                    {/* Bus Capacity */}
+                    {isBusType && (
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Passenger Capacity *</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={vehicleInfo.capacity || ''}
+                                onChangeText={(text) => setVehicleInfo({ capacity: text.replace(/\D/g, '') })}
+                                placeholder="e.g., 14"
+                                placeholderTextColor={COLORS.textSecondary}
+                                keyboardType="number-pad"
+                                maxLength={2}
+                            />
+                        </View>
+                    )}
+
                     {/* Driver's License Upload */}
                     <View style={styles.inputGroup}>
                         <Text style={styles.label}>Driver License Photo *</Text>
-                        <TouchableOpacity style={styles.uploadButton} onPress={pickLicenseImage}>
+                        <TouchableOpacity style={styles.uploadButton} onPress={() => pickSingleDocument('licenseImageUri')}>
                             <Text style={styles.uploadButtonText}>
                                 {documents.licenseImageUri ? '✓ License Uploaded' : '+ Upload License'}
                             </Text>
@@ -179,6 +203,40 @@ export default function VehicleDocumentsStep() {
                         {documents.licenseImageUri && (
                             <Image
                                 source={{ uri: documents.licenseImageUri }}
+                                style={styles.previewImage}
+                                resizeMode="cover"
+                            />
+                        )}
+                    </View>
+
+                    {/* Vehicle Insurance Upload */}
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Vehicle Insurance Document *</Text>
+                        <TouchableOpacity style={styles.uploadButton} onPress={() => pickSingleDocument('insuranceImageUri')}>
+                            <Text style={styles.uploadButtonText}>
+                                {documents.insuranceImageUri ? '✓ Insurance Uploaded' : '+ Upload Insurance Document'}
+                            </Text>
+                        </TouchableOpacity>
+                        {documents.insuranceImageUri && (
+                            <Image
+                                source={{ uri: documents.insuranceImageUri }}
+                                style={styles.previewImage}
+                                resizeMode="cover"
+                            />
+                        )}
+                    </View>
+
+                    {/* Worthiness Certificate Upload */}
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Vehicle Inspection/Worthiness Certificate *</Text>
+                        <TouchableOpacity style={styles.uploadButton} onPress={() => pickSingleDocument('worthinessImageUri')}>
+                            <Text style={styles.uploadButtonText}>
+                                {documents.worthinessImageUri ? '✓ Certificate Uploaded' : '+ Upload Worthiness Certificate'}
+                            </Text>
+                        </TouchableOpacity>
+                        {documents.worthinessImageUri && (
+                            <Image
+                                source={{ uri: documents.worthinessImageUri }}
                                 style={styles.previewImage}
                                 resizeMode="cover"
                             />

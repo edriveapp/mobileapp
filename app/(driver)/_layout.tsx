@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform, View, Text, StyleSheet } from 'react-native';
 
 import { useAuthStore } from '@/app/stores/authStore';
@@ -43,10 +43,20 @@ const badgeStyles = StyleSheet.create({
 
 export default function DriverLayout() {
   const user = useAuthStore((s) => s.user);
+  const refreshProfile = useAuthStore((s) => s.refreshProfile);
   // Sum of all unread messages across all rides
   const unreadCount = useChatStore((state) =>
     Object.values(state.unreadByRide).reduce((sum, n) => sum + n, 0)
   );
+
+  useEffect(() => {
+    if (!user || user.role !== 'driver') return;
+    refreshProfile();
+    const interval = setInterval(() => {
+      refreshProfile();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [refreshProfile, user]);
 
   // Check authentication
   if (!user) return <Redirect href="/(auth)/login" />;
@@ -131,6 +141,7 @@ export default function DriverLayout() {
         name="onboarding"
         options={{
           href: null,
+          tabBarStyle: { display: 'none' },
         }}
       />
       <Tabs.Screen
@@ -147,6 +158,18 @@ export default function DriverLayout() {
       />
       <Tabs.Screen
         name="wallet"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="earnings"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="remittance"
         options={{
           href: null,
         }}

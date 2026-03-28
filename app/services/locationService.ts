@@ -7,12 +7,24 @@ const DEFAULT_COORDS = {
   longitude: 7.0498,
 };
 
-// Emergency numbers mapping based on state
-const EMERGENCY_NUMBERS: Record<string, { police: string; ambulance: string; fire: string }> = {
-  'Rivers': { police: '08033004000', ambulance: '112', fire: '112' },
-  'Lagos': { police: '08009119111', ambulance: '112', fire: '767' },
-  'FCT': { police: '08009119111', ambulance: '112', fire: '112' },
-  'default': { police: '112', ambulance: '112', fire: '112' },
+// State and city-aware emergency directory (falls back to national 112)
+const EMERGENCY_BY_STATE: Record<string, { police: string; ambulance: string; fire: string }> = {
+  Lagos: { police: '767, 112', ambulance: '767, 112', fire: '767' },
+  FCT: { police: '112', ambulance: '112', fire: '112' },
+  Rivers: { police: '112', ambulance: '112', fire: '112' },
+  Ogun: { police: '112', ambulance: '112', fire: '112' },
+  Oyo: { police: '615', ambulance: '615', fire: '615' },
+  Kano: { police: '112', ambulance: '112', fire: '112' },
+  Enugu: { police: '112', ambulance: '112', fire: '112' },
+  default: { police: '112', ambulance: '112', fire: '112' },
+};
+
+const EMERGENCY_BY_CITY: Record<string, { police: string; ambulance: string; fire: string }> = {
+  'Ikeja': { police: '767, 112', ambulance: '767, 112', fire: '767' },
+  'Victoria Island': { police: '767, 112', ambulance: '767, 112', fire: '767' },
+  'Lekki': { police: '767, 112', ambulance: '767, 112', fire: '767' },
+  'Port Harcourt': { police: '112', ambulance: '112', fire: '112' },
+  'Abuja': { police: '112', ambulance: '112', fire: '112' },
 };
 
 export const LocationService = {
@@ -74,15 +86,59 @@ export const LocationService = {
     }
   },
 
+  getCurrentLocationDetails: async (): Promise<{ city: string; state: string; area: string }> => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        return { city: 'Unknown', state: 'Unknown', area: 'Location Denied' };
+      }
+
+      const location = await Location.getCurrentPositionAsync({});
+      const address = await Location.reverseGeocodeAsync({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+
+      if (!address.length) {
+        return { city: 'Unknown', state: 'Unknown', area: 'Unknown Location' };
+      }
+
+      const { city, region, subregion } = address[0];
+      const safeCity = city || subregion || 'Unknown';
+      const safeState = region || 'Unknown';
+      const area = [safeCity, safeState].filter(Boolean).join(', ');
+
+      return { city: safeCity, state: safeState, area: area || 'Unknown Location' };
+    } catch {
+      return { city: 'Unknown', state: 'Unknown', area: 'Detecting...' };
+    }
+  },
+
   /**
    * 3. Get Emergency Numbers based on the detected State string
    */
   getEmergencyNumbers: (locationString: string) => {
-    // Simple check: does the location string contain "Lagos", "Rivers", etc?
-    if (locationString.includes('Lagos')) return EMERGENCY_NUMBERS['Lagos'];
-    if (locationString.includes('Rivers') || locationString.includes('Port Harcourt')) return EMERGENCY_NUMBERS['Rivers'];
-    if (locationString.includes('Abuja') || locationString.includes('FCT')) return EMERGENCY_NUMBERS['FCT'];
-    
-    return EMERGENCY_NUMBERS['default'];
+    const normalized = String(locationString || '').toLowerCase();
+    const cityMatch = Object.entries(EMERGENCY_BY_CITY).find(([city]) =>
+      normalized.includes(city.toLowerCase())
+    );
+    if (cityMatch) return cityMatch[1];
+
+    const stateMatch = Object.entries(EMERGENCY_BY_STATE).find(([state]) =>
+      normalized.includes(state.toLowerCase())
+    );
+    if (stateMatch) return stateMatch[1];
+
+    return EMERGENCY_BY_STATE.default;
+  },
+
+  getEmergencyNumbersFromParts: (city: string, state: string) => {
+    const byCity = EMERGENCY_BY_CITY[city];
+    if (byCity) return byCity;
+
+    const byState = EMERGENCY_BY_STATE[state];
+    if (byState) return byState;
+
+    return EMERGENCY_BY_STATE.default;
   }
 };

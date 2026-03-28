@@ -1,32 +1,65 @@
 import React from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend
+  BarChart, Bar
 } from 'recharts';
 import { DollarSign, Route, Users, TrendingUp } from 'lucide-react';
-
-const revData = [
-  { name: 'Jan', gmv: 4000, revenue: 1000 },
-  { name: 'Feb', gmv: 5500, revenue: 1375 },
-  { name: 'Mar', gmv: 6200, revenue: 1550 },
-  { name: 'Apr', gmv: 8100, revenue: 2025 },
-  { name: 'May', gmv: 9500, revenue: 2375 },
-  { name: 'Jun', gmv: 12000, revenue: 3000 },
-];
-
-const cityData = [
-  { name: 'Lagos', rides: 400 },
-  { name: 'Abuja', rides: 300 },
-  { name: 'Port Harcourt', rides: 200 },
-  { name: 'Kano', rides: 80 },
-];
+import { apiRequest } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 
 export default function Overview() {
+  const { token } = useAuth();
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [statsData, setStatsData] = React.useState({
+    gmv: 0,
+    arr: 0,
+    totalRides: 0,
+    activeUsers: 0,
+  });
+  const [revData, setRevData] = React.useState<Array<{ name: string; gmv: number; revenue: number }>>([]);
+  const [cityData, setCityData] = React.useState<Array<{ name: string; rides: number }>>([]);
+  const [lastUpdated, setLastUpdated] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      try {
+        setIsLoading(true);
+        const data = await apiRequest<{
+          stats: { gmv: number; arr: number; totalRides: number; activeUsers: number };
+          revenueSeries: Array<{ name: string; gmv: number; revenue: number }>;
+          cityVolumes: Array<{ name: string; rides: number }>;
+          generatedAt: string;
+        }>('/admin/analytics/overview', { token });
+        if (mounted) {
+          setStatsData(data.stats);
+          setRevData(data.revenueSeries || []);
+          setCityData(data.cityVolumes || []);
+          setLastUpdated(data.generatedAt);
+          setError(null);
+        }
+      } catch (err: any) {
+        if (mounted) {
+          setError(err?.message || 'Failed to fetch dashboard stats.');
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+    run();
+    const interval = setInterval(run, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [token]);
+
   const stats = [
-    { label: 'Gross Merchandise Value (YTD)', value: '₦4,850,000', icon: DollarSign, trend: '+14%' },
-    { label: 'Annual Recurring Revenue (ARR)', value: '₦1,210,000', icon: TrendingUp, trend: '+22%' },
-    { label: 'Total Rides Completed', value: '1,432', icon: Route, trend: '+8%' },
-    { label: 'Active Users', value: '4,102', icon: Users, trend: '+5%' },
+    { label: 'Gross Merchandise Value (YTD)', value: `₦${Number(statsData.gmv || 0).toLocaleString()}`, icon: DollarSign, trend: 'Live' },
+    { label: 'Annual Recurring Revenue (ARR)', value: `₦${Number(statsData.arr || 0).toLocaleString()}`, icon: TrendingUp, trend: 'Live' },
+    { label: 'Total Rides Completed', value: Number(statsData.totalRides || 0).toLocaleString(), icon: Route, trend: 'Live' },
+    { label: 'Active Users', value: Number(statsData.activeUsers || 0).toLocaleString(), icon: Users, trend: 'Live' },
   ];
 
   return (
@@ -34,6 +67,8 @@ export default function Overview() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
         <p className="text-gray-500 mt-1">Platform metrics and financial performance.</p>
+        {lastUpdated ? <p className="text-xs text-gray-400 mt-1">Updated: {new Date(lastUpdated).toLocaleString()}</p> : null}
+        {error ? <p className="text-sm text-red-600 mt-2">{error}</p> : null}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -49,7 +84,8 @@ export default function Overview() {
               </div>
             </div>
             <div className="mt-4 flex items-center text-sm font-medium text-emerald-600">
-              {stat.trend} <span className="text-gray-400 font-normal ml-2">vs last month</span>
+              {isLoading ? 'Refreshing...' : stat.trend}
+              <span className="text-gray-400 font-normal ml-2">{isLoading ? 'please wait' : 'from backend'}</span>
             </div>
           </div>
         ))}

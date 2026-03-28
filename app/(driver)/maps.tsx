@@ -13,7 +13,6 @@ import {
     TextInput,
     Alert,
     Keyboard,
-    Dimensions,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +20,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LocationService } from '@/app/services/locationService';
 import { useRideRealtimeStore } from '@/app/stores/rideRealtimeStore';
 import { useTripStore } from '@/app/stores/tripStore';
+import { useSocketStore } from '@/app/stores/socketStore';
+import { useAuthStore } from '@/app/stores/authStore';
+import { NavigatrService } from '@/app/services/navigatrService';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 interface PlaceResult {
@@ -30,25 +32,24 @@ interface PlaceResult {
     lon: string;
 }
 
-// --- FREE ROUTING HELPER (OSRM) ---
-const getDirections = async (startLoc: any, destinationLoc: any) => {
+const getDirections = async (startLoc: { latitude: number; longitude: number }, destLoc: { latitude: number; longitude: number }) => {
     try {
-        const start = `${startLoc.longitude},${startLoc.latitude}`;
-        const end = `${destinationLoc.longitude},${destinationLoc.latitude}`;
-        const url = `http://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson`;
-        
-        const response = await fetch(url);
-        const json = await response.json();
-        
-        if (json.code !== 'Ok') return null;
-        
-        const route = json.routes[0];
-        const coordinates = route.geometry.coordinates.map((c: number[]) => ({
-            latitude: c[1],
-            longitude: c[0],
+        const result = await NavigatrService.route(
+            { lat: startLoc.latitude, lng: startLoc.longitude },
+            { lat: destLoc.latitude, lng: destLoc.longitude },
+            { maneuvers: true }
+        );
+        const coordinates = result.polyline.map((p: { lat: number; lng: number }) => ({
+            latitude: p.lat,
+            longitude: p.lng,
         }));
-        
-        return { coordinates, distance: route.distance / 1000, duration: route.duration / 60 };
+        return {
+            coordinates,
+            distance: result.distanceMeters / 1000,
+            duration: result.durationSeconds / 60,
+            durationText: result.durationText,
+            distanceText: result.distanceText,
+        };
     } catch {
         return null;
     }
@@ -105,6 +106,32 @@ export default function DriverMapScreen() {
         return () => { mounted = false; };
     }, [fetchAvailableTrips, fetchMyTrips]);
 
+    // Broadcast driver location to rider every 5 seconds while navigating an active ride
+    useEffect(() => {
+        if (!isNavigating || !location) return;
+
+        const activePickup = activeTrips.find(
+            (ride: any) => ['accepted', 'arriving', 'in_progress'].includes(String(ride.status).toLowerCase())
+        );
+        if (!activePickup?.passengerId) return;
+
+        const socket = useSocketStore.getState().socket;
+        const user = useAuthStore.getState().user;
+        if (!socket || !user) return;
+
+        const interval = setInterval(() => {
+            socket.emit('update_location', {
+                driverId: user.id,
+                rideId: activePickup.id,
+                passengerId: activePickup.passengerId,
+                lat: location.latitude,
+                lon: location.longitude,
+            });
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [isNavigating, location, activeTrips]);
+
     const liveRideRequests = (requestQueue.length > 0 ? requestQueue : availableTrips).filter(
         (ride: any) => ride?.origin?.lat && ride?.origin?.lon,
     );
@@ -138,24 +165,20 @@ export default function DriverMapScreen() {
         searchTimeout.current = setTimeout(async () => {
             setIsSearching(true);
             try {
-                // Using LocationIQ (Free Tier)
-                const API_KEY = 'pk.b2973113f0eed13c609ab7a517220e92'; 
-                const url = `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&countrycodes=ng`;
-                
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (Array.isArray(data)) {
-                    setSearchResults(data);
-                } else {
-                    setSearchResults([]);
-                }
+                const results = await NavigatrService.autocomplete(text, 5);
+                setSearchResults(results.map((r, i) => ({
+                    place_id: String(i),
+                    display_name: r.displayName || r.name,
+                    lat: String(r.lat),
+                    lon: String(r.lng),
+                })));
             } catch (error) {
                 console.error("Search Error:", error);
+                setSearchResults([]);
             } finally {
                 setIsSearching(false);
             }
-        }, 800); 
+        }, 800);
     }, []);
 
     const handleSelectDestination = async (place: PlaceResult) => {
@@ -314,8 +337,8 @@ export default function DriverMapScreen() {
                     <Marker
                         key={`pickup-${ride.id}`}
                         coordinate={{
-                            latitude: Number(ride.pickupLocation.lat),
-                            longitude: Number(ride.pickupLocation.lon),
+                            latitude: Number(ride.origin.lat),
+                            longitude: Number(ride.origin.lon),
                         }}
                     >
                         <View style={styles.pickupMarker}>
@@ -371,7 +394,7 @@ export default function DriverMapScreen() {
             </View>
 
             {/* Bottom Panel */}
-            <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + SPACING.m }]}>
+            <View style={[styles.bottomPanel, { paddingBottom: Math.max(insets.bottom, 8) + SPACING.s }]}>
                 {activeDestination ? (
                     <View>
                         <View style={styles.tripInfoRow}>

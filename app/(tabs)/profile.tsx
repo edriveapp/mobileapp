@@ -1,8 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
 import {
+    ActivityIndicator,
     Alert,
+    Image,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -13,14 +16,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import api from '@/app/services/api';
 import { useAuthStore } from '@/app/stores/authStore';
 import { useSettingsStore } from '@/app/stores/settingsStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 export default function ProfileScreen() {
     const router = useRouter();
-    const { logout, user } = useAuthStore();
+    const { logout, user, refreshProfile } = useAuthStore();
     const { preferences, fetchPreferences, updatePreference, savedPlaces, fetchSavedPlaces } = useSettingsStore();
+    const [isUpdatingPhoto, setIsUpdatingPhoto] = React.useState(false);
 
     useEffect(() => {
         fetchPreferences();
@@ -39,6 +44,34 @@ export default function ProfileScreen() {
                 }
             }
         ]);
+    };
+
+    const handleUpdatePhoto = async () => {
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission needed', 'Please allow media access to update your profile picture.');
+                return;
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                quality: 0.8,
+                allowsEditing: true,
+                aspect: [1, 1],
+            });
+
+            if (result.canceled || !result.assets?.[0]?.uri) return;
+
+            setIsUpdatingPhoto(true);
+            await api.patch('/users/me', { avatarUrl: result.assets[0].uri });
+            await refreshProfile();
+            Alert.alert('Updated', 'Profile picture updated.');
+        } catch (error: any) {
+            Alert.alert('Update failed', error?.message || 'Could not update profile picture.');
+        } finally {
+            setIsUpdatingPhoto(false);
+        }
     };
 
     const SettingItem = ({
@@ -103,8 +136,22 @@ export default function ProfileScreen() {
                 {/* Avatar Section */}
                 <View style={styles.avatarContainer}>
                     <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                        {user.avatarUrl ? (
+                            <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+                        ) : (
+                            <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                        )}
                     </View>
+                    <TouchableOpacity style={styles.photoButton} onPress={handleUpdatePhoto} disabled={isUpdatingPhoto}>
+                        {isUpdatingPhoto ? (
+                            <ActivityIndicator size="small" color={COLORS.primary} />
+                        ) : (
+                            <>
+                                <Ionicons name="camera-outline" size={14} color={COLORS.primary} />
+                                <Text style={styles.photoButtonText}>Update photo</Text>
+                            </>
+                        )}
+                    </TouchableOpacity>
                     <Text style={styles.userName}>{displayName}</Text>
                     <Text style={styles.userEmail}>{user.email}</Text>
                     <View style={styles.roleBadgeContainer}>
@@ -189,6 +236,7 @@ export default function ProfileScreen() {
                         <SettingItem
                             icon="help-circle-outline"
                             title="Help & Support"
+                            onPress={() => router.push('/support')}
                         />
                         <View style={styles.divider} />
                         <SettingItem
@@ -257,6 +305,11 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 40,
+    },
     avatarText: {
         fontSize: 32,
         fontWeight: 'bold',
@@ -268,6 +321,23 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         marginBottom: 2,
         fontFamily: Fonts.bold,
+    },
+    photoButton: {
+        marginBottom: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: '#F4FBF6',
+        borderWidth: 1,
+        borderColor: '#D1E7D7',
+    },
+    photoButtonText: {
+        color: COLORS.primary,
+        fontSize: 12,
+        fontFamily: Fonts.semibold,
     },
     userEmail: {
         fontSize: 14,

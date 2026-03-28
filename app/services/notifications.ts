@@ -70,7 +70,7 @@ export const setupNotificationChannels = async () => {
 
   try {
     for (const channel of CHANNELS) {
-      await Notifications.setNotificationChannelAsync(channel.name, channel);
+      await Notifications.setNotificationChannelAsync(channel.name!, channel);
     }
   } catch (error) {
     console.warn('Failed to setup notification channels:', error);

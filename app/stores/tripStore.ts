@@ -12,6 +12,8 @@ export interface RideRequest {
     destination: { lat: number; lon: number; address: string };
     tier: 'Lite' | 'Comfort' | 'Van';
     price: number;
+    tripFare?: number;
+    distanceKm?: number;
     departureTime?: string; // ISO string
     notes?: string;
     preferences?: {

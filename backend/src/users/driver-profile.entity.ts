@@ -13,11 +13,16 @@ export class DriverProfile {
 
     @Column('jsonb', { nullable: true })
     vehicleDetails: {
+        type?: string;
         make: string;
         model: string;
         year: string;
-        color: string;
+        color?: string;
         plateNumber: string;
+        capacity?: string;
+        insuranceDocumentUrl?: string;
+        worthinessCertificateUrl?: string;
+        vehiclePhotoUrls?: string[];
     };
 
     @Column('jsonb', { nullable: true })
@@ -25,6 +30,19 @@ export class DriverProfile {
         number: string;
         expiryDate: string;
         documentUrl: string;
+    };
+
+    @Column('jsonb', { nullable: true })
+    onboardingMeta?: {
+        fullName?: string;
+        phoneNumber?: string;
+        dateOfBirth?: string;
+        nin?: string;
+        address?: string;
+        guarantorName?: string;
+        guarantorPhone?: string;
+        nextOfKinName?: string;
+        nextOfKinPhone?: string;
     };
 
     @Column({ default: false })

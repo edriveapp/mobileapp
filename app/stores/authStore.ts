@@ -14,8 +14,10 @@ const normalizeUser = (rawUser: any): User => ({
     role: rawUser?.role === 'driver' ? 'driver' : 'passenger',
     phoneNumber: String(rawUser?.phoneNumber || rawUser?.phone || ''),
     isVerified: Boolean(rawUser?.isVerified ?? rawUser?.role === 'driver'),
+    avatarUrl: rawUser?.avatarUrl,
     isPhoneVerified: Boolean(rawUser?.isPhoneVerified ?? false),
     isEmailVerified: Boolean(rawUser?.isEmailVerified ?? false),
+    verificationStatus: rawUser?.verificationStatus,
     token: rawUser?.token,
 });
 
@@ -33,6 +35,7 @@ interface AuthState {
     logout: () => Promise<void>;
     checkLogin: () => Promise<void>;
     setFinishedSplash: (finished: boolean) => void;
+    refreshProfile: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -115,6 +118,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await get().logout();
         } finally {
             set({ isLoading: false, hasFinishedSplash: true });
+        }
+    },
+
+    refreshProfile: async () => {
+        const token = get().token;
+        if (!token) return;
+        try {
+            const response = await api.get('/users/me');
+            const user = normalizeUser(response.data);
+            const existingToken = get().token;
+            await SecureStore.setItemAsync('user', JSON.stringify(user));
+            set({ user, token: existingToken, isAuthenticated: true });
+        } catch (error: any) {
+            const status = error?.response?.status;
+
+            // Invalid/expired token should close session cleanly.
+            if (status === 401) {
+                await get().logout();
+                return;
+            }
+
+            // Avoid noisy red-box style logs from periodic profile refresh.
+            if (__DEV__) {
+                const message = error?.message || 'Unknown refresh profile error';
+                console.warn(`Refresh profile skipped: ${message}`);
+            }
         }
     },
 

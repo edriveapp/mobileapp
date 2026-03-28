@@ -20,6 +20,8 @@ export interface ActiveTripSheetProps {
     onCall?: () => void;
     onChat?: () => void;
     onCancel?: () => void;
+    onClose?: () => void;
+    bottomInset?: number;
 }
 
 export default function ActiveTripSheet({
@@ -31,7 +33,9 @@ export default function ActiveTripSheet({
     onEndTrip,
     onCall,
     onChat,
-    onCancel
+    onCancel,
+    onClose,
+    bottomInset = 0,
 }: ActiveTripSheetProps) {
 
     // Helper to get status text and color
@@ -51,7 +55,7 @@ export default function ActiveTripSheet({
     const statusInfo = getStatusInfo();
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: Math.max(40, bottomInset + 16) }]}>
             {/* Drag Handle */}
             <View style={styles.handleContainer}>
                 <View style={styles.handle} />
@@ -63,11 +67,18 @@ export default function ActiveTripSheet({
                     <Text style={[styles.statusTitle, { color: statusInfo.color }]}>{statusInfo.title}</Text>
                     <Text style={styles.statusSub}>{statusInfo.sub}</Text>
                 </View>
-                {eta && status === 'driver_en_route' && (
-                    <View style={styles.etaBadge}>
-                        <Text style={styles.etaText}>{eta}</Text>
-                    </View>
-                )}
+                <View style={styles.headerRight}>
+                    {eta && status === 'driver_en_route' && (
+                        <View style={styles.etaBadge}>
+                            <Text style={styles.etaText}>{eta}</Text>
+                        </View>
+                    )}
+                    {!!onClose && (
+                        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                            <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
 
             <View style={styles.divider} />
@@ -186,6 +197,21 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontWeight: 'bold',
         fontSize: 12,
+    },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    closeButton: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#fff',
     },
     divider: {
         height: 1,

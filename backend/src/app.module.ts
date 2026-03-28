@@ -11,6 +11,9 @@ import { Rating } from './ratings/rating.entity';
 import { RatingsModule } from './ratings/ratings.module';
 import { Ride } from './rides/ride.entity';
 import { RidesModule } from './rides/rides.module';
+import { SupportMessage } from './support/support-message.entity';
+import { SupportTicket } from './support/support-ticket.entity';
+import { SupportModule } from './support/support.module';
 import { DriverProfile } from './users/driver-profile.entity';
 import { SavedPlace } from './users/saved-place.entity';
 import { User } from './users/user.entity';
@@ -30,7 +33,7 @@ import { UsersModule } from './users/users.module';
                 username: configService.get<string>('DB_USER') || 'edrive',
                 password: configService.get<string>('DB_PASS') || 'edrive_password',
                 database: configService.get<string>('DB_NAME') || 'edrive_db',
-                entities: [User, DriverProfile, Ride, Message, Rating, SavedPlace],
+                entities: [User, DriverProfile, Ride, Message, Rating, SavedPlace, SupportTicket, SupportMessage],
                 synchronize: true, // Auto-create tables (dev only)
             }),
             inject: [ConfigService],
@@ -42,6 +45,7 @@ import { UsersModule } from './users/users.module';
         ChatModule,
         PaymentsModule,
         RatingsModule,
+        SupportModule,
         AdminModule,
     ],
     controllers: [],

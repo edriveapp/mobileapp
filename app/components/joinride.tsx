@@ -17,9 +17,11 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LocationService } from '@/app/services/locationService';
+import { NavigatrService } from '@/app/services/navigatrService';
 import RequestDetailsSheet, { RequestDetails } from '@/app/components/RequestDetailsSheet';
 import { useSettingsStore } from '@/app/stores/settingsStore';
 import { useTripStore } from '@/app/stores/tripStore';
+import { getRiderOfferFloor } from '@/app/utils/pricing';
 
 interface PlaceResult {
   place_id: string;
@@ -51,16 +53,6 @@ interface RouteSuggestion {
   origin: string;
   destination: string;
 }
-
-const DRIVER_NAMES = [
-  'Ayo Daniels',
-  'Ife Nnamdi',
-  'Tunde Bello',
-  'Zainab Musa',
-  'Kemi Adeoye',
-  'David Okonkwo',
-  'Adaobi Nwosu',
-];
 
 const normalizeTokens = (text: string) =>
   text
@@ -244,14 +236,16 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
     searchTimeout.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const API_KEY = 'pk.b2973113f0eed13c609ab7a517220e92';
-        const url = `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&countrycodes=ng`;
-        const response = await fetch(url);
-        const data = await response.json();
-        if (Array.isArray(data)) setSearchResults(data);
-        else setSearchResults([]);
+        const results = await NavigatrService.autocomplete(text, 5);
+        setSearchResults(results.map((r, i) => ({
+          place_id: String(i),
+          display_name: r.displayName || r.name,
+          lat: String(r.lat),
+          lon: String(r.lng),
+        })));
       } catch (error) {
         console.error("Search Error:", error);
+        setSearchResults([]);
       } finally {
         setIsSearching(false);
       }
@@ -305,8 +299,8 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
         const tripFare = Number(trip.seatFare ?? trip.fare ?? trip.price ?? 0);
         const availableSeats = Number(trip.availableSeats ?? trip.seats ?? 1);
 
-        // ETA is just mock for UI purposes until live tracking
-        const etaMinutes = Math.max(2, Math.floor(Math.random() * 15) + 3);
+        // Deterministic estimate from route fit so it is stable (no random mock values).
+        const etaMinutes = Math.max(4, Math.round((110 - directionScore) / 6));
 
         return {
           id: `match-${trip.id}`,
@@ -627,6 +621,19 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
       setIsCreatingLiveRequest(true);
       const currentCoords = await LocationService.getCurrentCoordinates();
       const currentState = await LocationService.getCurrentState();
+      const routeDistance = detectRouteDistanceKm(originText, destText);
+      const floorPrice = getRiderOfferFloor(
+        estimatedPrivateRequestPrice,
+        details.rideMode === 'shared' ? 'shared' : 'solo'
+      );
+
+      if (details.offerPrice < floorPrice) {
+        Alert.alert(
+          'Offer too low',
+          `Minimum for ${details.rideMode === 'shared' ? 'shared' : 'private'} request is ₦${floorPrice.toLocaleString()}.`
+        );
+        return;
+      }
 
       await requestRide({
         origin: {
@@ -641,6 +648,8 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
         },
         tier: 'Lite',
         price: details.offerPrice,
+        tripFare: estimatedPrivateRequestPrice,
+        distanceKm: routeDistance,
         notes: details.note,
         preferences: {
           shared: details.rideMode === 'shared',

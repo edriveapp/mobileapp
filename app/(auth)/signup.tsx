@@ -28,6 +28,9 @@ export default function SignupScreen() {
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isDriver, setIsDriver] = useState(false);
   const [isDriverToggling, setIsDriverToggling] = useState(false);
 
@@ -41,8 +44,13 @@ export default function SignupScreen() {
   };
 
   const handleSignup = async () => {
-    if (!name || !email || !phoneNumber || !password) {
+    if (!name || !email || !phoneNumber || !password || !confirmPassword) {
       Alert.alert("Haa!", "Please fill in all fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Oh no!", "Passwords do not match");
       return;
     }
 
@@ -164,11 +172,11 @@ export default function SignupScreen() {
                   placeholderTextColor={COLORS.textSecondary}
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                 />
-                <TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                   <IconSymbol
-                    name="eye.slash"
+                    name={showPassword ? "eye" : "eye.slash"}
                     size={20}
                     color={COLORS.textSecondary}
                   />
@@ -183,11 +191,13 @@ export default function SignupScreen() {
                   style={styles.input}
                   placeholder="Enter Password Again"
                   placeholderTextColor={COLORS.textSecondary}
-                  secureTextEntry
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showConfirmPassword}
                 />
-                <TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
                   <IconSymbol
-                    name="eye.slash"
+                    name={showConfirmPassword ? "eye" : "eye.slash"}
                     size={20}
                     color={COLORS.textSecondary}
                   />

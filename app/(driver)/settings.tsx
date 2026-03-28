@@ -15,14 +15,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '@/app/stores/authStore';
-import { useDriverStore } from '@/app/stores/driverStore';
 import { useSettingsStore } from '@/app/stores/settingsStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 export default function SettingsScreen() {
     const router = useRouter();
     const { logout, user } = useAuthStore();
-    const driverStore = useDriverStore();
     const { preferences, fetchPreferences, updatePreference } = useSettingsStore();
 
     useEffect(() => {
@@ -41,6 +39,18 @@ export default function SettingsScreen() {
                 }
             }
         ]);
+    };
+
+    const openOnboarding = () => {
+        if (user?.verificationStatus === 'pending') {
+            Alert.alert(
+                'Verification In Progress',
+                'Your onboarding is under review. Editing is locked until a decision is made.'
+            );
+            router.push('/(driver)/onboarding/review');
+            return;
+        }
+        router.push('/(driver)/onboarding');
     };
 
     const SettingItem = ({
@@ -110,14 +120,14 @@ export default function SettingsScreen() {
                             icon="person-outline"
                             title="Personal Information"
                             subtitle={user?.name}
-                            onPress={() => router.push('/(driver)/onboarding')}
+                            onPress={openOnboarding}
                         />
                         <View style={styles.divider} />
                         <SettingItem
                             icon="document-text-outline"
                             title="Vehicle & Documents"
                             subtitle="License, Vehicle Info"
-                            onPress={() => router.push('/(driver)/onboarding')}
+                            onPress={openOnboarding}
                         />
                         <View style={styles.divider} />
                         <SettingItem
@@ -146,13 +156,8 @@ export default function SettingsScreen() {
                             hasSwitch_Value={preferences.emailNotifications}
                             onSwitchChange={(val) => updatePreference('emailNotifications', val)}
                         />
-                        <View style={styles.divider} />
-                        <SettingItem
-                            icon="finger-print-outline"
-                            title="Biometric Login"
-                            hasSwitch_Value={preferences.biometricLogin}
-                            onSwitchChange={(val) => updatePreference('biometricLogin', val)}
-                        />
+
+
                     </View>
                 </View>
 
@@ -163,6 +168,7 @@ export default function SettingsScreen() {
                         <SettingItem
                             icon="help-circle-outline"
                             title="Help & Support"
+                            onPress={() => router.push('/support')}
                         />
                         <View style={styles.divider} />
                         <SettingItem

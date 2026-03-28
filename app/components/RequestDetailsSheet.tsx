@@ -1,7 +1,9 @@
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
+import { getRiderOfferFloor, roundFare } from '@/app/utils/pricing';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -52,25 +54,41 @@ export default function RequestDetailsSheet({
   const [rideMode, setRideMode] = useState<RequestRideMode>(initialRideMode);
   const [note, setNote] = useState(initialNote);
 
-  const roundFare = (value: number) => Math.max(500, Math.round(value / 50) * 50);
+  const floorPrice = React.useMemo(
+    () => getRiderOfferFloor(estimatedPrivatePrice, rideMode),
+    [estimatedPrivatePrice, rideMode]
+  );
 
   const priceSuggestions = React.useMemo(() => {
-    if (!estimatedPrivatePrice || estimatedPrivatePrice <= 0) return [];
+    if (!estimatedPrivatePrice || estimatedPrivatePrice <= 0) {
+      if (rideMode === 'solo') {
+        return [
+          floorPrice,
+          roundFare(floorPrice * 1.1, floorPrice),
+          roundFare(floorPrice * 1.25, floorPrice),
+        ];
+      }
+      return [
+        floorPrice,
+        roundFare(floorPrice * 1.2, floorPrice),
+        roundFare(floorPrice * 1.4, floorPrice),
+      ];
+    }
 
     if (rideMode === 'solo') {
       return [
-        roundFare(estimatedPrivatePrice * 0.92),
+        Math.max(floorPrice, roundFare(estimatedPrivatePrice * 0.92)),
         roundFare(estimatedPrivatePrice),
         roundFare(estimatedPrivatePrice * 1.08),
       ];
     }
 
     return [
-      roundFare(estimatedPrivatePrice / 4.2),
+      Math.max(floorPrice, roundFare(estimatedPrivatePrice / 4.2)),
       roundFare(estimatedPrivatePrice / 3),
       roundFare(estimatedPrivatePrice / 2),
     ];
-  }, [estimatedPrivatePrice, rideMode]);
+  }, [estimatedPrivatePrice, floorPrice, rideMode]);
 
   const suggestedRangeText = React.useMemo(() => {
     if (!priceSuggestions.length) return '';
@@ -95,6 +113,13 @@ export default function RequestDetailsSheet({
   const handleSubmit = () => {
     const offerPrice = Number(offerText.replace(/,/g, '').trim());
     if (!offerPrice || offerPrice <= 0) return;
+    if (offerPrice < floorPrice) {
+      Alert.alert(
+        'Offer too low',
+        `Minimum for ${rideMode === 'solo' ? 'private' : 'shared'} ride is ₦${floorPrice.toLocaleString()}.`
+      );
+      return;
+    }
 
     onSubmit({
       offerPrice,
@@ -103,7 +128,8 @@ export default function RequestDetailsSheet({
     });
   };
 
-  const isDisabled = loading || !Number(offerText.replace(/,/g, '').trim());
+  const numericOffer = Number(offerText.replace(/,/g, '').trim());
+  const isDisabled = loading || !numericOffer || numericOffer < floorPrice;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -116,6 +142,9 @@ export default function RequestDetailsSheet({
 
             <View style={styles.section}>
               <Text style={styles.label}>Your offer for this ride</Text>
+              <Text style={styles.floorText}>
+                Minimum offer for {rideMode === 'solo' ? 'private' : 'shared'}: ₦{floorPrice.toLocaleString()}
+              </Text>
               <View style={styles.inputWrap}>
                 <Text style={styles.currency}>₦</Text>
                 <TextInput
@@ -127,40 +156,40 @@ export default function RequestDetailsSheet({
                   style={styles.input}
                 />
               </View>
-              {!!estimatedPrivatePrice && (
-                <>
-                  <Text style={styles.rangeText}>
-                    {rideMode === 'solo'
-                      ? 'Private means you are covering the full trip cost for this route, so the price sits much closer to the full vehicle fare.'
-                      : 'Shared is cheaper because you are splitting the trip cost, so offers usually land around 1/2 to 1/4.2 of the private fare.'}
-                  </Text>
+              <>
+                <Text style={styles.rangeText}>
+                  {rideMode === 'solo'
+                    ? 'Private means you are covering the full trip cost for this route, so the price sits much closer to the full vehicle fare.'
+                    : 'Shared is cheaper because you are splitting the trip cost, so offers usually land around 1/2 to 1/4.2 of the private fare.'}
+                </Text>
+                {!!estimatedPrivatePrice && (
                   <Text style={styles.privateGuideText}>
                     Full private guide: ₦{estimatedPrivatePrice.toLocaleString()}
                   </Text>
-                  <Text style={styles.rangeValue}>{suggestedRangeText}</Text>
-                  <View style={styles.suggestionRow}>
-                    {priceSuggestions.map((suggestedPrice, index) => (
-                      <TouchableOpacity
-                        key={`request-price-${rideMode}-${index}-${suggestedPrice}`}
+                )}
+                <Text style={styles.rangeValue}>{suggestedRangeText}</Text>
+                <View style={styles.suggestionRow}>
+                  {priceSuggestions.map((suggestedPrice, index) => (
+                    <TouchableOpacity
+                      key={`request-price-${rideMode}-${index}-${suggestedPrice}`}
+                      style={[
+                        styles.suggestionChip,
+                        Number(offerText.replace(/,/g, '').trim()) === suggestedPrice && styles.suggestionChipActive,
+                      ]}
+                      onPress={() => setOfferText(String(suggestedPrice))}
+                    >
+                      <Text
                         style={[
-                          styles.suggestionChip,
-                          Number(offerText.replace(/,/g, '').trim()) === suggestedPrice && styles.suggestionChipActive,
+                          styles.suggestionChipText,
+                          Number(offerText.replace(/,/g, '').trim()) === suggestedPrice && styles.suggestionChipTextActive,
                         ]}
-                        onPress={() => setOfferText(String(suggestedPrice))}
                       >
-                        <Text
-                          style={[
-                            styles.suggestionChipText,
-                            Number(offerText.replace(/,/g, '').trim()) === suggestedPrice && styles.suggestionChipTextActive,
-                          ]}
-                        >
-                          ₦{suggestedPrice.toLocaleString()}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              )}
+                        ₦{suggestedPrice.toLocaleString()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
             </View>
 
             <View style={styles.section}>
@@ -203,7 +232,13 @@ export default function RequestDetailsSheet({
               onPress={handleSubmit}
               disabled={isDisabled}
             >
-              <Text style={styles.submitText}>{loading ? 'Sending...' : confirmText}</Text>
+              <Text style={styles.submitText}>
+                {loading
+                  ? 'Sending...'
+                  : numericOffer < floorPrice
+                    ? `Increase to min ₦${floorPrice.toLocaleString()}`
+                    : confirmText}
+              </Text>
             </TouchableOpacity>
           </Pressable>
         </KeyboardAvoidingView>
@@ -266,6 +301,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FCFCFD',
     paddingHorizontal: 14,
     height: 52,
+  },
+  floorText: {
+    color: '#B54708',
+    fontSize: 12,
+    fontFamily: Fonts.semibold,
+    marginBottom: 6,
   },
   currency: {
     fontSize: 18,
