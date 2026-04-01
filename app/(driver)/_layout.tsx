@@ -183,6 +183,14 @@ export default function DriverLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="personal-info"
+        options={{ href: null, tabBarStyle: { display: 'none' } }}
+      />
+      <Tabs.Screen
+        name="vehicle-docs"
+        options={{ href: null, tabBarStyle: { display: 'none' } }}
+      />
     </Tabs>
   );
 }

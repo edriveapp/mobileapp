@@ -8,8 +8,8 @@ import { NavigatrService } from '../services/navigatrService';
 
 const getPassengerName = (ride: any) => {
   const passenger = ride?.passenger;
-  const fullName = [passenger?.firstName, passenger?.lastName].filter(Boolean).join(' ').trim();
-  return fullName || passenger?.name || passenger?.email || passenger?.phone || 'Passenger';
+  const firstName = String(passenger?.firstName || '').trim();
+  return firstName || passenger?.name || passenger?.email || passenger?.phone || 'Passenger';
 };
 
 interface RideRealtimeState {

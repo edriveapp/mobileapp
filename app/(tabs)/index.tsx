@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -139,11 +140,13 @@ export default function HomeScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
 
   // --- STORE & LOGIC HOOKS ---
 const {
     trips,
     fetchTrips,
+    fetchMyTrips,
     fetchNearbyDrivers,
     cancelRide, // Import cancel action
     updateRideRequest,
@@ -213,9 +216,19 @@ const {
     const init = async () => {
       await loadLocationData();
       await fetchTrips();
+      await fetchMyTrips();
     };
     init();
-  }, [fetchTrips, loadLocationData]);
+  }, [fetchMyTrips, fetchTrips, loadLocationData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (user?.role === 'passenger') {
+        fetchMyTrips();
+      }
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [fetchMyTrips, user?.role]);
 
   // 2. LISTEN TO RIDE STATUS
   useEffect(() => {
@@ -547,7 +560,7 @@ const {
               eta={activeTripEta}
               pickupAddress={getAddressText(currentRide.pickupLocation || currentRide.origin)}
               destAddress={getAddressText(currentRide.destination)}
-              bottomInset={insets.bottom}
+              bottomInset={insets.bottom + tabBarHeight + 8}
               onClose={() => setShowActiveTripSheet(false)}
               onCall={() => Alert.alert("Call", "Calling driver...")}
               onChat={() => {
@@ -564,7 +577,7 @@ const {
             />
           ) : (
             <TouchableOpacity
-              style={[styles.reopenTripCard, { marginBottom: Math.max(insets.bottom, 8) }]}
+              style={[styles.reopenTripCard, { marginBottom: Math.max(insets.bottom + tabBarHeight, 8) }]}
               onPress={() => setShowActiveTripSheet(true)}
             >
               <View style={styles.reopenTripDot} />
@@ -627,7 +640,7 @@ const styles = StyleSheet.create({
   emergencyValue: { fontSize: 16, fontWeight: 'bold' },
   supportButton: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: '#F5F5F5', borderRadius: 12, marginTop: SPACING.s },
   supportText: { fontSize: 16, fontWeight: '500' },
-  bottomSheet: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.l, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 10, fontFamily: Fonts.rounded },
+  bottomSheet: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.l, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 16, zIndex: 50, fontFamily: Fonts.rounded },
   greetingTitle: { fontSize: 20, fontWeight: '600', marginBottom: SPACING.m, color: '#000', fontFamily: Fonts.semibold },
   placeholderText: { fontSize: 16, color: COLORS.textSecondary, fontFamily: Fonts.rounded, fontWeight: '500' },
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 12, paddingHorizontal: SPACING.m, height: 50, marginBottom: SPACING.l, borderWidth: 1, borderColor: '#E0E0E0' },

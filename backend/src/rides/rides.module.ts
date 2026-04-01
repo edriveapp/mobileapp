@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CommonModule } from '../common/common.module';
 import { Ride } from './ride.entity';
@@ -9,7 +11,18 @@ import { UsersModule } from '../users/users.module';
 import { User } from '../users/user.entity';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([Ride, User]), CommonModule, UsersModule],
+    imports: [
+        TypeOrmModule.forFeature([Ride, User]),
+        CommonModule,
+        UsersModule,
+        JwtModule.registerAsync({
+            imports: [ConfigModule],
+            useFactory: (configService: ConfigService) => ({
+                secret: configService.get<string>('JWT_SECRET') || 'secretKey',
+            }),
+            inject: [ConfigService],
+        }),
+    ],
     providers: [RidesService, RidesGateway],
     controllers: [RidesController],
     exports: [RidesService, RidesGateway],

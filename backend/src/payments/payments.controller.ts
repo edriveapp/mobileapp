@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, RawBodyRequest, Request, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PaymentsService } from './payments.service';
 
@@ -24,9 +24,14 @@ export class PaymentsController {
     }
 
     @Post('webhook')
-    async webhook(@Body() body) {
-        // Handle Paystack webhook for updates
-        console.log('Payment Webhook:', body);
-        return { status: 'received' };
+    @HttpCode(200)
+    async webhook(
+        @Request() req: RawBodyRequest<Request>,
+        @Headers('x-paystack-signature') signature: string,
+        @Body() body: { event: string; data: any },
+    ) {
+        this.paymentsService.verifyWebhookSignature(req.rawBody, signature);
+        await this.paymentsService.handleWebhookEvent(body.event, body.data);
+        return { status: 'ok' };
     }
 }

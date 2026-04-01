@@ -1,8 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThanOrEqual, Repository } from 'typeorm';
 import { Ride, RideStatus } from './ride.entity';
 import { User } from '../users/user.entity';
+import { buildTrendingAreas } from './trending-areas.util';
 
 @Injectable()
 export class RidesService {
@@ -36,9 +37,70 @@ export class RidesService {
         }
     }
 
+    private readonly immediateRideStatuses = [
+        RideStatus.SEARCHING,
+        RideStatus.ACCEPTED,
+        RideStatus.ARRIVED,
+        RideStatus.IN_PROGRESS,
+    ];
+
+    private isFutureReservation(departureTime?: Date | string | null) {
+        if (!departureTime) return false;
+        const ts = new Date(departureTime).getTime();
+        if (!ts) return false;
+        return ts > Date.now();
+    }
+
+    private async assertNoImmediateRideConflict(userId: string, role: 'driver' | 'passenger', excludeRideId?: string) {
+        const query = this.ridesRepository.createQueryBuilder('ride')
+            .where('ride.status IN (:...statuses)', { statuses: this.immediateRideStatuses })
+            .andWhere('(ride.departureTime IS NULL OR ride.departureTime <= :now)', { now: new Date() })
+            .andWhere(role === 'driver' ? 'ride.driverId = :userId' : 'ride.passengerId = :userId', { userId });
+
+        if (excludeRideId) {
+            query.andWhere('ride.id != :excludeRideId', { excludeRideId });
+        }
+
+        const existing = await query.getOne();
+        if (!existing) return;
+
+        const who = role === 'driver' ? 'Driver' : 'User';
+        throw new BadRequestException(`${who} already has an active trip. Complete or cancel it before starting another immediate trip.`);
+    }
+
+    private sanitizePassengerForDriver(ride: Ride) {
+        if (!ride?.passenger) return ride;
+        const p = ride.passenger as any;
+        // Build a safe plain object — avoids TypeORM class-instance spread issues
+        // Expose only first name to protect passenger privacy
+        const storedName: string = String(p.firstName || p.name || '').trim();
+        const firstName = storedName.split(' ')[0] || p.email || p.phone || 'Passenger';
+        (ride as any).passenger = {
+            id: p.id,
+            firstName,
+            lastName: '',
+            email: p.email,
+            phone: p.phone,
+            rating: p.rating,
+            avatarUrl: p.avatarUrl,
+        };
+        return ride;
+    }
+
+    private sanitizePassengerListForDriver(rides: Ride[]) {
+        return rides.map((ride) => this.sanitizePassengerForDriver(ride));
+    }
+
     async createRide(data: any): Promise<Ride> {
         if (data?.passengerId) {
             this.enforcePassengerRequestFloor(data);
+        }
+        const isFuture = this.isFutureReservation(data?.departureTime);
+        if (!isFuture && data?.passengerId) {
+            await this.assertNoImmediateRideConflict(data.passengerId, 'passenger');
+        }
+        if (!isFuture && data?.driverId) {
+            await this.assertNoImmediateRideConflict(data.driverId, 'driver');
         }
         const seats = Number(data.seats) > 0 ? Number(data.seats) : 1;
         const fare = Number(data.fare ?? data.price ?? 0) || 0;
@@ -85,11 +147,17 @@ export class RidesService {
 
         if (!ride) throw new NotFoundException('Ride not found'); // Use NestJS built-in exceptions
         if (ride.status !== RideStatus.SEARCHING) throw new BadRequestException('Ride no longer available');
+        if (!this.isFutureReservation(ride.departureTime)) {
+            await this.assertNoImmediateRideConflict(driverId, 'driver', ride.id);
+            if (ride.passengerId) {
+                await this.assertNoImmediateRideConflict(ride.passengerId, 'passenger', ride.id);
+            }
+        }
 
         ride.driverId = driverId;
         ride.status = RideStatus.ACCEPTED;
         await this.ridesRepository.save(ride);
-        return (await this.findRideById(ride.id)) as Ride;
+        return this.sanitizePassengerForDriver((await this.findRideById(ride.id)) as Ride);
     }
 
     async updateRideDetails(rideId: string, driverId: string, data: any): Promise<Ride> {
@@ -158,25 +226,56 @@ export class RidesService {
     }
 
     async bookPublishedTrip(rideId: string, passengerId: string, data: any): Promise<Ride> {
-        const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
+        // Atomic seat decrement: only succeeds if availableSeats > 0 right now.
+        // This prevents two simultaneous bookings from both reading seats=1 and both decrementing.
+        const result = await this.ridesRepository
+            .createQueryBuilder()
+            .update()
+            .set({ availableSeats: () => '"availableSeats" - 1' })
+            .where('id = :rideId', { rideId })
+            .andWhere('"availableSeats" > 0')
+            .andWhere('status = :status', { status: RideStatus.SEARCHING })
+            .andWhere('"driverId" IS NOT NULL')
+            .execute();
 
+        if (!result.affected || result.affected === 0) {
+            // Check why — give a precise error
+            const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
+            if (!ride) throw new NotFoundException('Trip not found');
+            if (!ride.driverId) throw new BadRequestException('This trip is not available for booking');
+            if (ride.availableSeats <= 0) throw new BadRequestException('No seats available on this trip');
+            throw new BadRequestException('Trip is no longer accepting bookings');
+        }
+
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
         if (!ride) throw new NotFoundException('Trip not found');
-        if (!ride.driverId) throw new BadRequestException('This trip is not available for booking');
-        if (ride.availableSeats <= 0) throw new BadRequestException('No seats left on this trip');
-        if (ride.passengerId && ride.passengerId !== passengerId) {
-            throw new BadRequestException('This trip already has an active rider');
+
+        if (!this.isFutureReservation(ride.departureTime)) {
+            await this.assertNoImmediateRideConflict(passengerId, 'passenger', ride.id);
+            await this.assertNoImmediateRideConflict(ride.driverId, 'driver', ride.id);
         }
 
         ride.passengerId = passengerId;
         ride.pickupLocation = data.pickupLocation ?? ride.pickupLocation ?? ride.origin;
         ride.paymentMethod = data.paymentMethod ?? ride.paymentMethod ?? 'cash';
         ride.paymentStatus = data.paymentStatus ?? 'pending';
-        ride.availableSeats = Math.max((ride.availableSeats ?? 1) - 1, 0);
         ride.status = RideStatus.ACCEPTED;
 
         await this.ridesRepository.save(ride);
         return (await this.findRideById(ride.id)) as Ride;
     }
+
+    // Valid status transitions per actor
+    private readonly driverTransitions: Partial<Record<RideStatus, RideStatus[]>> = {
+        [RideStatus.ACCEPTED]: [RideStatus.ARRIVED, RideStatus.CANCELLED],
+        [RideStatus.ARRIVED]: [RideStatus.IN_PROGRESS, RideStatus.CANCELLED],
+        [RideStatus.IN_PROGRESS]: [RideStatus.COMPLETED],
+    };
+
+    private readonly passengerTransitions: Partial<Record<RideStatus, RideStatus[]>> = {
+        [RideStatus.SEARCHING]: [RideStatus.CANCELLED],
+        [RideStatus.ACCEPTED]: [RideStatus.CANCELLED],
+    };
 
     async updateStatus(rideId: string, status: RideStatus): Promise<Ride> {
         await this.ridesRepository.update(rideId, { status });
@@ -188,6 +287,53 @@ export class RidesService {
         }
 
         return ride;
+    }
+
+    async updateStatusAsActor(rideId: string, userId: string, status: RideStatus): Promise<Ride> {
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
+        if (!ride) throw new NotFoundException('Ride not found');
+
+        const isDriver = ride.driverId === userId;
+        const isPassenger = ride.passengerId === userId;
+
+        if (!isDriver && !isPassenger) {
+            throw new ForbiddenException('You are not part of this ride');
+        }
+
+        const allowed = isDriver
+            ? this.driverTransitions[ride.status] ?? []
+            : this.passengerTransitions[ride.status] ?? [];
+
+        if (!allowed.includes(status)) {
+            throw new BadRequestException(
+                `Cannot transition from ${ride.status} to ${status}`,
+            );
+        }
+
+        ride.status = status;
+        await this.ridesRepository.save(ride);
+        return (await this.findRideById(rideId)) as Ride;
+    }
+
+    async cancelRideAsActor(rideId: string, userId: string): Promise<Ride> {
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
+        if (!ride) throw new NotFoundException('Ride not found');
+
+        const isDriver = ride.driverId === userId;
+        const isPassenger = ride.passengerId === userId;
+
+        if (!isDriver && !isPassenger) {
+            throw new ForbiddenException('You are not part of this ride');
+        }
+
+        const cancellableStatuses = [RideStatus.SEARCHING, RideStatus.ACCEPTED, RideStatus.ARRIVED];
+        if (!cancellableStatuses.includes(ride.status)) {
+            throw new BadRequestException(`Cannot cancel a ride that is ${ride.status}`);
+        }
+
+        ride.status = RideStatus.CANCELLED;
+        await this.ridesRepository.save(ride);
+        return (await this.findRideById(rideId)) as Ride;
     }
 
     async updatePaymentDetails(rideId: string, status: string, driverEarnings?: number, platformCut?: number): Promise<Ride> {
@@ -222,7 +368,11 @@ export class RidesService {
             query.andWhere('ride.passengerId = :userId', { userId });
         }
 
-        return query.getMany();
+        const rides = await query.getMany();
+        if (role === 'driver') {
+            return this.sanitizePassengerListForDriver(rides);
+        }
+        return rides;
     }
 
     async getAvailableRides(filters: any) {
@@ -249,7 +399,22 @@ export class RidesService {
             query.andWhere('ride.tier = :tier', { tier: filters.tier });
         }
 
-        return query.orderBy('ride.createdAt', 'DESC').getMany();
+        const rides = await query.orderBy('ride.createdAt', 'DESC').getMany();
+        if (filters.role === 'driver') {
+            return this.sanitizePassengerListForDriver(rides);
+        }
+        return rides;
+    }
+
+    async getTrendingAreas(limit: number = 8) {
+        const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(20, Number(limit))) : 8;
+        const rides = await this.ridesRepository.find({
+            where: { updatedAt: MoreThanOrEqual(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)) },
+            order: { updatedAt: 'DESC' },
+            take: 5000,
+        });
+
+        return buildTrendingAreas(rides, safeLimit);
     }
 
     async getHistory(userId: string, role: string, page: number = 1) {
@@ -270,6 +435,10 @@ export class RidesService {
             query.andWhere('ride.passengerId = :userId', { userId });
         }
 
-        return query.getManyAndCount();
+        const [rides, count] = await query.getManyAndCount();
+        if (role === 'driver') {
+            return [this.sanitizePassengerListForDriver(rides), count] as const;
+        }
+        return [rides, count] as const;
     }
 }

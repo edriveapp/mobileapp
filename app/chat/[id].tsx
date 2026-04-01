@@ -6,8 +6,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     KeyboardAvoidingView,
+    Linking,
     Platform,
     StyleSheet,
     Text,
@@ -74,6 +76,28 @@ export default function ChatScreen() {
         (!isPlaceholderName(derivedRecipientName) ? derivedRecipientName : '') ||
         (!isPlaceholderName(messageParticipantName) ? messageParticipantName : '') ||
         (user?.role === 'driver' ? 'Rider' : 'Driver');
+
+    // Phone number of the counterpart — driver sees passenger phone, passenger sees driver phone
+    const recipientPhone = user?.role === 'driver'
+        ? trip?.passenger?.phone
+        : trip?.driver?.phone;
+
+    const handleCall = () => {
+        if (!recipientPhone) {
+            Alert.alert('No number', 'Phone number is not available for this ride.');
+            return;
+        }
+        const url = `tel:${recipientPhone}`;
+        Linking.canOpenURL(url).then((supported) => {
+            if (!supported) {
+                Alert.alert('Call unavailable', 'Your device cannot place phone calls.');
+                return;
+            }
+            Linking.openURL(url).catch(() =>
+                Alert.alert('Error', 'Could not open the dialer.')
+            );
+        });
+    };
 
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(true);
@@ -177,8 +201,8 @@ export default function ChatScreen() {
                     </View>
                 </View>
 
-                <TouchableOpacity style={styles.callButton}>
-                    <Ionicons name="phone-portrait-outline" size={20} color={COLORS.primary} />
+                <TouchableOpacity style={styles.callButton} onPress={handleCall}>
+                    <Ionicons name="call-outline" size={20} color={COLORS.primary} />
                 </TouchableOpacity>
             </View>
 

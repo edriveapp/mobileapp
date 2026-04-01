@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
@@ -58,14 +59,16 @@ const getDirections = async (startLoc: { latitude: number; longitude: number }, 
 export default function DriverMapScreen() {
     const mapRef = useRef<MapView>(null);
     const insets = useSafeAreaInsets();
+    const tabBarHeight = useBottomTabBarHeight();
     const router = useRouter();
-    const { 
-        availableTrips, 
-        activeTrips, 
-        fetchAvailableTrips, 
-        fetchMyTrips, 
+    const { tripId: paramTripId } = useLocalSearchParams<{ tripId?: string }>();
+    const {
+        availableTrips,
+        activeTrips,
+        fetchAvailableTrips,
+        fetchMyTrips,
         acceptRide,
-        updateTripStatus 
+        updateTripStatus
     } = useTripStore();
     const requestQueue = useRideRealtimeStore((state) => state.requestQueue);
     const dequeueRideRequest = useRideRealtimeStore((state) => state.dequeueRideRequest);
@@ -73,6 +76,8 @@ export default function DriverMapScreen() {
     const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
     const [loading, setLoading] = useState(true);
     const [isNavigating, setIsNavigating] = useState(false);
+    // Track whether we've already auto-navigated for this tripId param
+    const autoNavigatedRef = useRef<string | null>(null);
     
     // Navigation Data
     const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
@@ -87,6 +92,7 @@ export default function DriverMapScreen() {
     const [activeDestination, setActiveDestination] = useState<PlaceResult | null>(null);
     const [selectedRideRequestId, setSelectedRideRequestId] = useState<string | null>(null);
     const [notchMinimized, setNotchMinimized] = useState(false);
+    const [panelHeight, setPanelHeight] = useState(140);
     const [updatingStatus, setUpdatingStatus] = useState(false);
     
     const searchTimeout = useRef<any>(null);
@@ -106,12 +112,39 @@ export default function DriverMapScreen() {
         return () => { mounted = false; };
     }, [fetchAvailableTrips, fetchMyTrips]);
 
+    // When opened from dashboard via "Start Trip", auto-navigate to the pickup and expand notch
+    useEffect(() => {
+        if (!paramTripId || !location || loading) return;
+        if (autoNavigatedRef.current === paramTripId) return;
+
+        const ride = activeTrips.find(
+            (r: any) =>
+                r.id === paramTripId &&
+                ['accepted', 'arrived', 'arriving', 'in_progress'].includes(String(r.status).toLowerCase()),
+        );
+        if (!ride) return;
+
+        const pickup = ride.pickupLocation || ride.origin;
+        if (!pickup?.lat || !pickup?.lon) return;
+
+        autoNavigatedRef.current = paramTripId;
+        setNotchMinimized(false);
+
+        handleSelectDestination({
+            place_id: ride.id,
+            display_name: pickup.address || 'Pickup',
+            lat: String(pickup.lat),
+            lon: String(pickup.lon),
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paramTripId, location, loading, activeTrips.length]);
+
     // Broadcast driver location to rider every 5 seconds while navigating an active ride
     useEffect(() => {
         if (!isNavigating || !location) return;
 
         const activePickup = activeTrips.find(
-            (ride: any) => ['accepted', 'arriving', 'in_progress'].includes(String(ride.status).toLowerCase())
+            (ride: any) => ['accepted', 'arrived', 'arriving', 'in_progress'].includes(String(ride.status).toLowerCase())
         );
         if (!activePickup?.passengerId) return;
 
@@ -137,17 +170,32 @@ export default function DriverMapScreen() {
     );
 
     const activePickupTrips = activeTrips.filter(
-        (ride: any) => ['accepted', 'arriving', 'in_progress'].includes(String(ride.status).toLowerCase())
+        (ride: any) => ['accepted', 'arrived', 'arriving', 'in_progress'].includes(String(ride.status).toLowerCase())
     );
-    
-    // Most relevant active ride
-    const currentActiveRide = activePickupTrips[0] || null;
+
+    // Pin the trip that was tapped from the dashboard; fall back to the first active ride
+    const currentActiveRide =
+        (paramTripId ? activePickupTrips.find((r: any) => r.id === paramTripId) : null) ||
+        activePickupTrips[0] ||
+        null;
 
     const selectedRideRequest = liveRideRequests.find((ride: any) => ride.id === selectedRideRequestId) || null;
 
     const getPassengerName = (ride: any) => {
-        const fullName = [ride?.passenger?.firstName, ride?.passenger?.lastName].filter(Boolean).join(' ').trim();
-        return fullName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
+        const firstName = String(ride?.passenger?.firstName || '').trim();
+        return firstName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
+    };
+
+    const getDispatchText = (ride: any) => {
+        const status = String(ride?.status || '').toLowerCase();
+        const passengerName = getPassengerName(ride);
+        if (status === 'arrived') {
+            return `Dispatch: You are at ${passengerName}'s pickup point. Start trip when rider boards.`;
+        }
+        if (status === 'in_progress') {
+            return 'Dispatch: Follow route to rider drop-off location.';
+        }
+        return `Dispatch: Follow route to ${passengerName}'s pickup location.`;
     };
 
     // --- OPTIMIZED SEARCH (Fixes Freezing) ---
@@ -380,7 +428,7 @@ export default function DriverMapScreen() {
             </View>
 
             {/* 2. RECENTER / JOIN DIRECTION BUTTON */}
-            <View style={[styles.fabContainer, { bottom: isNavigating ? 180 : 160 }]}>
+            <View style={[styles.fabContainer, { bottom: tabBarHeight + panelHeight + 16 }]}>
                 <TouchableOpacity 
                     style={[styles.fab, isNavigating && styles.fabActive]} 
                     onPress={handleRecenter}
@@ -393,8 +441,11 @@ export default function DriverMapScreen() {
                 </TouchableOpacity>
             </View>
 
-            {/* Bottom Panel */}
-            <View style={[styles.bottomPanel, { paddingBottom: Math.max(insets.bottom, 8) + SPACING.s }]}>
+            {/* Bottom Panel — sits directly above the tab bar */}
+            <View
+                style={[styles.bottomPanel, { bottom: tabBarHeight, paddingBottom: SPACING.m }]}
+                onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)}
+            >
                 {activeDestination ? (
                     <View>
                         <View style={styles.tripInfoRow}>
@@ -467,7 +518,7 @@ export default function DriverMapScreen() {
 
             {/* Active Ride Notch */}
             {currentActiveRide && (
-                <View style={[styles.notchContainer, { bottom: insets.bottom + 10 }]}>
+                <View style={[styles.notchContainer, { bottom: tabBarHeight + panelHeight + 12 }]}>
                     {notchMinimized ? (
                         <TouchableOpacity 
                             style={styles.minimizedNotch} 
@@ -511,6 +562,7 @@ export default function DriverMapScreen() {
                                         </Text>
                                     </View>
                                 </View>
+                                <Text style={styles.dispatchHint}>{getDispatchText(currentActiveRide)}</Text>
                             </View>
 
                             <View style={styles.notchActions}>
@@ -646,10 +698,10 @@ const styles = StyleSheet.create({
     },
     fabActive: { backgroundColor: COLORS.primary },
 
-    bottomPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: COLORS.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.l, elevation: 10 },
-    panelTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text, marginBottom: 8 },
+    bottomPanel: { position: 'absolute', left: 0, right: 0, backgroundColor: COLORS.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.l, elevation: 10, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 12 },
+    panelTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text, marginBottom: 14 },
     
-    tripInfoRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: SPACING.l },
+    tripInfoRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: SPACING.s },
     statBox: { alignItems: 'center' },
     statLabel: { fontSize: 12, color: COLORS.textSecondary },
     statValue: { fontSize: 18, fontWeight: 'bold', color: COLORS.text },
@@ -766,17 +818,19 @@ const styles = StyleSheet.create({
         backgroundColor: '#111827',
         borderRadius: 30,
         paddingHorizontal: 20,
-        paddingVertical: 12,
+        paddingVertical: 14,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, elevation: 12,
+        shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 14, elevation: 16,
+        borderWidth: 1.5,
+        borderColor: '#4ADE80',
     },
     notchStatusDot: {
-        width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ADE80', marginRight: 10,
+        width: 10, height: 10, borderRadius: 5, backgroundColor: '#4ADE80', marginRight: 10,
     },
     notchStatusText: {
-        flex: 1, color: 'white', fontSize: 13, fontWeight: '600', fontFamily: Fonts.semibold,
+        flex: 1, color: 'white', fontSize: 14, fontWeight: '600', fontFamily: Fonts.semibold,
     },
     maximizedNotch: {
         backgroundColor: 'white',
@@ -799,6 +853,13 @@ const styles = StyleSheet.create({
     },
     notchBody: {
         marginBottom: 20,
+    },
+    dispatchHint: {
+        marginTop: 10,
+        color: '#475467',
+        fontSize: 13,
+        lineHeight: 18,
+        fontFamily: Fonts.rounded,
     },
     routePreview: {
         backgroundColor: '#FAFAFA', padding: 15, borderRadius: 16,

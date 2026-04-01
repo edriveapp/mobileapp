@@ -156,6 +156,14 @@ export class UsersService {
         return user.expoPushTokens || [];
     }
 
+    async getPushTokensForUsers(userIds: string[]): Promise<string[]> {
+        if (!userIds.length) return [];
+        const users = await this.usersRepository.findByIds(userIds);
+        return users
+            .filter((user) => user.preferences?.pushNotifications !== false)
+            .flatMap((user) => user.expoPushTokens || []);
+    }
+
     // --- Saved Places ---
 
     async getSavedPlaces(userId: string): Promise<SavedPlace[]> {
@@ -180,8 +188,36 @@ export class UsersService {
 
     // --- Driver Profile ---
 
-    async getDriverProfile(userId: string): Promise<DriverProfile | null> {
-        return this.driverProfileRepository.findOne({ where: { user: { id: userId } }, relations: ['user'] });
+    async getDriverProfile(userId: string): Promise<any> {
+        // Fetch via User so we always have user data even if DriverProfile row is absent
+        const user = await this.usersRepository.findOne({
+            where: { id: userId },
+            relations: ['driverProfile'],
+        });
+        if (!user) return null;
+
+        const { passwordHash, expoPushTokens, driverProfile, ...safeUser } = user as any;
+        const profile = driverProfile ?? null;
+
+        if (!profile) {
+            // No DriverProfile record yet — return a stub so the frontend never sees null
+            return {
+                id: null,
+                user: safeUser,
+                vehicleDetails: null,
+                licenseDetails: null,
+                onboardingMeta: null,
+                isVerified: false,
+                isOnline: false,
+            };
+        }
+
+        // Strip PostGIS geometry field to avoid serialisation issues
+        const { currentLocation, ...profileRest } = profile as any;
+        return {
+            ...profileRest,
+            user: safeUser,
+        };
     }
 
     async createDriverProfile(userId: string, details: any): Promise<DriverProfile> {

@@ -111,18 +111,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
     socket.emit('join_chat', { rideId });
     void get().markRideRead(rideId);
 
-    // Register active message listener
-    socket.off('receive_message'); // Avoid dups
-    socket.on('receive_message', (message: Message) => {
-      void get().addMessage(rideId, message);
-    });
+    // Use the message's own rideId — never the stale closure value.
+    // A single persistent handler is set once; setupChat just refreshes currentRideId.
+    if (!socket.listeners('receive_message').length) {
+      socket.on('receive_message', (message: Message & { rideId?: string }) => {
+        const msgRideId = message.rideId ?? get().currentRideId;
+        if (!msgRideId) return;
+        void get().addMessage(msgRideId, message);
+      });
+    }
   },
 
   leaveChat: (rideId: string) => {
     const socket = useSocketStore.getState().socket;
     if (socket) {
-        socket.off('receive_message');
-        // socket.emit('leave_chat', { rideId }); // If backend supports it
+      // Tell the server to remove us from the room — messages for this ride
+      // will no longer be pushed while we're not in the chat screen.
+      socket.emit('leave_chat', { rideId });
+      // Do NOT remove the 'receive_message' listener — it is shared across all
+      // rides and routes incoming messages by rideId. Removing it here would
+      // cause messages for other open rides to be dropped.
     }
     set({ currentRideId: null });
   },
@@ -161,33 +169,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addMessage: async (incomingRideId, msg) => {
     const state = get();
-    
-    // Only update the active chat list if the incoming message is for the currently open chat screen
-    if (state.currentRideId === incomingRideId) {
-      const currentMessages = state.messages;
-      
-      // Remove any optimistic message from the same user within last 10 seconds that perfectly matches text
-      const withoutOptimistic = currentMessages.filter((m) => {
+    const isActiveChat = state.currentRideId === incomingRideId;
+
+    // Only add to the visible messages list when this chat is open
+    if (isActiveChat) {
+      const withoutOptimistic = state.messages.filter((m) => {
         if (!m.pending) return true;
-        const sameUser = m.user._id === msg.user?._id;
-        const sameText = m.text === msg.text;
-        return !(sameUser && sameText);
+        return !(m.user._id === msg.user?._id && m.text === msg.text);
       });
 
-      // Avoid duplication if we already have the confirmed server message
-      const alreadyHaveConfirmed = withoutOptimistic.some(m => !m.pending && m._id === msg._id);
-      
-      if (!alreadyHaveConfirmed) {
+      const alreadyConfirmed = withoutOptimistic.some((m) => !m.pending && m._id === msg._id);
+      if (!alreadyConfirmed) {
         const nextMessages = normalizeMessages([...withoutOptimistic, { ...msg, pending: false }]);
         set({ messages: nextMessages });
         await persistMessages(incomingRideId, nextMessages);
       }
+    } else {
+      // Message arrived for a different ride — persist it silently under the correct key
+      try {
+        const cached = await AsyncStorage.getItem(getChatStorageKey(incomingRideId));
+        const existing: Message[] = cached ? JSON.parse(cached) : [];
+        const alreadyHave = existing.some((m) => m._id === msg._id);
+        if (!alreadyHave) {
+          await persistMessages(incomingRideId, normalizeMessages([...existing, { ...msg, pending: false }]));
+        }
+      } catch { /* non-fatal */ }
     }
 
     const user = useAuthStore.getState().user;
     const isOwnMessage = msg.user?._id === user?.id;
-    const isActiveChat = state.currentRideId === incomingRideId;
-
     if (!isOwnMessage && !isActiveChat) {
       await get().incrementUnread(incomingRideId);
     }

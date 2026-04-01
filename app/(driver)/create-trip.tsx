@@ -950,8 +950,11 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   noteInput: {
-    minHeight: 96,
+    height: 120,
+    minHeight: 120,
+    width: '100%',
     paddingTop: 14,
+    paddingBottom: 14,
   },
   footer: {
     position: 'absolute',

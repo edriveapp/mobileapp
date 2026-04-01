@@ -12,7 +12,10 @@ export class PushNotificationsService {
         sound: string = 'default',
     ) {
         const validTokens = Array.from(
-            new Set(tokens.filter((token) => typeof token === 'string' && token.startsWith('ExponentPushToken['))),
+            new Set(tokens.filter((token) =>
+                typeof token === 'string' &&
+                (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken[')),
+            )),
         );
 
         if (!validTokens.length) {

@@ -97,4 +97,10 @@ export class UsersController {
     createDriverProfile(@Request() req: any, @Body() body: any) {
         return this.usersService.createDriverProfile(req.user.userId, body);
     }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Get('driver-profile')
+    getDriverProfile(@Request() req: any) {
+        return this.usersService.getDriverProfile(req.user.userId);
+    }
 }

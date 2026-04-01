@@ -41,7 +41,27 @@ export default function SettingsScreen() {
         ]);
     };
 
-    const openOnboarding = () => {
+    const openPersonalInfo = () => {
+        if (user?.verificationStatus === 'approved') {
+            router.push('/(driver)/personal-info');
+            return;
+        }
+        if (user?.verificationStatus === 'pending') {
+            Alert.alert(
+                'Verification In Progress',
+                'Your onboarding is under review. Editing is locked until a decision is made.'
+            );
+            router.push('/(driver)/onboarding/review');
+            return;
+        }
+        router.push('/(driver)/onboarding');
+    };
+
+    const openVehicleDocs = () => {
+        if (user?.verificationStatus === 'approved') {
+            router.push('/(driver)/vehicle-docs');
+            return;
+        }
         if (user?.verificationStatus === 'pending') {
             Alert.alert(
                 'Verification In Progress',
@@ -119,15 +139,15 @@ export default function SettingsScreen() {
                         <SettingItem
                             icon="person-outline"
                             title="Personal Information"
-                            subtitle={user?.name}
-                            onPress={openOnboarding}
+                            subtitle={user?.verificationStatus === 'approved' ? 'Verified · View only' : user?.name}
+                            onPress={openPersonalInfo}
                         />
                         <View style={styles.divider} />
                         <SettingItem
                             icon="document-text-outline"
                             title="Vehicle & Documents"
-                            subtitle="License, Vehicle Info"
-                            onPress={openOnboarding}
+                            subtitle={user?.verificationStatus === 'approved' ? 'Verified · View only' : 'License, Vehicle Info'}
+                            onPress={openVehicleDocs}
                         />
                         <View style={styles.divider} />
                         <SettingItem

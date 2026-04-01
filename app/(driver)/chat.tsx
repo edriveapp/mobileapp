@@ -16,8 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const getPassengerName = (ride: any) => {
-  const fullName = [ride?.passenger?.firstName, ride?.passenger?.lastName].filter(Boolean).join(' ').trim();
-  return fullName || ride?.passenger?.name || ride?.passenger?.email || 'Passenger';
+  const firstName = String(ride?.passenger?.firstName || '').trim();
+  return firstName || ride?.passenger?.name || ride?.passenger?.email || 'Passenger';
 };
 
 const isPlaceholderName = (value?: string) => {

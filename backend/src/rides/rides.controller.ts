@@ -3,6 +3,18 @@ import { AuthGuard } from '@nestjs/passport';
 import { RidesGateway } from './rides.gateway';
 import { RidesService } from './rides.service';
 
+// Strip passenger's last name before returning any ride to a driver over HTTP
+function sanitizeForDriver(ride: any) {
+    if (!ride?.passenger) return ride;
+    const p = ride.passenger;
+    const storedName: string = String(p.firstName || p.name || '').trim();
+    const firstName = storedName.split(' ')[0] || p.email || p.phone || 'Passenger';
+    return {
+        ...ride,
+        passenger: { id: p.id, firstName, lastName: '', email: p.email, phone: p.phone, rating: p.rating, avatarUrl: p.avatarUrl },
+    };
+}
+
 @Controller('rides')
 export class RidesController {
     constructor(
@@ -47,11 +59,17 @@ export class RidesController {
         return this.ridesService.getAvailableRides(query);
     }
 
+    @Get('trending-areas')
+    async getTrendingAreas(@Query('limit') limit?: string) {
+        return this.ridesService.getTrendingAreas(Number(limit ?? 8));
+    }
+
     @UseGuards(AuthGuard('jwt'))
     @Patch(':id/cancel')
-    cancelRide(@Param('id') id: string) {
-        // TODO: verify user owns the ride
-        return this.ridesService.updateStatus(id, 'cancelled' as any);
+    async cancelRide(@Param('id') id: string, @Request() req) {
+        const ride = await this.ridesService.cancelRideAsActor(id, req.user.userId);
+        await this.ridesGateway.broadcastRideStatusUpdate(ride);
+        return req.user.role === 'driver' ? sanitizeForDriver(ride) : ride;
     }
 
     @UseGuards(AuthGuard('jwt'))
@@ -59,7 +77,7 @@ export class RidesController {
     async acceptRide(@Param('id') id: string, @Request() req) {
         const updatedRide = await this.ridesService.acceptRide(id, req.user.userId);
         await this.ridesGateway.broadcastRideAccepted(updatedRide);
-        return updatedRide;
+        return sanitizeForDriver(updatedRide);
     }
 
     @UseGuards(AuthGuard('jwt'))
@@ -67,7 +85,7 @@ export class RidesController {
     async acceptRideLegacyPost(@Param('id') id: string, @Request() req) {
         const updatedRide = await this.ridesService.acceptRide(id, req.user.userId);
         await this.ridesGateway.broadcastRideAccepted(updatedRide);
-        return updatedRide;
+        return sanitizeForDriver(updatedRide);
     }
 
     @UseGuards(AuthGuard('jwt'))
@@ -75,7 +93,7 @@ export class RidesController {
     async bookTrip(@Param('id') id: string, @Request() req, @Body() body) {
         const bookedRide = await this.ridesService.bookPublishedTrip(id, req.user.userId, body);
         await this.ridesGateway.broadcastTripBooked(bookedRide);
-        return bookedRide;
+        return bookedRide; // passenger receives their own booking — no sanitization needed
     }
 
     @UseGuards(AuthGuard('jwt'))
@@ -108,18 +126,11 @@ export class RidesController {
         return updatedRide;
     }
 
-    // Keep existing endpoints if needed for admin or general usage
-    @Post()
-    create(@Body() createRideDto: any) {
-        return this.ridesService.createRide(createRideDto);
-    }
-
     @UseGuards(AuthGuard('jwt'))
     @Patch(':id/status')
-    async updateStatus(@Param('id') id: string, @Body('status') status: any) {
-        const ride = await this.ridesService.updateStatus(id, status);
-        const detailedRide = await this.ridesService.findRideById(ride.id);
-        await this.ridesGateway.broadcastRideStatusUpdate(detailedRide);
-        return detailedRide;
+    async updateStatus(@Param('id') id: string, @Request() req, @Body('status') status: any) {
+        const ride = await this.ridesService.updateStatusAsActor(id, req.user.userId, status);
+        await this.ridesGateway.broadcastRideStatusUpdate(ride);
+        return req.user.role === 'driver' ? sanitizeForDriver(ride) : ride;
     }
 }

@@ -2,7 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-    const app = await NestFactory.create(AppModule);
+    // rawBody: true lets us verify Paystack webhook HMAC signatures
+    const app = await NestFactory.create(AppModule, { rawBody: true });
 
     // Enable CORS so your mobile app isn't blocked by security headers
     app.enableCors();

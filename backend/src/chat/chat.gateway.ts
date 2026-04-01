@@ -1,4 +1,5 @@
-import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { ConnectedSocket, MessageBody, OnGatewayConnection, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { PushNotificationsService } from '../common/push-notifications.service';
 import { RidesService } from '../rides/rides.service';
@@ -6,58 +7,82 @@ import { UsersService } from '../users/users.service';
 import { ChatService } from './chat.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
-export class ChatGateway {
+export class ChatGateway implements OnGatewayConnection {
   constructor(
     private chatService: ChatService,
     private ridesService: RidesService,
     private usersService: UsersService,
     private pushNotificationsService: PushNotificationsService,
+    private jwtService: JwtService,
   ) { }
 
   @WebSocketServer()
   server: Server;
 
+  handleConnection(client: Socket) {
+    try {
+      const token =
+        (client.handshake.auth as any)?.token ||
+        client.handshake.headers?.authorization?.replace('Bearer ', '');
+      if (!token) { client.disconnect(true); return; }
+      const payload = this.jwtService.verify(token) as any;
+      client.data.userId = payload.sub;
+      client.data.role = payload.role;
+    } catch {
+      client.disconnect(true);
+    }
+  }
+
   @SubscribeMessage('join_chat')
-  handleJoinChat(@MessageBody() data: { rideId: string }, @ConnectedSocket() client: Socket) {
+  async handleJoinChat(@MessageBody() data: { rideId: string }, @ConnectedSocket() client: Socket) {
+    const userId = client.data.userId;
+    if (!userId) return;
+    // Only allow participants of the ride to join the chat room
+    const ride = await this.ridesService.findRideById(data.rideId);
+    if (!ride) return;
+    if (ride.driverId !== userId && ride.passengerId !== userId) return;
     client.join(`ride_${data.rideId}`);
-    console.log(`Client ${client.id} joined chat for ride ${data.rideId}`);
   }
 
   @SubscribeMessage('leave_chat')
   handleLeaveChat(@MessageBody() data: { rideId: string }, @ConnectedSocket() client: Socket) {
     client.leave(`ride_${data.rideId}`);
-    console.log(`Client ${client.id} left chat for ride ${data.rideId}`);
   }
 
   @SubscribeMessage('send_message')
-  async handleMessage(@MessageBody() payload: { rideId: string; text: string; senderId: string; role: 'DRIVER' | 'PASSENGER' }) {
-    const ride = await this.ridesService.findRideById(payload.rideId);
-    
-    // Derive sendername
-    const senderName =
-      payload.role === 'DRIVER'
-        ? `${ride?.driver?.firstName || ''} ${ride?.driver?.lastName || ''}`.trim() || ride?.driver?.email || 'Driver'
-        : `${ride?.passenger?.firstName || ''} ${ride?.passenger?.lastName || ''}`.trim() || ride?.passenger?.email || 'Passenger';
+  async handleMessage(
+    @MessageBody() payload: { rideId: string; text: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    // Identity comes from the verified socket token, not the message body
+    const senderId = client.data.userId;
+    if (!senderId) return;
 
-    // Save to DB WITH senderName
-    const savedMessage = await this.chatService.saveMessage(payload.rideId, payload.text, payload.senderId, senderName);
+    const ride = await this.ridesService.findRideById(payload.rideId);
+    if (!ride) return;
+
+    // Verify sender is part of this ride
+    const isDriver = ride.driverId === senderId;
+    const isPassenger = ride.passengerId === senderId;
+    if (!isDriver && !isPassenger) return;
+
+    const senderName = isDriver
+      ? `${ride.driver?.firstName || ''} ${ride.driver?.lastName || ''}`.trim() || ride.driver?.email || 'Driver'
+      : String(ride.passenger?.firstName || '').trim() || ride.passenger?.email || 'Passenger';
+
+    const savedMessage = await this.chatService.saveMessage(payload.rideId, payload.text, senderId, senderName);
 
     const message = {
       _id: savedMessage.id,
       rideId: payload.rideId,
       text: savedMessage.text,
       createdAt: savedMessage.createdAt,
-      user: {
-        _id: payload.senderId,
-        name: senderName,
-      },
+      user: { _id: senderId, name: senderName },
     };
 
-    // Emit to everyone in the room
     this.server.to(`ride_${payload.rideId}`).emit('receive_message', message);
 
-    const recipientId = payload.senderId === ride?.driverId ? ride?.passengerId : ride?.driverId;
-
+    const recipientId = isDriver ? ride.passengerId : ride.driverId;
     if (recipientId) {
       this.server.to(`user_${recipientId}`).emit('chat_message_alert', {
         rideId: payload.rideId,
@@ -73,7 +98,7 @@ export class ChatGateway {
       const tokens = await this.usersService.getPushTokensForUser(recipientId);
       await this.pushNotificationsService.sendToExpoTokens(
         tokens,
-        payload.role === 'DRIVER' ? 'Driver message' : 'Passenger message',
+        isDriver ? 'Driver message' : 'Passenger message',
         payload.text,
         { type: 'chat_message', rideId: payload.rideId },
       );

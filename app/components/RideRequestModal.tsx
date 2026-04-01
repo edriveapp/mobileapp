@@ -2,6 +2,7 @@ import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface RideRequestModalProps {
     isVisible: boolean;
@@ -22,6 +23,7 @@ interface RideRequestModalProps {
 }
 
 export default function RideRequestModal({ isVisible, request, onAccept, onDecline }: RideRequestModalProps) {
+    const insets = useSafeAreaInsets();
     const [timeLeft, setTimeLeft] = useState(30);
 
     useEffect(() => {
@@ -51,7 +53,7 @@ export default function RideRequestModal({ isVisible, request, onAccept, onDecli
             onRequestClose={onDecline}
         >
             <Pressable style={styles.overlay} onPress={onDecline}>
-                <Pressable style={styles.container} onPress={() => {}}>
+                <Pressable style={[styles.container, { paddingBottom: insets.bottom + 16 }]} onPress={() => {}}>
                     {/* Header: Timer */}
                     <View style={styles.header}>
                         <Text style={styles.title}>New Request</Text>
@@ -142,7 +144,6 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         padding: SPACING.l,
-        paddingBottom: 40,
     },
     header: {
         flexDirection: 'row',

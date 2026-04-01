@@ -1,9 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThanOrEqual, Repository } from 'typeorm';
 import { MailerService } from '../common/mailer.service';
 import { AdminScope, User, UserRole, VerificationStatus } from '../users/user.entity';
 import { Ride, RideStatus } from '../rides/ride.entity';
+import { buildTrendingAreas, extractAreaName } from '../rides/trending-areas.util';
 
 @Injectable()
 export class AdminService {
@@ -51,17 +52,22 @@ export class AdminService {
     async getStats(actorUserId: string) {
         const actor = await this.getActor(actorUserId);
         this.assertOperationsAdmin(actor);
-        const totalUsers = await this.usersRepository.count();
-        const rides = await this.ridesRepository.find({ where: { status: RideStatus.COMPLETED } });
-        
-        const gmv = rides.reduce((sum, r) => sum + Number(r.tripFare || 0), 0);
-        const platformRevenue = rides.reduce((sum, r) => sum + Number(r.platformCut || 0), 0);
-        
+        const totalUsers = await this.usersRepository.count({ where: { role: UserRole.PASSENGER } });
+        const totalDrivers = await this.usersRepository.count({ where: { role: UserRole.DRIVER } });
+        const completedRides = await this.ridesRepository.find({ where: { status: RideStatus.COMPLETED } });
+        const activeUsersData = await this.getOperationalActiveUsers();
+
+        const gmv = completedRides.reduce((sum, r) => sum + Number(r.tripFare || 0), 0);
+        const platformRevenue = completedRides.reduce((sum, r) => sum + Number(r.platformCut || 0), 0);
+
         return {
             gmv,
             arr: platformRevenue * 12, // Simple projection
             totalRides: await this.ridesRepository.count(),
-            activeUsers: totalUsers,
+            totalUsers,
+            totalDrivers,
+            activeUsers: activeUsersData.total,
+            activeUsersBreakdown: activeUsersData.breakdown,
         };
     }
 
@@ -74,14 +80,31 @@ export class AdminService {
             where: { status: RideStatus.COMPLETED },
             order: { createdAt: 'ASC' },
         });
+        const trendingAreasSource = await this.ridesRepository.find({
+            where: { updatedAt: MoreThanOrEqual(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)) },
+            order: { updatedAt: 'DESC' },
+            take: 5000,
+        });
 
         const revenueSeries = this.buildRevenueSeries(completedRides);
-        const cityVolumes = this.buildCityVolumes(completedRides);
+        const trendingAreas = buildTrendingAreas(trendingAreasSource, 8);
+        const topLeavingAreas = this.buildAreaDirectionVolumes(trendingAreasSource, 'origin');
+        const topArrivingAreas = this.buildAreaDirectionVolumes(trendingAreasSource, 'destination');
+        const cityVolumes = trendingAreas.map((area) => ({
+            name: area.name,
+            rides: area.rides7d,
+            trendScore: area.trendScore,
+            rides24h: area.rides24h,
+            growthRate: area.growthRate,
+        }));
 
         return {
             stats,
             revenueSeries,
             cityVolumes,
+            trendingAreas,
+            topLeavingAreas,
+            topArrivingAreas,
             generatedAt: new Date().toISOString(),
         };
     }
@@ -282,30 +305,81 @@ export class AdminService {
         });
     }
 
-    private buildCityVolumes(rides: Ride[]) {
-        const counts = new Map<string, number>();
+    private buildAreaDirectionVolumes(rides: Ride[], direction: 'origin' | 'destination', limit = 8) {
+        const bucket = new Map<string, number>();
         rides.forEach((ride) => {
-            const city = this.extractCityName((ride.destination as any)?.address ?? ride.destination);
-            const prev = counts.get(city) || 0;
-            counts.set(city, prev + 1);
+            const source = direction === 'origin'
+                ? ((ride.origin as any)?.address ?? ride.origin)
+                : ((ride.destination as any)?.address ?? ride.destination);
+            const area = extractAreaName(source);
+            if (!area || area === 'Unknown') return;
+            bucket.set(area, (bucket.get(area) || 0) + 1);
         });
 
-        return Array.from(counts.entries())
-            .map(([name, value]) => ({ name, rides: value }))
+        return Array.from(bucket.entries())
+            .map(([name, ridesCount]) => ({ name, rides: ridesCount }))
             .sort((a, b) => b.rides - a.rides)
-            .slice(0, 8);
+            .slice(0, limit);
     }
 
-    private extractCityName(input: any) {
-        if (!input) return 'Unknown';
-        if (typeof input === 'string') {
-            const first = input.split(',').map((s) => s.trim()).filter(Boolean)[0];
-            return first || 'Unknown';
-        }
-        if (typeof input === 'object' && typeof input.address === 'string') {
-            return this.extractCityName(input.address);
-        }
-        return 'Unknown';
+    private async getOperationalActiveUsers() {
+        const now = Date.now();
+        const presenceWindowMinutes = 15;
+        const activityWindowHours = 24;
+        const presenceCutoff = new Date(now - presenceWindowMinutes * 60 * 1000);
+        const activityCutoff = new Date(now - activityWindowHours * 60 * 60 * 1000);
+
+        const presenceRows = await this.usersRepository
+            .createQueryBuilder('user')
+            .select('user.id', 'userId')
+            .where('user.role IN (:...roles)', { roles: [UserRole.PASSENGER, UserRole.DRIVER] })
+            .andWhere('user.updatedAt >= :presenceCutoff', { presenceCutoff })
+            .getRawMany<{ userId: string }>();
+
+        const availableDriverRows = await this.ridesRepository
+            .createQueryBuilder('ride')
+            .select('ride.driverId', 'userId')
+            .distinct(true)
+            .where('ride.driverId IS NOT NULL')
+            .andWhere('ride.status IN (:...statuses)', {
+                statuses: [RideStatus.SEARCHING, RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS],
+            })
+            .getRawMany<{ userId: string }>();
+
+        const activityDriverRows = await this.ridesRepository
+            .createQueryBuilder('ride')
+            .select('ride.driverId', 'userId')
+            .distinct(true)
+            .where('ride.updatedAt >= :activityCutoff', { activityCutoff })
+            .andWhere('ride.driverId IS NOT NULL')
+            .getRawMany<{ userId: string }>();
+
+        const activityPassengerRows = await this.ridesRepository
+            .createQueryBuilder('ride')
+            .select('ride.passengerId', 'userId')
+            .distinct(true)
+            .where('ride.updatedAt >= :activityCutoff', { activityCutoff })
+            .andWhere('ride.passengerId IS NOT NULL')
+            .getRawMany<{ userId: string }>();
+
+        const presenceIds = new Set(presenceRows.map((row) => row.userId).filter(Boolean));
+        const availableDriverIds = new Set(availableDriverRows.map((row) => row.userId).filter(Boolean));
+        const activityIds = new Set<string>();
+        activityDriverRows.forEach((row) => row.userId && activityIds.add(row.userId));
+        activityPassengerRows.forEach((row) => row.userId && activityIds.add(row.userId));
+
+        const operationalActiveIds = new Set<string>([...presenceIds, ...availableDriverIds, ...activityIds]);
+
+        return {
+            total: operationalActiveIds.size,
+            breakdown: {
+                realtimePresence: presenceIds.size,
+                availableDrivers: availableDriverIds.size,
+                businessActivity: activityIds.size,
+                presenceWindowMinutes,
+                activityWindowHours,
+            },
+        };
     }
 
     private async getAdminEmailsByScopes(scopes: AdminScope[]) {

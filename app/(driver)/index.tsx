@@ -40,8 +40,8 @@ export default function DriverHome() {
     };
 
     const getPassengerName = (ride: any) => {
-        const fullName = [ride?.passenger?.firstName, ride?.passenger?.lastName].filter(Boolean).join(' ').trim();
-        return fullName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
+        const firstName = String(ride?.passenger?.firstName || '').trim();
+        return firstName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
     };
 
     const getRouteAddress = (value: any, fallback: string) => {
@@ -135,11 +135,18 @@ export default function DriverHome() {
     useEffect(() => {
         refreshDriverRequests(true);
         fetchMyTrips();
+    }, [fetchMyTrips, refreshDriverRequests]);
+
+    // Fallback polling: only runs when the WebSocket is disconnected
+    const isSocketConnected = useRideRealtimeStore((state) => state.isConnected);
+    useEffect(() => {
+        if (isSocketConnected) return;
         const interval = setInterval(() => {
             refreshDriverRequests(false);
+            fetchMyTrips();
         }, 15000);
         return () => clearInterval(interval);
-    }, [fetchMyTrips, refreshDriverRequests]);
+    }, [isSocketConnected, fetchMyTrips, refreshDriverRequests]);
 
     useEffect(() => {
         const currentCount = availableTrips.length;
@@ -380,16 +387,21 @@ export default function DriverHome() {
                                         ) : (
                                             <>
                                                 <TouchableOpacity
-                                                    style={styles.tripActionSecondary}
-                                                    onPress={() => router.push('/(driver)/maps')}
+                                                    style={styles.tripActionPrimary}
+                                                    onPress={() =>
+                                                        router.push({
+                                                            pathname: '/(driver)/maps',
+                                                            params: { tripId: trip.id },
+                                                        } as never)
+                                                    }
                                                 >
-                                                    <Text style={styles.tripActionSecondaryText}>View pickup</Text>
+                                                    <Text style={styles.tripActionPrimaryText}>Start Trip</Text>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity
-                                                    style={styles.tripActionPrimary}
+                                                    style={styles.tripActionSecondary}
                                                     onPress={() => handleCompleteTrip(trip.id)}
                                                 >
-                                                    <Text style={styles.tripActionPrimaryText}>Mark done</Text>
+                                                    <Text style={styles.tripActionSecondaryText}>Mark done</Text>
                                                 </TouchableOpacity>
                                             </>
                                         )}

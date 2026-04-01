@@ -136,6 +136,9 @@ interface TripState {
     updateRideStatus: (status: RideStatus, data?: any) => void;
 }
 
+// Deduplication guard — prevents concurrent fetchMyTrips calls from mount + polling
+let fetchMyTripsInFlight = false;
+
 // --- 2. Store Implementation ---
 
 export const useTripStore = create<TripState>((set, get) => ({
@@ -182,6 +185,8 @@ export const useTripStore = create<TripState>((set, get) => ({
     },
 
     fetchMyTrips: async () => {
+        if (fetchMyTripsInFlight) return;
+
         const token = useAuthStore.getState().token;
         if (!token) {
             set({
@@ -194,9 +199,10 @@ export const useTripStore = create<TripState>((set, get) => ({
             return;
         }
 
+        fetchMyTripsInFlight = true;
         set({ isLoading: true, error: null });
         try {
-            const response = await api.get('/rides/my-rides');
+            const response = await api.get('/rides/my-rides', { timeout: 8000 });
             const active = Array.isArray(response.data.active)
                 ? response.data.active.map(normalizeTrip)
                 : [];
@@ -230,8 +236,12 @@ export const useTripStore = create<TripState>((set, get) => ({
                 });
                 return;
             }
-            console.error("Fetch My Trips Error:", error?.message || "Unknown error");
+            // Suppress timeout/network noise from background polling
+            if (error?.code !== 'ECONNABORTED' && !String(error?.message).includes('timeout')) {
+                console.error("Fetch My Trips Error:", error?.message || "Unknown error");
+            }
         } finally {
+            fetchMyTripsInFlight = false;
             set({ isLoading: false });
         }
     },

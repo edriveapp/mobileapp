@@ -1,5 +1,6 @@
 import { useTripStore } from '@/app/stores/tripStore';
 import { useRideRealtimeStore } from '@/app/stores/rideRealtimeStore';
+import { useSocketStore } from '@/app/stores/socketStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -21,11 +22,12 @@ export default function DriverRequestsScreen() {
     const router = useRouter();
     const { availableTrips, fetchAvailableTrips, acceptRide, isLoading } = useTripStore();
     const dequeueRideRequest = useRideRealtimeStore((state) => state.dequeueRideRequest);
+    const isSocketConnected = useSocketStore((state) => state.isConnected);
     const [refreshing, setRefreshing] = useState(false);
 
     const getPassengerName = (ride: any) => {
-        const fullName = [ride?.passenger?.firstName, ride?.passenger?.lastName].filter(Boolean).join(' ').trim();
-        return fullName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
+        const firstName = String(ride?.passenger?.firstName || '').trim();
+        return firstName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
     };
 
     const loadRequests = useCallback(async () => {
@@ -37,11 +39,14 @@ export default function DriverRequestsScreen() {
 
     useEffect(() => {
         loadRequests();
-        const interval = setInterval(() => {
-            loadRequests();
-        }, 15000);
-        return () => clearInterval(interval);
     }, [loadRequests]);
+
+    // Fallback polling: only when WebSocket is disconnected
+    useEffect(() => {
+        if (isSocketConnected) return;
+        const interval = setInterval(loadRequests, 15000);
+        return () => clearInterval(interval);
+    }, [isSocketConnected, loadRequests]);
 
     const handleRefresh = async () => {
         setRefreshing(true);

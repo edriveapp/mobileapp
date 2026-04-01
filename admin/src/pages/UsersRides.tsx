@@ -14,6 +14,8 @@ type RideItem = {
   date: string;
 };
 
+type RideFilterStatus = 'all' | 'requested' | 'pending' | 'completed' | 'arrived' | 'cancelled';
+
 type UserItem = {
   id: string;
   email: string;
@@ -27,10 +29,36 @@ type UserItem = {
 
 type TabKey = 'rides' | 'passengers' | 'drivers' | 'team';
 
+const RIDE_STATUS_FILTERS: Array<{ label: string; value: RideFilterStatus }> = [
+  { label: 'All statuses', value: 'all' },
+  { label: 'Requested', value: 'requested' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Arrived', value: 'arrived' },
+  { label: 'Cancelled', value: 'cancelled' },
+];
+
+const normalizeRideStatus = (status: string): Exclude<RideFilterStatus, 'all'> | 'other' => {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'accepted' || normalized === 'requested' || normalized === 'searching') return 'requested';
+  if (normalized === 'in_progress' || normalized === 'pending') return 'pending';
+  if (normalized === 'completed') return 'completed';
+  if (normalized === 'arrived') return 'arrived';
+  if (normalized === 'cancelled') return 'cancelled';
+  return 'other';
+};
+
+const formatRideStatus = (status: string) => {
+  const mapped = normalizeRideStatus(status);
+  if (mapped === 'other') return status;
+  return mapped.replace('_', ' ');
+};
+
 export default function UsersRides() {
   const { token, user: currentAdmin } = useAuth();
   const [tab, setTab] = React.useState<TabKey>('rides');
   const [query, setQuery] = React.useState('');
+  const [rideStatusFilter, setRideStatusFilter] = React.useState<RideFilterStatus>('all');
   const [rides, setRides] = React.useState<RideItem[]>([]);
   const [users, setUsers] = React.useState<UserItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -135,13 +163,15 @@ export default function UsersRides() {
   });
 
   const rideFiltered = rides.filter((ride) => {
+    if (rideStatusFilter !== 'all' && normalizeRideStatus(ride.status) !== rideStatusFilter) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (
       ride.id.toLowerCase().includes(q) ||
       ride.origin.toLowerCase().includes(q) ||
       ride.destination.toLowerCase().includes(q) ||
-      ride.driverName.toLowerCase().includes(q)
+      ride.driverName.toLowerCase().includes(q) ||
+      formatRideStatus(ride.status).toLowerCase().includes(q)
     );
   });
 
@@ -215,17 +245,32 @@ export default function UsersRides() {
             ) : null}
           </div>
         ) : null}
-        <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+        <div className="p-4 border-b border-gray-100 flex justify-between items-center gap-3">
           <h3 className="font-semibold text-gray-900">{tab === 'rides' ? 'Recent Rides' : 'User Directory'}</h3>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={tab === 'rides' ? 'Search rides...' : 'Search users...'}
-              className="pl-9 pr-4 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm w-64"
-            />
+          <div className="flex items-center gap-2">
+            {tab === 'rides' ? (
+              <select
+                value={rideStatusFilter}
+                onChange={(event) => setRideStatusFilter(event.target.value as RideFilterStatus)}
+                className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm"
+              >
+                {RIDE_STATUS_FILTERS.map((statusOption) => (
+                  <option key={statusOption.value} value={statusOption.value}>
+                    {statusOption.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={tab === 'rides' ? 'Search rides...' : 'Search users...'}
+                className="pl-9 pr-4 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm w-64"
+              />
+            </div>
           </div>
         </div>
 
@@ -255,7 +300,7 @@ export default function UsersRides() {
                   </td>
                   <td className="p-4">
                     <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-                      {ride.status}
+                      {formatRideStatus(ride.status)}
                     </span>
                   </td>
                   <td className="p-4 text-gray-600">{ride.driverName}</td>
