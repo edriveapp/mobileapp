@@ -35,7 +35,7 @@ export default function DriverOnboardingScreen() {
   const goToNextStep = () => {
     // Validate current step before proceeding
     if (currentStep === 0) {
-      if (!validateDriverInfoStep(driverInfo)) {
+      if (!validateDriverInfoStep(driverInfo, documents.selfieUri)) {
         Alert.alert(
           'Incomplete Information',
           'Please fill in all required fields correctly before continuing.'

@@ -51,6 +51,7 @@ export const useDriverStore = create<DriverState>((set) => ({
   },
 
   documents: {
+    selfieUri: null,
     licenseImageUri: null,
     insuranceImageUri: null,
     worthinessImageUri: null,
@@ -108,6 +109,12 @@ export const useDriverStore = create<DriverState>((set) => ({
 
     // Submit onboarding payload to existing backend route.
     await api.post('/users/driver-profile', payload);
+
+    // Persist selfie as the driver's profile photo
+    if (documents.selfieUri) {
+        await api.patch('/users/me', { avatarUrl: documents.selfieUri });
+    }
+
     await useAuthStore.getState().refreshProfile();
 
     set({

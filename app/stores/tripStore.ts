@@ -415,14 +415,15 @@ export const useTripStore = create<TripState>((set, get) => ({
     updateTripStatus: async (rideId, status) => {
         set({ isLoading: true, error: null });
         try {
-            const response = await api.patch(`/rides/${rideId}/status`, { status });
-            await get().fetchMyTrips();
-            await get().fetchAvailableTrips({ role: 'rider' });
-            await get().fetchAvailableTrips({ role: 'driver' });
+            const response = await api.patch(`/rides/${rideId}/status`, { status }, { timeout: 12000 });
+            // Refetch in the background — don't block the status update on these
+            get().fetchMyTrips().catch(() => {});
+            get().fetchAvailableTrips({ role: 'driver' }).catch(() => {});
             return response.data;
         } catch (error: any) {
-            set({ error: error.response?.data?.message || error.message });
-            throw error;
+            const msg = error.response?.data?.message || error.message;
+            set({ error: msg });
+            throw new Error(msg);
         } finally {
             set({ isLoading: false });
         }

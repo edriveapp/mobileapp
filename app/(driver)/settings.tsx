@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect } from 'react';
 import {
     Alert,
+    Image,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -11,9 +13,9 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-// 1. IMPORT SafeAreaView from the correct library
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import api from '@/app/services/api';
 import { useAuthStore } from '@/app/stores/authStore';
 import { useSettingsStore } from '@/app/stores/settingsStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
@@ -38,6 +40,61 @@ export default function SettingsScreen() {
                     router.replace('/(auth)/login');
                 }
             }
+        ]);
+    };
+
+    const handleChangeAvatar = () => {
+        Alert.alert('Profile Photo', 'Choose how to update your photo', [
+            {
+                text: 'Take Photo',
+                onPress: async () => {
+                    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                    if (status !== 'granted') {
+                        Alert.alert('Permission Required', 'Camera access is needed.');
+                        return;
+                    }
+                    const result = await ImagePicker.launchCameraAsync({
+                        mediaTypes: ['images'],
+                        allowsEditing: true,
+                        aspect: [1, 1],
+                        quality: 0.85,
+                        cameraType: ImagePicker.CameraType.front,
+                    });
+                    if (!result.canceled && result.assets[0]) {
+                        try {
+                            await api.patch('/users/me', { avatarUrl: result.assets[0].uri });
+                            await useAuthStore.getState().refreshProfile();
+                        } catch {
+                            Alert.alert('Error', 'Failed to update profile photo.');
+                        }
+                    }
+                }
+            },
+            {
+                text: 'Choose from Library',
+                onPress: async () => {
+                    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                    if (status !== 'granted') {
+                        Alert.alert('Permission Required', 'Photo library access is needed.');
+                        return;
+                    }
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ['images'],
+                        allowsEditing: true,
+                        aspect: [1, 1],
+                        quality: 0.85,
+                    });
+                    if (!result.canceled && result.assets[0]) {
+                        try {
+                            await api.patch('/users/me', { avatarUrl: result.assets[0].uri });
+                            await useAuthStore.getState().refreshProfile();
+                        } catch {
+                            Alert.alert('Error', 'Failed to update profile photo.');
+                        }
+                    }
+                }
+            },
+            { text: 'Cancel', style: 'cancel' },
         ]);
     };
 
@@ -131,6 +188,26 @@ export default function SettingsScreen() {
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
+
+                {/* Avatar Section */}
+                <View style={styles.avatarSection}>
+                    <TouchableOpacity onPress={handleChangeAvatar} activeOpacity={0.8} style={styles.avatarContainer}>
+                        {user?.avatarUrl ? (
+                            <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+                        ) : (
+                            <View style={styles.avatarPlaceholder}>
+                                <Text style={styles.avatarInitials}>
+                                    {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
+                                </Text>
+                            </View>
+                        )}
+                        <View style={styles.avatarEditBadge}>
+                            <Ionicons name="camera" size={14} color="#fff" />
+                        </View>
+                    </TouchableOpacity>
+                    <Text style={styles.avatarName}>{user?.name || ''}</Text>
+                    <Text style={styles.avatarHint}>Tap to change photo</Text>
+                </View>
 
                 {/* Profile Section */}
                 <View style={styles.section}>
@@ -267,4 +344,32 @@ const styles = StyleSheet.create({
     divider: { height: 1, backgroundColor: COLORS.border, marginLeft: 60 },
 
     versionText: { textAlign: 'center', color: COLORS.textSecondary, fontSize: 12, marginTop: SPACING.m },
+
+    avatarSection: { alignItems: 'center', marginBottom: SPACING.xl },
+    avatarContainer: { position: 'relative', marginBottom: SPACING.s },
+    avatarImage: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: COLORS.primary },
+    avatarPlaceholder: {
+        width: 88,
+        height: 88,
+        borderRadius: 44,
+        backgroundColor: COLORS.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarInitials: { fontSize: 32, color: '#fff', fontFamily: Fonts.bold },
+    avatarEditBadge: {
+        position: 'absolute',
+        bottom: 2,
+        right: 2,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: COLORS.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    avatarName: { fontSize: 17, fontFamily: Fonts.bold, color: COLORS.text },
+    avatarHint: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
 });

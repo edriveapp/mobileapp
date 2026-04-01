@@ -55,7 +55,7 @@ export default function ActiveTripSheet({
     const statusInfo = getStatusInfo();
 
     return (
-        <View style={[styles.container, { paddingBottom: Math.max(40, bottomInset + 16) }]}>
+        <View style={[styles.container, { paddingBottom: Math.max(8, bottomInset + 4) }]}>
             {/* Drag Handle */}
             <View style={styles.handleContainer}>
                 <View style={styles.handle} />
@@ -100,12 +100,6 @@ export default function ActiveTripSheet({
                     </View>
                 </View>
                 
-                {/* Vehicle Image Placeholder (Optional visual) */}
-                <Image 
-                    source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3202/3202926.png' }} 
-                    style={styles.carImage} 
-                    resizeMode="contain"
-                />
             </View>
 
             {/* 3. Action Buttons Grid */}
@@ -114,7 +108,7 @@ export default function ActiveTripSheet({
                     <View style={[styles.iconCircle, { backgroundColor: '#E0F2F1' }]}>
                         <Ionicons name="call" size={24} color={COLORS.primary} />
                     </View>
-                    <Text style={styles.actionLabel}>Call</Text>
+                    <Text style={[styles.actionLabel, styles.phoneLabel]} numberOfLines={1}>{driver.phone}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionBtn} onPress={onChat}>
@@ -160,7 +154,7 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         padding: SPACING.l,
-        paddingBottom: 40,
+        paddingBottom: 8,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -2 },
         shadowOpacity: 0.1,
@@ -309,5 +303,10 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: COLORS.text,
         fontFamily: Fonts.mono,
+    },
+    phoneLabel: {
+        fontSize: 10,
+        width: 72,
+        textAlign: 'center',
     },
 });

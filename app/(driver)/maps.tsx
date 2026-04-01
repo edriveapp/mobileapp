@@ -272,7 +272,14 @@ export default function DriverMapScreen() {
                 handleStopNavigation();
             }
         } catch (error: any) {
-            Alert.alert('Status update failed', error?.message || 'Could not update ride status.');
+            const isTimeout = String(error?.message).toLowerCase().includes('timeout') ||
+                error?.code === 'ECONNABORTED';
+            Alert.alert(
+                'Status update failed',
+                isTimeout
+                    ? 'Request timed out. Check your connection and try again.'
+                    : error?.message || 'Could not update ride status.'
+            );
         } finally {
             setUpdatingStatus(false);
         }

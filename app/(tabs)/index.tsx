@@ -62,10 +62,12 @@ const getDriverName = (driver: any) => {
 };
 
 const getDriverVehicle = (driver: any) =>
+  driver?.driverProfile?.vehicleDetails?.model ||
   driver?.vehicle?.model || driver?.vehicleType || driver?.vehicle || 'Vehicle';
 
 const getDriverPlate = (driver: any) =>
-  driver?.vehicle?.plate || driver?.plateNumber || 'PLATE-NO';
+  driver?.driverProfile?.vehicleDetails?.plateNumber ||
+  driver?.vehicle?.plate || driver?.plateNumber || '';
 
 const mapRideStatusForSheet = (status?: string): 'driver_en_route' | 'driver_arrived' | 'in_progress' => {
   const normalized = String(status || '').toLowerCase();
@@ -400,7 +402,7 @@ const {
       </MapView>
 
       {/* 2. TOP OVERLAY */}
-      {!isExpanded && step === 'IDLE' && (
+      {!isExpanded && step === 'IDLE' && !menuVisible && (
         <>
           <View style={[styles.topOverlay, { top: insets.top + 10 }]}>
             <View style={styles.topRow}>
@@ -459,9 +461,11 @@ const {
               </View>
             )}
           </View>
-          <TouchableOpacity style={styles.fab} onPress={loadLocationData}>
-            <Ionicons name="locate" size={24} color="black" />
-          </TouchableOpacity>
+          {!menuVisible && (
+            <TouchableOpacity style={styles.fab} onPress={loadLocationData}>
+              <Ionicons name="locate" size={24} color="black" />
+            </TouchableOpacity>
+          )}
         </>
       )}
       {!isExpanded && step === 'IDLE' && requestIslandExpanded && rideStatus === 'SEARCHING' && (
@@ -544,40 +548,41 @@ const {
 
 
 
-        {/* CASE D: ACTIVE TRIP (FIXED) */}
+        {/* CASE D: ACTIVE TRIP — anchored above the tab bar */}
         {step === 'ON_TRIP' && currentRide && (
           showActiveTripSheet ? (
-            <ActiveTripSheet
-              status={mapRideStatusForSheet(currentRide.status)}
-              driver={{
-                name: getDriverName(currentRide.driver),
-                rating: currentRide.driver.rating || 4.8,
-                vehicle: getDriverVehicle(currentRide.driver),
-                plate: getDriverPlate(currentRide.driver),
-                image: currentRide.driver.image || currentRide.driver.avatarUrl || '',
-                phone: currentRide.driver.phone || currentRide.driver.phoneNumber || '0000000000'
-              }}
-              eta={activeTripEta}
-              pickupAddress={getAddressText(currentRide.pickupLocation || currentRide.origin)}
-              destAddress={getAddressText(currentRide.destination)}
-              bottomInset={insets.bottom + tabBarHeight + 8}
-              onClose={() => setShowActiveTripSheet(false)}
-              onCall={() => Alert.alert("Call", "Calling driver...")}
-              onChat={() => {
-                router.push({
-                  pathname: '/chat/[id]',
-                  params: {
-                    id: currentRide.id,
-                    recipientName: getDriverName(currentRide.driver),
-                    recipientImage: currentRide.driver.image || currentRide.driver.avatarUrl || ''
-                  }
-                });
-              }}
-              onCancel={() => cancelRide(currentRide.id)}
-            />
+            <View style={[styles.activeTripSheetAnchor, { bottom: tabBarHeight }]}>
+              <ActiveTripSheet
+                status={mapRideStatusForSheet(currentRide.status)}
+                driver={{
+                  name: getDriverName(currentRide.driver),
+                  rating: Number(currentRide.driver.rating) || 5.0,
+                  vehicle: getDriverVehicle(currentRide.driver),
+                  plate: getDriverPlate(currentRide.driver),
+                  image: currentRide.driver.image || currentRide.driver.avatarUrl || '',
+                  phone: currentRide.driver.phone || currentRide.driver.phoneNumber || '0000000000'
+                }}
+                eta={activeTripEta}
+                pickupAddress={getAddressText(currentRide.pickupLocation || currentRide.origin)}
+                destAddress={getAddressText(currentRide.destination)}
+                bottomInset={insets.bottom}
+                onClose={() => setShowActiveTripSheet(false)}
+                onChat={() => {
+                  router.push({
+                    pathname: '/chat/[id]',
+                    params: {
+                      id: currentRide.id,
+                      recipientName: getDriverName(currentRide.driver),
+                      recipientImage: currentRide.driver.image || currentRide.driver.avatarUrl || ''
+                    }
+                  });
+                }}
+                onCancel={() => cancelRide(currentRide.id)}
+              />
+            </View>
           ) : (
             <TouchableOpacity
-              style={[styles.reopenTripCard, { marginBottom: Math.max(insets.bottom + tabBarHeight, 8) }]}
+              style={[styles.reopenTripCard, { bottom: tabBarHeight + insets.bottom + 8 }]}
               onPress={() => setShowActiveTripSheet(true)}
             >
               <View style={styles.reopenTripDot} />
@@ -619,13 +624,13 @@ const {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   map: { ...StyleSheet.absoluteFillObject, height: height * 0.7 },
-  topOverlay: { position: 'absolute', left: 0, right: 0, zIndex: 10 },
+  topOverlay: { position: 'absolute', left: 0, right: 0, zIndex: 60 },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.m },
   roundButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 4 },
   locationPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 25, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, elevation: 4 },
   locationPillText: { fontWeight: '400', marginLeft: 8, fontSize: 14, fontFamily: Fonts.rounded },
   fab: { position: 'absolute', right: 20, bottom: '48%', backgroundColor: 'white', width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 5, elevation: 5, zIndex: 9 },
-  menuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 30, justifyContent: 'flex-start' },
+  menuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 55, justifyContent: 'flex-start' },
   sideMenuContainer: { width: '75%', height: '100%', backgroundColor: 'white', padding: SPACING.l, paddingTop: 20, shadowColor: '#000', shadowOffset: { width: 2, height: 0 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
   menuHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.m },
   menuTitle: { fontSize: 22, fontFamily: Fonts.bold },
@@ -755,10 +760,21 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 9,
   },
+  activeTripSheetAnchor: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 20,
+  },
   reopenTripCard: {
+    position: 'absolute',
     alignSelf: 'center',
+    left: 0,
+    right: 0,
+    marginHorizontal: 40,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
@@ -766,7 +782,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    marginTop: 8,
+    zIndex: 20,
   },
   reopenTripDot: {
     width: 8,

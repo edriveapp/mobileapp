@@ -79,6 +79,7 @@ export interface VehicleData {
 }
 
 export interface OnboardingDocuments {
+  selfieUri: string | null;       // driver face photo for KYC
   licenseImageUri: string | null;
   insuranceImageUri: string | null;
   worthinessImageUri: string | null;

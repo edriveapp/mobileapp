@@ -1,20 +1,68 @@
 import { useAuthStore } from '@/app/stores/authStore';
 import { useDriverStore } from '@/app/stores/driverStore';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
 import {
+    Alert,
+    Image,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
+    TouchableOpacity,
     View,
 } from 'react-native';
 
 export default function DriverInfoStep() {
     const user = useAuthStore((s) => s.user);
-    const { driverInfo, setDriverInfo } = useDriverStore();
+    const { driverInfo, documents, setDriverInfo, setDocuments } = useDriverStore();
+
+    const takeSelfie = async () => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Camera access is needed for identity verification.');
+            return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.85,
+            cameraType: ImagePicker.CameraType.front,
+        });
+        if (!result.canceled && result.assets[0]) {
+            setDocuments({ selfieUri: result.assets[0].uri });
+        }
+    };
+
+    const pickSelfieFromGallery = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Photo library access is needed.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.85,
+        });
+        if (!result.canceled && result.assets[0]) {
+            setDocuments({ selfieUri: result.assets[0].uri });
+        }
+    };
+
+    const handleSelfie = () => {
+        Alert.alert('Profile Photo', 'This photo will be used for identity verification and shown to passengers.', [
+            { text: 'Take Selfie', onPress: takeSelfie },
+            { text: 'Choose from Library', onPress: pickSelfieFromGallery },
+            { text: 'Cancel', style: 'cancel' },
+        ]);
+    };
 
     // Pre-fill name and phone from signup
     React.useEffect(() => {
@@ -48,6 +96,27 @@ export default function DriverInfoStep() {
                 </Text>
 
                 <View style={styles.form}>
+                    {/* Selfie / Profile Photo */}
+                    <View style={styles.selfieSection}>
+                        <Text style={styles.label}>Profile Photo * <Text style={styles.kycNote}>(Required for KYC)</Text></Text>
+                        <TouchableOpacity style={styles.selfieContainer} onPress={handleSelfie} activeOpacity={0.8}>
+                            {documents.selfieUri ? (
+                                <Image source={{ uri: documents.selfieUri }} style={styles.selfieImage} />
+                            ) : (
+                                <View style={styles.selfiePlaceholder}>
+                                    <Ionicons name="camera" size={32} color={COLORS.primary} />
+                                    <Text style={styles.selfiePlaceholderText}>Take Selfie</Text>
+                                    <Text style={styles.selfieSubText}>Clear face photo, good lighting</Text>
+                                </View>
+                            )}
+                            {documents.selfieUri && (
+                                <View style={styles.selfieEditBadge}>
+                                    <Ionicons name="camera" size={14} color="#fff" />
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+
                     {/* Full Name */}
                     <View style={styles.inputGroup}>
                         <Text style={styles.label}>Full Name *</Text>
@@ -243,5 +312,62 @@ const styles = StyleSheet.create({
     textArea: {
         minHeight: 80,
         textAlignVertical: 'top',
+    },
+    selfieSection: {
+        alignItems: 'center',
+        marginBottom: SPACING.l,
+    },
+    selfieContainer: {
+        marginTop: SPACING.s,
+        position: 'relative',
+    },
+    selfieImage: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        borderWidth: 3,
+        borderColor: COLORS.primary,
+    },
+    selfiePlaceholder: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        borderWidth: 2,
+        borderColor: COLORS.primary,
+        borderStyle: 'dashed',
+        backgroundColor: '#F0FDF4',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 4,
+    },
+    selfiePlaceholderText: {
+        fontSize: 13,
+        color: COLORS.primary,
+        fontFamily: Fonts?.sans || 'System',
+        fontWeight: '600',
+    },
+    selfieSubText: {
+        fontSize: 10,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        paddingHorizontal: 8,
+    },
+    selfieEditBadge: {
+        position: 'absolute',
+        bottom: 4,
+        right: 4,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: COLORS.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    kycNote: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        fontWeight: '400',
     },
 });

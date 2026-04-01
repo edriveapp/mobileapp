@@ -60,8 +60,9 @@ export const validateDriverInfoStep = (driverInfo: {
     guarantorPhone: string;
     nextOfKinName: string;
     nextOfKinPhone: string;
-}): boolean => {
+}, selfieUri?: string | null): boolean => {
     return (
+        !!selfieUri &&
         validateRequired(driverInfo.fullName) &&
         validatePhoneNumber(driverInfo.phoneNumber) &&
         validateDate(driverInfo.dateOfBirth) &&

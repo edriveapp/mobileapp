@@ -135,10 +135,17 @@ export class RidesService {
     }
 
     async findRideById(rideId: string): Promise<Ride | null> {
-        return this.ridesRepository.findOne({
+        const ride = await this.ridesRepository.findOne({
             where: { id: rideId },
-            relations: ['driver', 'passenger'],
+            relations: ['driver', 'driver.driverProfile', 'passenger'],
         });
+        if (ride?.driver) {
+            // Ensure rating never shows as 0 — new drivers default to 5.0
+            if (!Number(ride.driver.rating)) {
+                (ride.driver as any).rating = 5.0;
+            }
+        }
+        return ride;
     }
 
     async acceptRide(rideId: string, driverId: string): Promise<Ride> {
@@ -358,6 +365,7 @@ export class RidesService {
     async getActiveRides(userId: string, role: string) {
         const query = this.ridesRepository.createQueryBuilder('ride')
             .leftJoinAndSelect('ride.driver', 'driver')
+            .leftJoinAndSelect('driver.driverProfile', 'driverProfile')
             .leftJoinAndSelect('ride.passenger', 'passenger')
             .where('ride.status IN (:...statuses)', { statuses: [RideStatus.SEARCHING, RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS] })
             .orderBy('ride.createdAt', 'DESC');
@@ -423,6 +431,7 @@ export class RidesService {
 
         const query = this.ridesRepository.createQueryBuilder('ride')
             .leftJoinAndSelect('ride.driver', 'driver')
+            .leftJoinAndSelect('driver.driverProfile', 'driverProfile')
             .leftJoinAndSelect('ride.passenger', 'passenger')
             .where('ride.status IN (:...statuses)', { statuses: [RideStatus.COMPLETED, RideStatus.CANCELLED] })
             .orderBy('ride.createdAt', 'DESC')
