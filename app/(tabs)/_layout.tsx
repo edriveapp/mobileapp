@@ -1,12 +1,14 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform, View, Text, StyleSheet } from 'react-native';
-import { HapticTab } from '@/components/haptic-tab'; // Ensure casing matches file system
-import { COLORS } from '@/constants/theme';
-import { CustomHomeIcon } from '@/components/icon'; // Ensure casing matches file system
-import { useChatStore } from '@/app/stores/chatStore';
 
+import { useChatStore } from '@/app/stores/chatStore';
+import { HapticTab } from '@/app/components/haptic-tab'; // Ensure casing matches file system
+import { COLORS } from '@/constants/theme';
+import { Tabs } from 'expo-router';
+import React, { useEffect } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import { TripsIcon } from '../components/icons/activites';
+import { HomeIcon } from '../components/icons/home';
+import { MessagesIcon } from '../components/icons/messages';
+import { AccountIcon } from '../components/icons/profile';
 const BadgeIcon = ({ children, count }: { children: React.ReactNode; count: number }) => (
   <View style={{ position: 'relative' }}>
     {children}
@@ -43,9 +45,8 @@ const badgeStyles = StyleSheet.create({
 
 export default function TabLayout() {
   // Sum of all unread messages across all rides (not just ride count)
-  const unreadCount = useChatStore((state) =>
-    Object.values(state.unreadByRide).reduce((sum, n) => sum + n, 0)
-  );
+  const unreadCount = useChatStore((state) => state.getUnreadChatCount());
+  
 
   return (
     <Tabs
@@ -83,19 +84,18 @@ export default function TabLayout() {
       }}
     >
       {/* 1. Home Tab */}
-     <Tabs.Screen
-  name="index"
-  options={{
-    title: 'Home',
-    tabBarIcon: ({ color, focused }) => (
-      <CustomHomeIcon 
-        focused={focused} 
-        color={color} 
-        size={28} 
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color }) => (
+            <HomeIcon
+              color={color}
+              size={26}
+            />
+          ),
+        }}
       />
-    ),
-  }}
-/>
 
       {/* 2. Activities Tab (Trips) */}
       <Tabs.Screen
@@ -103,7 +103,7 @@ export default function TabLayout() {
         options={{
           title: 'Trips',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="map-marker-path" size={24} color={color} />
+            <TripsIcon color={color} size={26} />
           ),
         }}
       />
@@ -115,7 +115,7 @@ export default function TabLayout() {
           title: 'Messages',
           tabBarIcon: ({ color }) => (
             <BadgeIcon count={unreadCount}>
-              <Ionicons name="chatbubble-ellipses-outline" size={24} color={color} />
+              <MessagesIcon color={color} size={24} />
             </BadgeIcon>
           ),
         }}
@@ -127,7 +127,7 @@ export default function TabLayout() {
         options={{
           title: 'Account',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="account-circle-outline" size={24} color={color} />
+            <AccountIcon color={color} size={25} />
           ),
         }}
       />

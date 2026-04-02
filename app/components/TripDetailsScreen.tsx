@@ -11,7 +11,6 @@ import {
   Animated,
   Easing,
   Image,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -20,6 +19,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { safeOpenURL } from '@/app/utils/linking';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuthStore } from '../stores/authStore';
@@ -165,16 +166,9 @@ export default function TripDetailsScreen() {
       return;
     }
 
-    Linking.canOpenURL(`tel:${driverPhone}`).then((supported) => {
-      if (!supported) {
-        Alert.alert('Call unavailable', 'This device cannot place phone calls.');
-        return;
-      }
-      Linking.openURL(`tel:${driverPhone}`).catch(() => {
-        Alert.alert('Call failed', 'Could not open the phone dialer.');
-      });
-    });
+    safeOpenURL(`tel:${driverPhone}`, 'This device cannot place phone calls.');
   };
+
 
   const handleChatDriver = () => {
     if (!trip?.id) return;

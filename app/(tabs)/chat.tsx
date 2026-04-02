@@ -134,7 +134,11 @@ export default function InboxScreen() {
                 <View style={styles.topRow}>
                     <View style={styles.nameRow}>
                         <Text style={styles.name}>{getThreadName(item)}</Text>
-                        {!!unreadByRide[item.id] && <View style={styles.unreadDot} />}
+                        {!!unreadByRide[item.id] && (
+                            <View style={styles.unreadBadge}>
+                                <Text style={styles.unreadBadgeText}>{unreadByRide[item.id]}</Text>
+                            </View>
+                        )}
                     </View>
                     <Text style={styles.time}>{new Date(cachedChats[item.id]?.updatedAt || item.updatedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
                 </View>
@@ -225,11 +229,19 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.semibold,
         color: COLORS.text,
     },
-    unreadDot: {
-        width: 9,
-        height: 9,
-        borderRadius: 4.5,
+    unreadBadge: {
+        minWidth: 18,
+        height: 18,
+        borderRadius: 9,
         backgroundColor: '#22C55E',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 4,
+    },
+    unreadBadgeText: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: 'bold',
     },
     time: {
         fontSize: 12,

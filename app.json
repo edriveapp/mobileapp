@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "edrivemobile",
-    "slug": "edrivemobile",
+    "name": "edrive",
+    "slug": "edrive",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
@@ -26,7 +26,6 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {

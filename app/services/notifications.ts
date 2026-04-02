@@ -105,11 +105,6 @@ export const registerForPushNotificationsAsync = async () => {
     return null;
   }
 
-  if (!Device.isDevice) {
-    console.log('Push notifications only work on physical devices.');
-    return null;
-  }
-
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
@@ -127,22 +122,25 @@ export const registerForPushNotificationsAsync = async () => {
     // Set up Android channels after permissions granted
     await setupNotificationChannels();
 
+    if (!Device.isDevice) {
+      return null;
+    }
+
     const projectId = getExpoProjectId();
-   if (!projectId) {
-  throw new Error('Missing Expo projectId');
-  
-}
+    if (!projectId) {
+      throw new Error('Missing Expo projectId');
+    }
 
-
-  const token = await Notifications.getExpoPushTokenAsync({
-  projectId: projectId!,
-});
+    const token = await Notifications.getExpoPushTokenAsync({
+      projectId: projectId!,
+    });
     return token.data;
   } catch (err) {
     console.warn('Could not get push token:', err);
     return null;
   }
 };
+
 
 export const syncPushToken = async () => {
   try {

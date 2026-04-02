@@ -10,6 +10,7 @@ import {
     TouchableOpacity,
     View,
     Modal,
+    Platform,
     FlatList,
     TextInput,
     Alert,
@@ -336,7 +337,7 @@ export default function DriverMapScreen() {
             <MapView
                 ref={mapRef}
                 style={styles.map}
-                provider={PROVIDER_GOOGLE}
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                 initialRegion={{
                     latitude: location?.latitude || 4.8156,
                     longitude: location?.longitude || 7.0498,

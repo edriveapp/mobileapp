@@ -1,8 +1,10 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 import React, { useEffect } from 'react';
+import {AccountIcon} from '../components/icons/profile';
+import { MessagesIcon } from '../components/icons/messages';
 import { Platform, View, Text, StyleSheet } from 'react-native';
-
+import { Driverhome } from '../components/icons/driverhome';
 import { useAuthStore } from '@/app/stores/authStore';
 import { useChatStore } from '@/app/stores/chatStore';
 import { COLORS } from '@/constants/theme';
@@ -45,9 +47,7 @@ export default function DriverLayout() {
   const user = useAuthStore((s) => s.user);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   // Sum of all unread messages across all rides
-  const unreadCount = useChatStore((state) =>
-    Object.values(state.unreadByRide).reduce((sum, n) => sum + n, 0)
-  );
+  const unreadCount = useChatStore((state) => state.getUnreadChatCount());
 
   useEffect(() => {
     if (!user || user.role !== 'driver') return;
@@ -57,6 +57,7 @@ export default function DriverLayout() {
     }, 15000);
     return () => clearInterval(interval);
   }, [refreshProfile, user]);
+
 
   // Check authentication
   if (!user) return <Redirect href="/(auth)/login" />;
@@ -103,7 +104,7 @@ export default function DriverLayout() {
         options={{
           title: 'Dashboard',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="view-dashboard-outline" size={24} color={color} />
+            <Driverhome size={24} color={color} />
           ),
         }}
       />
@@ -131,7 +132,7 @@ export default function DriverLayout() {
           title: 'Messages',
           tabBarIcon: ({ color }) => (
             <BadgeIcon count={unreadCount}>
-              <Ionicons name="chatbubble-ellipses-outline" size={24} color={color} />
+              <MessagesIcon size={21} color={color} />
             </BadgeIcon>
           ),
         }}
@@ -179,7 +180,7 @@ export default function DriverLayout() {
         options={{
           title: 'Account',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="account-circle-outline" size={24} color={color} />
+            <AccountIcon size={22} color={color} />
           ),
         }}
       />

@@ -2,7 +2,6 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
-import { Alert } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -82,22 +81,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!latestAcceptedRide || user?.role !== 'passenger') return;
-    Alert.alert(
-      'Driver accepted',
-      `${latestAcceptedRide?.driver?.firstName || latestAcceptedRide?.driver?.name || 'Your driver'} accepted your request.`,
-      [
-        {
-          text: 'View trip',
-          onPress: () => router.replace('/(tabs)'),
-        },
-        {
-          text: 'Open chat',
-          onPress: () => router.push(`/chat/${latestAcceptedRide.id}`),
-        },
-      ],
-    );
     clearLatestAcceptedRide();
-  }, [clearLatestAcceptedRide, latestAcceptedRide, router, user?.role]);
+  }, [clearLatestAcceptedRide, latestAcceptedRide, user?.role]);
 
   useEffect(() => {
     const subscription = addNotificationResponseListener((response) => {
@@ -129,40 +114,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!latestBookedTrip || user?.role !== 'driver') return;
-    Alert.alert(
-      'New booking',
-      `${latestBookedTrip?.passenger?.firstName || latestBookedTrip?.passenger?.email || 'A rider'} booked your trip.`,
-      [
-        {
-          text: 'View map',
-          onPress: () => router.push('/(driver)/maps'),
-        },
-        {
-          text: 'Later',
-          style: 'cancel',
-        },
-      ],
-    );
     clearLatestBookedTrip();
-  }, [clearLatestBookedTrip, latestBookedTrip, router, user?.role]);
+  }, [clearLatestBookedTrip, latestBookedTrip, user?.role]);
 
   useEffect(() => {
     if (!latestChatMessage?.rideId) return;
-    const inChatRoute = segments[0] === 'chat';
-    if (!inChatRoute) {
-      Alert.alert('New chat message', latestChatMessage.text, [
-        {
-          text: 'Open chat',
-          onPress: () => router.push(`/chat/${latestChatMessage.rideId}`),
-        },
-        {
-          text: 'Later',
-          style: 'cancel',
-        },
-      ]);
-    }
     clearLatestChatMessage();
-  }, [clearLatestChatMessage, latestChatMessage, router, segments]);
+  }, [clearLatestChatMessage, latestChatMessage]);
 
   if (!loaded) return null;
 

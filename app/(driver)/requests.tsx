@@ -9,13 +9,14 @@ import {
     ActivityIndicator,
     Alert,
     FlatList,
-    Linking,
     RefreshControl,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { safeOpenURL } from '@/app/utils/linking';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function DriverRequestsScreen() {
@@ -141,16 +142,9 @@ export default function DriverRequestsScreen() {
                             Alert.alert('No phone number', 'Passenger phone is not available for this request.');
                             return;
                         }
-                        Linking.canOpenURL(`tel:${phone}`).then((supported) => {
-                            if (!supported) {
-                                Alert.alert('Call unavailable', 'This device cannot place phone calls.');
-                                return;
-                            }
-                            Linking.openURL(`tel:${phone}`).catch(() => {
-                                Alert.alert('Call failed', 'Could not open the phone dialer.');
-                            });
-                        });
+                        safeOpenURL(`tel:${phone}`, 'This device cannot place phone calls.');
                     }}
+
                 >
                     <Ionicons name="call-outline" size={16} color={COLORS.primary} />
                     <Text style={styles.callText}>Call</Text>

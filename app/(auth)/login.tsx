@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/app/stores/authStore';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { IconSymbol } from '@/app/components/ui/icon-symbol';
 import { COLORS, Fonts } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
 import { Link, useRouter } from 'expo-router';
@@ -101,25 +101,27 @@ export default function LoginScreen() {
                     </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                    style={styles.button}
-                    onPress={handleLogin}
-                    disabled={isLoading}
-                >
-                    {isLoading ? (
-                        <ActivityIndicator color={COLORS.white} />
-                    ) : (
-                        <Text style={styles.buttonText}>Log in</Text>
-                    )}
-                </TouchableOpacity>
+                <View style={styles.bottomSection}>
+                    <TouchableOpacity
+                        style={styles.button}
+                        onPress={handleLogin}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <ActivityIndicator color={COLORS.white} />
+                        ) : (
+                            <Text style={styles.buttonText}>Log in</Text>
+                        )}
+                    </TouchableOpacity>
 
-                <View style={styles.footer}>
-                    <Text style={styles.footerText}>Don't have an edrive account? </Text>
-                    <Link href="/(auth)/signup" asChild>
-                        <TouchableOpacity>
-                            <Text style={styles.link}>Create account</Text>
-                        </TouchableOpacity>
-                    </Link>
+                    <View style={styles.footer}>
+                        <Text style={styles.footerText}>Don't have an edrive account? </Text>
+                        <Link href="/(auth)/signup" asChild>
+                            <TouchableOpacity>
+                                <Text style={styles.link}>Create account</Text>
+                            </TouchableOpacity>
+                        </Link>
+                    </View>
                 </View>
             </View>
         </SafeAreaView>
@@ -227,13 +229,17 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontFamily: Fonts.rounded,
     },
+    bottomSection: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        paddingBottom: 24,
+    },
     button: {
         backgroundColor: COLORS.primary,
         height: 42,
         borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: 260,
     },
     buttonText: {
         color: COLORS.white,

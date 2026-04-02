@@ -10,12 +10,14 @@ import {
   Easing,
   FlatList,
   Keyboard, Pressable,
-  Linking,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
+import { safeOpenURL } from '@/app/utils/linking';
+
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -211,8 +213,9 @@ const {
   const callEmergencyLine = useCallback(async (number: string) => {
     const firstLine = number.split(',')[0]?.trim();
     if (!firstLine) return;
-    await Linking.openURL(`tel:${firstLine.replace(/\s+/g, '')}`);
+    safeOpenURL(`tel:${firstLine.replace(/\s+/g, '')}`, 'Your device cannot place phone calls.');
   }, []);
+
 
   useEffect(() => {
     const init = async () => {
@@ -381,7 +384,7 @@ const {
       <MapView
         ref={mapRef}
         style={styles.map}
-        provider={PROVIDER_GOOGLE}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         initialRegion={currentRegion}
         showsUserLocation={true}
         showsMyLocationButton={false}

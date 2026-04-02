@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { safeOpenURL } from '@/app/utils/linking';
+
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, Fonts } from '@/constants/theme';
 
@@ -104,7 +106,8 @@ export default function ActiveTripSheet({
 
             {/* 3. Action Buttons Grid */}
             <View style={styles.actionsGrid}>
-                <TouchableOpacity style={styles.actionBtn} onPress={onCall || (() => Linking.openURL(`tel:${driver.phone}`))}>
+                <TouchableOpacity style={styles.actionBtn} onPress={onCall || (() => safeOpenURL(`tel:${driver.phone}`))}>
+
                     <View style={[styles.iconCircle, { backgroundColor: '#E0F2F1' }]}>
                         <Ionicons name="call" size={24} color={COLORS.primary} />
                     </View>

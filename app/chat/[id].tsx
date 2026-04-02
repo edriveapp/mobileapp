@@ -9,7 +9,6 @@ import {
     Alert,
     FlatList,
     KeyboardAvoidingView,
-    Linking,
     Platform,
     StyleSheet,
     Text,
@@ -18,6 +17,8 @@ import {
     View,
     Image,
 } from 'react-native';
+import { safeOpenURL } from '@/app/utils/linking';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
 
@@ -88,16 +89,9 @@ export default function ChatScreen() {
             return;
         }
         const url = `tel:${recipientPhone}`;
-        Linking.canOpenURL(url).then((supported) => {
-            if (!supported) {
-                Alert.alert('Call unavailable', 'Your device cannot place phone calls.');
-                return;
-            }
-            Linking.openURL(url).catch(() =>
-                Alert.alert('Error', 'Could not open the dialer.')
-            );
-        });
+        safeOpenURL(`tel:${recipientPhone}`, 'Your device cannot place phone calls.');
     };
+
 
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(true);

@@ -1,6 +1,6 @@
 import { useAuthStore } from "@/app/stores/authStore";
 import { UserRole } from "@/app/types";
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import { IconSymbol } from "@/app/components/ui/icon-symbol";
 import { COLORS, Fonts, SPACING } from "@/constants/theme";
 import Feather from "@expo/vector-icons/Feather";
 import { Link, useRouter } from "expo-router";

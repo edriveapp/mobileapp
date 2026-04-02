@@ -29,6 +29,7 @@ interface ChatState {
   incrementUnread: (rideId: string) => Promise<void>;
   markRideRead: (rideId: string) => Promise<void>;
   getTotalUnread: () => number;
+  getUnreadChatCount: () => number;
 }
 
 const getChatStorageKey = (rideId: string) => `chat_messages_${rideId}`;
@@ -60,7 +61,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   unreadByRide: {},
 
   getTotalUnread: () => {
-    return Object.values(get().unreadByRide).reduce((sum, count) => sum + count, 0);
+    return Object.values(get().unreadByRide).reduce((sum, count) => {
+      const val = typeof count === 'number' ? count : 0;
+      return sum + Math.max(0, val);
+    }, 0);
+  },
+  
+  getUnreadChatCount: () => {
+    // Only count rides that have a count > 0
+    return Object.keys(get().unreadByRide).length;
   },
 
   hydrateUnread: async () => {

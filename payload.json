@@ -1,0 +1,10 @@
+{
+  "aps": {
+    "alert": {
+      "title": "Test Notification",
+      "body": "This is a test push on simulator"
+    },
+    "badge": 1,
+    "sound": "default"
+  }
+}
