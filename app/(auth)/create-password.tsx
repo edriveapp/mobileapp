@@ -24,8 +24,8 @@ export default function CreatePasswordScreen() {
             Alert.alert('Required', 'Please fill in both password fields.');
             return;
         }
-        if (password.length < 6) {
-            Alert.alert('Too short', 'Password must be at least 6 characters.');
+        if (password.length < 8) {
+            Alert.alert('Too short', 'Password must be at least 8 characters.');
             return;
         }
         if (password !== confirmPassword) {
@@ -62,7 +62,7 @@ export default function CreatePasswordScreen() {
 
             <View style={styles.content}>
                 <Text style={styles.title}>Create a new password</Text>
-                <Text style={styles.subtitle}>Your new password must be at least 6 characters.</Text>
+                <Text style={styles.subtitle}>Your new password must be at least 8 characters.</Text>
 
                 <View style={[styles.inputContainer, { marginTop: 24 }]}>
                     <Text style={styles.label}>New Password</Text>
@@ -79,6 +79,9 @@ export default function CreatePasswordScreen() {
                             <Feather name={showPassword ? 'eye' : 'eye-off'} size={18} color="#999" />
                         </TouchableOpacity>
                     </View>
+                    {password.length > 0 && password.length < 8 && (
+                        <Text style={styles.errorText}>8 characters minimum</Text>
+                    )}
                 </View>
 
                 <View style={styles.inputContainer}>
@@ -218,5 +221,12 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
         fontFamily: Fonts.semibold,
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        marginTop: 4,
+        fontFamily: Fonts.rounded,
+        marginLeft: 4,
     },
 });

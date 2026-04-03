@@ -96,6 +96,9 @@ export class User {
     })
     expoPushTokens: string[];
 
+    @Column({ default: false })
+    isRestricted: boolean;
+
     @CreateDateColumn()
     createdAt: Date;
 

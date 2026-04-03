@@ -328,6 +328,7 @@ export default function TripsScreen() {
   const [viewMode, setViewMode] = useState<'EXPLORE' | 'MY_TRIPS'>('EXPLORE');
   const [myTripsTab, setMyTripsTab] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
   const [selectedDateFilter, setSelectedDateFilter] = useState('All');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { trips, activeTrips, history, fetchTrips, fetchMyTrips, isLoading } = useTripStore();
 
@@ -336,9 +337,11 @@ export default function TripsScreen() {
     fetchMyTrips();
   }, [fetchMyTrips, fetchTrips]);
 
-  const handleRefresh = () => {
-    if (viewMode === 'EXPLORE') fetchTrips({ role: 'rider' });
-    else fetchMyTrips();
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    if (viewMode === 'EXPLORE') await fetchTrips({ role: 'rider' });
+    else await fetchMyTrips();
+    setIsRefreshing(false);
   };
 
   // -------------------------------------------------------------------------
@@ -588,7 +591,7 @@ export default function TripsScreen() {
           renderItem={renderAvailableTripItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
           ListHeaderComponent={
             <View>
               <Text style={styles.sectionTitle}>Where to next?</Text>
@@ -633,7 +636,7 @@ export default function TripsScreen() {
           renderItem={renderMyTripItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
           ListHeaderComponent={
             <View style={styles.subTabsContainer}>
               <TouchableOpacity

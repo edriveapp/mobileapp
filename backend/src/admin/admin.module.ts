@@ -1,14 +1,24 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/user.entity';
 import { Ride } from '../rides/ride.entity';
+import { Rating } from '../ratings/rating.entity';
+import { CommonModule } from '../common/common.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { DriverWarning } from './driver-warning.entity';
+import { NotificationCampaign } from './notification-campaign.entity';
+import { NotificationSchedulerService } from './notification-scheduler.service';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([User, Ride])],
+    imports: [
+        ScheduleModule.forRoot(),
+        TypeOrmModule.forFeature([User, Ride, Rating, DriverWarning, NotificationCampaign]),
+        CommonModule,
+    ],
     controllers: [AdminController],
-    providers: [AdminService],
+    providers: [AdminService, NotificationSchedulerService],
     exports: [AdminService],
 })
 export class AdminModule {}

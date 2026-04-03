@@ -240,6 +240,7 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
+        width: '100%',
     },
     buttonText: {
         color: COLORS.white,

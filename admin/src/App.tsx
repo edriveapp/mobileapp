@@ -1,11 +1,13 @@
 import { BrowserRouter as Router, Navigate, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { 
-  CarFront, 
-  LayoutDashboard, 
-  ShieldCheck, 
+import {
+  CarFront,
+  LayoutDashboard,
+  ShieldCheck,
   LifeBuoy,
   LogOut,
   UserCog,
+  Bell,
+  Settings,
 } from 'lucide-react';
 
 import Overview from './pages/Overview.tsx';
@@ -13,6 +15,8 @@ import Drivers from './pages/Drivers.tsx';
 import UsersRides from './pages/UsersRides.tsx';
 import Support from './pages/Support.tsx';
 import Login from './pages/Login.tsx';
+import Notifications from './pages/Notifications.tsx';
+import PlatformSettings from './pages/PlatformSettings.tsx';
 import { AuthProvider, useAuth } from './lib/auth.tsx';
 
 const App = () => {
@@ -40,6 +44,8 @@ const AppRoutes = () => {
           <Route path="/drivers" element={<Drivers />} />
           <Route path="/users-rides" element={<UsersRides />} />
           <Route path="/support" element={<Support />} />
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/settings" element={<PlatformSettings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -53,9 +59,11 @@ const Sidebar = () => {
 
   const navItems = [
     { name: 'Overview', path: '/', icon: LayoutDashboard },
-    { name: 'Drivers Verification', path: '/drivers', icon: ShieldCheck },
-    { name: 'Users, Rides & Roles', path: '/users-rides', icon: UserCog },
+    { name: 'Driver Management', path: '/drivers', icon: ShieldCheck },
+    { name: 'Users & Rides', path: '/users-rides', icon: UserCog },
     { name: 'Customer Support', path: '/support', icon: LifeBuoy },
+    { name: 'Notifications', path: '/notifications', icon: Bell },
+    { name: 'Platform Settings', path: '/settings', icon: Settings },
   ];
 
   return (
@@ -64,7 +72,7 @@ const Sidebar = () => {
         <CarFront className="w-8 h-8 text-emerald-500" />
         <span className="text-xl font-bold tracking-tight text-white">edrive admin</span>
       </div>
-      <nav className="flex-1 p-4 space-y-2">
+      <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
@@ -72,8 +80,8 @@ const Sidebar = () => {
               key={item.name}
               to={item.path}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-                isActive 
-                  ? 'bg-emerald-500/10 text-emerald-400' 
+                isActive
+                  ? 'bg-emerald-500/10 text-emerald-400'
                   : 'hover:bg-slate-800 hover:text-white'
               }`}
             >

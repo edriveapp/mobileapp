@@ -21,6 +21,27 @@ const normalizeUser = (rawUser: any): User => ({
     token: rawUser?.token,
 });
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const clearUserCache = async () => {
+    try {
+        const keys = await AsyncStorage.getAllKeys();
+        const chatKeys = keys.filter((k) => k.startsWith('chat_messages_') || k === 'chat_unread_counts');
+        if (chatKeys.length > 0) {
+            await AsyncStorage.multiRemove(chatKeys);
+        }
+        
+        // Dynamic requires prevent circular dependency issues
+        const { useChatStore } = require('./chatStore');
+        useChatStore.setState({ messages: [], unreadByRide: {}, currentRideId: null });
+        
+        const { useTripStore } = require('./tripStore');
+        useTripStore.setState({ activeTrips: [], history: [], currentRide: null, rideStatus: 'IDLE' });
+    } catch (error) {
+        console.error('Failed to clean local cache', error);
+    }
+};
+
 interface AuthState {
     user: User | null;
     token: string | null;
@@ -50,6 +71,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     login: async ({ email, password }) => {
         set({ isLoading: true });
         try {
+            await clearUserCache();
             const response = await api.post('/auth/login', { email, password });
             const { access_token, user: rawUser } = response.data;
             const user = normalizeUser(rawUser);
@@ -105,6 +127,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     verifyOtp: async (code, userData) => {
         set({ isLoading: true });
         try {
+            await clearUserCache();
             // Register with our backend (OTP verification happens server-side)
             const response = await api.post('/auth/register', {
                 ...userData,
@@ -128,6 +151,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     logout: async () => {
         await SecureStore.deleteItemAsync('token');
         await SecureStore.deleteItemAsync('user');
+        await clearUserCache();
         set({ user: null, token: null, isAuthenticated: false });
     },
 

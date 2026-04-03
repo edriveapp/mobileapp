@@ -46,6 +46,7 @@ export default function DriverInboxScreen() {
   const unreadByRide = useChatStore((state) => state.unreadByRide);
   const hydrateUnread = useChatStore((state) => state.hydrateUnread);
   const [cachedChats, setCachedChats] = useState<Record<string, { lastMessageText: string; lastSenderName: string; updatedAt: string | null }>>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     fetchMyTrips();
@@ -180,8 +181,12 @@ export default function DriverInboxScreen() {
         renderItem={renderChatItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        refreshing={isLoading}
-        onRefresh={fetchMyTrips}
+        refreshing={isRefreshing}
+        onRefresh={async () => {
+          setIsRefreshing(true);
+          await fetchMyTrips();
+          setIsRefreshing(false);
+        }}
         ListEmptyComponent={
           <EmptyState
             title="No Conversations"

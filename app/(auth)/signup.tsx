@@ -48,16 +48,21 @@ export default function SignupScreen() {
       return;
     }
 
+    if (password.length < 8) {
+      Alert.alert("Oh no!", "Password must be at least 8 characters");
+      return;
+    }
+
     if (password !== confirmPassword) {
       Alert.alert("Oh no!", "Passwords do not match");
       return;
     }
 
     // Ensure phone number has country code
-    let formattedPhone = phoneNumber.trim();
+    let formattedPhone = phoneNumber.replace(/[^0-9+]/g, '');
     if (!formattedPhone.startsWith("+")) {
       // Default to Nigeria country code
-      formattedPhone = "+234" + formattedPhone.replace(/^0/, "");
+      formattedPhone = "+234" + formattedPhone.replace(/^0+/, "");
     }
 
     const role: UserRole = isDriver ? "driver" : "passenger";
@@ -181,6 +186,9 @@ export default function SignupScreen() {
                   />
                 </TouchableOpacity>
               </View>
+              {password.length > 0 && password.length < 8 && (
+                <Text style={styles.errorText}>8 characters minimum</Text>
+              )}
             </View>
 
             <View style={styles.inputContainer}>
@@ -213,7 +221,7 @@ export default function SignupScreen() {
               activeOpacity={0.8}
             >
               {isLoading ? (
-                <ActivityIndicator color={COLORS.primary} />
+                <ActivityIndicator color={COLORS.white} />
               ) : (
                 <Text style={styles.buttonText}>Sign Up</Text>
               )}
@@ -398,5 +406,12 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 14,
     textDecorationLine: "underline",
+  },
+  errorText: {
+    color: '#ef4444',
+    fontSize: 12,
+    marginTop: 4,
+    fontFamily: Fonts.rounded,
+    marginLeft: 4,
   },
 });

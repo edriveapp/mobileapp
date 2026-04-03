@@ -17,6 +17,7 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Vibration,
 } from "react-native";
 
 export default function OtpScreen() {
@@ -30,6 +31,7 @@ export default function OtpScreen() {
   const isLoading = useAuthStore((state) => state.isLoading);
 
   const [otp, setOtp] = useState(["", "", "", ""]);
+  const [isError, setIsError] = useState(false);
   const inputs = useRef<Array<TextInput | null>>([]);
 
   // Resend timer
@@ -63,16 +65,23 @@ export default function OtpScreen() {
   };
 
   const handleOtpChange = (value: string, index: number) => {
+    setIsError(false);
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
 
     if (value && index < 3) {
       inputs.current[index + 1]?.focus();
+    } else if (value && index === 3) {
+      const fullOtp = newOtp.join("");
+      if (fullOtp.length === 4) {
+        handleVerify(fullOtp);
+      }
     }
   };
 
   const handleBackspace = (key: string, index: number) => {
+    setIsError(false);
     if (key === "Backspace" && !otp[index] && index > 0) {
       inputs.current[index - 1]?.focus();
     }
@@ -97,10 +106,8 @@ export default function OtpScreen() {
     }
   };
 
-  const handleVerify = async () => {
-    const otpString = otp.join("");
+  const handleVerify = async (otpString: string) => {
     if (otpString.length !== 4) {
-      Alert.alert("Error", "Please enter the 4-digit code");
       return;
     }
 
@@ -123,7 +130,7 @@ export default function OtpScreen() {
         role: userRole,
       };
 
-      // Verify OTP via backend (Twilio) and register
+      // Verify OTP via backend
       await verifyOtp(otpString, userData);
 
       if (userRole === "driver") {
@@ -132,11 +139,8 @@ export default function OtpScreen() {
         router.replace("/(tabs)");
       }
     } catch (error: any) {
-      const msg =
-        error.response?.data?.message ||
-        error.message ||
-        "Verification failed. Please try again.";
-      Alert.alert("Error", msg);
+      setIsError(true);
+      Vibration.vibrate();
     }
   };
 
@@ -164,7 +168,11 @@ export default function OtpScreen() {
           {otp.map((digit, index) => (
             <TextInput
               key={index}
-              style={[styles.otpInput, digit ? styles.otpInputFilled : null]}
+              style={[
+                  styles.otpInput, 
+                  digit ? styles.otpInputFilled : null,
+                  isError ? styles.otpInputError : null
+              ]}
               value={digit}
               onChangeText={(value) => handleOtpChange(value, index)}
               onKeyPress={({ nativeEvent }) =>
@@ -172,6 +180,7 @@ export default function OtpScreen() {
               }
               keyboardType="numeric"
               maxLength={1}
+              editable={!isLoading}
               ref={(ref) => {
                 inputs.current[index] = ref;
               }}
@@ -179,29 +188,23 @@ export default function OtpScreen() {
           ))}
         </View>
 
-        {/* Resend */}
+        {/* Resend & Loading */}
         <View style={styles.resendRow}>
-          <Text style={styles.resendText}>Didn't receive the code? </Text>
-          {canResend ? (
-            <TouchableOpacity onPress={handleResend}>
-              <Text style={styles.resendLink}>Resend Code</Text>
-            </TouchableOpacity>
+          {isLoading ? (
+             <ActivityIndicator color={COLORS.primary} />
           ) : (
-            <Text style={styles.resendTimer}>Resend in {resendTimer}s</Text>
+            <>
+              <Text style={styles.resendText}>Didn't receive the code? </Text>
+              {canResend ? (
+                <TouchableOpacity onPress={handleResend}>
+                  <Text style={styles.resendLink}>Resend Code</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.resendTimer}>Resend in {resendTimer}s</Text>
+              )}
+            </>
           )}
         </View>
-
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleVerify}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.buttonText}>Verify</Text>
-          )}
-        </TouchableOpacity>
       </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -220,7 +223,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 10,
-    paddingBottom: SPACING.m,
+    paddingBottom: 16,
+    paddingHorizontal:20,
   },
   tag: {
     backgroundColor: "#bdf7db",
@@ -305,6 +309,10 @@ const styles = StyleSheet.create({
   otpInputFilled: {
     borderColor: COLORS.primary,
     backgroundColor: "#e6ece6",
+  },
+  otpInputError: {
+    borderColor: "#ef4444",
+    backgroundColor: "#fef2f2",
   },
 
   // Resend

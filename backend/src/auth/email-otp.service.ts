@@ -40,11 +40,11 @@ export class EmailOtpService {
 
     try {
       await this.transporter.sendMail({
-        from: `"eDrive" <${from}>`,
+        from: `"edrive" <${from}>`,
         to: email,
-        subject: 'Your eDrive verification code',
+        subject: 'Your edrive verification code',
         html: this.buildOtpEmail(code),
-        text: `Your eDrive verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share it with anyone.`,
+        text: `Your edrive verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share it with anyone.`,
       });
 
       this.logger.log(`OTP sent to ${email}`);
@@ -83,7 +83,7 @@ export class EmailOtpService {
           <!-- Header -->
           <tr>
             <td style="background:#005124;padding:32px 40px;text-align:center;">
-              <p style="margin:0;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">eDrive</p>
+              <p style="margin:0;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">edrive</p>
               <p style="margin:6px 0 0;font-size:13px;color:#a3d4b5;">Ride smarter, together</p>
             </td>
           </tr>
@@ -99,14 +99,14 @@ export class EmailOtpService {
                 <p style="margin:0;font-size:48px;font-weight:800;letter-spacing:16px;color:#005124;">${code}</p>
               </div>
               <p style="margin:0;font-size:13px;color:#999;line-height:1.6;">
-                If you didn't request this code, you can safely ignore this email. Never share this code with anyone — eDrive will never ask for it.
+                If you didn't request this code, you can safely ignore this email. Never share this code with anyone — edrive will never ask for it.
               </p>
             </td>
           </tr>
           <!-- Footer -->
           <tr>
             <td style="background:#f9f9f9;padding:20px 40px;border-top:1px solid #eee;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#aaa;">&copy; ${new Date().getFullYear()} eDrive. All rights reserved.</p>
+              <p style="margin:0;font-size:12px;color:#aaa;">&copy; ${new Date().getFullYear()} edrive. All rights reserved.</p>
             </td>
           </tr>
         </table>

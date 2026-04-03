@@ -18,6 +18,8 @@ import { DriverProfile } from './users/driver-profile.entity';
 import { SavedPlace } from './users/saved-place.entity';
 import { User } from './users/user.entity';
 import { UsersModule } from './users/users.module';
+import { DriverWarning } from './admin/driver-warning.entity';
+import { NotificationCampaign } from './admin/notification-campaign.entity';
 
 @Module({
     imports: [
@@ -33,7 +35,7 @@ import { UsersModule } from './users/users.module';
                 username: configService.get<string>('DB_USER') || 'edrive',
                 password: configService.get<string>('DB_PASS') || 'edrive_password',
                 database: configService.get<string>('DB_NAME') || 'edrive_db',
-                entities: [User, DriverProfile, Ride, Message, Rating, SavedPlace, SupportTicket, SupportMessage],
+                entities: [User, DriverProfile, Ride, Message, Rating, SavedPlace, SupportTicket, SupportMessage, DriverWarning, NotificationCampaign],
                 synchronize: true, // Auto-create tables (dev only)
             }),
             inject: [ConfigService],
