@@ -30,8 +30,10 @@ interface AuthState {
 
     // Actions
     login: (credentials: { email: string; password: string }) => Promise<void>;
-    sendOtp: (phoneNumber: string) => Promise<void>;
+    sendOtp: (email: string) => Promise<void>;
     verifyOtp: (code: string, userData: any) => Promise<void>;
+    forgotPassword: (email: string) => Promise<void>;
+    resetPassword: (email: string, otp: string, newPassword: string) => Promise<void>;
     logout: () => Promise<void>;
     checkLogin: () => Promise<void>;
     setFinishedSplash: (finished: boolean) => void;
@@ -64,12 +66,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
     },
 
-    sendOtp: async (phoneNumber) => {
+    sendOtp: async (email) => {
         set({ isLoading: true });
         try {
-            await api.post('/auth/send-otp', { phoneNumber });
+            await api.post('/auth/send-otp', { email });
         } catch (error: any) {
             console.error("Send OTP Error:", error);
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    forgotPassword: async (email) => {
+        set({ isLoading: true });
+        try {
+            await api.post('/auth/forgot-password', { email });
+        } catch (error: any) {
+            console.error("Forgot Password Error:", error);
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    resetPassword: async (email, otp, newPassword) => {
+        set({ isLoading: true });
+        try {
+            await api.post('/auth/reset-password', { email, otp, newPassword });
+        } catch (error: any) {
+            console.error("Reset Password Error:", error);
             throw error;
         } finally {
             set({ isLoading: false });

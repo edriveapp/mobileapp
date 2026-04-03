@@ -91,7 +91,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <HomeIcon
               color={color}
-              size={26}
+              size={22}
             />
           ),
         }}
@@ -103,7 +103,7 @@ export default function TabLayout() {
         options={{
           title: 'Trips',
           tabBarIcon: ({ color }) => (
-            <TripsIcon color={color} size={26} />
+            <TripsIcon color={color} size={22} />
           ),
         }}
       />
@@ -115,7 +115,7 @@ export default function TabLayout() {
           title: 'Messages',
           tabBarIcon: ({ color }) => (
             <BadgeIcon count={unreadCount}>
-              <MessagesIcon color={color} size={24} />
+              <MessagesIcon color={color} size={22} />
             </BadgeIcon>
           ),
         }}
@@ -127,7 +127,7 @@ export default function TabLayout() {
         options={{
           title: 'Account',
           tabBarIcon: ({ color }) => (
-            <AccountIcon color={color} size={25} />
+            <AccountIcon color={color} size={22} />
           ),
         }}
       />

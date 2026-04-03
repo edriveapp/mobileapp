@@ -1,0 +1,26 @@
+import { useRouter, useSegments } from 'expo-router';
+import { useEffect } from 'react';
+import { useAuthStore } from '../stores/authStore';
+
+export function useAuthRedirect(loaded: boolean) {
+  const segments = useSegments();
+  const router = useRouter();
+  const { isAuthenticated, hasFinishedSplash, user } = useAuthStore();
+
+  useEffect(() => {
+    // Wait for fonts and the custom animated splash to finish
+    if (!loaded || !hasFinishedSplash) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+
+    if (!isAuthenticated && !inAuthGroup) {
+      router.replace('/(auth)/onboarding' as any);
+    } else if (isAuthenticated && inAuthGroup) {
+      if (user?.role === 'driver') {
+        router.replace('/(driver)' as any);
+      } else {
+        router.replace('/(tabs)' as any);
+      }
+    }
+  }, [hasFinishedSplash, isAuthenticated, loaded, router, segments, user?.role]);
+}

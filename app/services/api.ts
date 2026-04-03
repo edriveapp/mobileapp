@@ -44,22 +44,20 @@ export const getBaseUrl = () => {
 export const getSocketBaseUrl = getBaseUrl;
 
 const api = axios.create({
-  baseURL: getBaseUrl(),
   headers: {
     "Content-Type": "application/json",
   },
   timeout: 20000,
 });
 
-/**
- * 2. REQUEST INTERCEPTOR (PRESERVED)
- * Automatically attaches the Bearer token from Zustand store.
- */
+// Dynamically resolve base URL on every request
 api.interceptors.request.use(
   async (config) => {
+    // Set baseURL dynamically so it always picks up env changes
+    config.baseURL = getBaseUrl();
+
     const state = useAuthStore.getState();
     const token = state.token;
-
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

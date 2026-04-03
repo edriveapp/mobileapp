@@ -7,7 +7,6 @@
     "icon": "./assets/images/logo.png",
     "scheme": "edrive",
     "userInterfaceStyle": "automatic",
-   
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.edriveapp"
@@ -26,7 +25,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "output": "static",
@@ -34,15 +34,6 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
       "@react-native-community/datetimepicker",
       [
         "expo-build-properties",
@@ -63,6 +54,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e4f35e3c-b4c3-4f03-b176-b33c090c74b9"
+      }
+    },
+    "owner": "jeffreyxdev"
   }
 }

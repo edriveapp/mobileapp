@@ -427,8 +427,8 @@ const styles = StyleSheet.create({
     payButton: {
         flexDirection: 'row',
         backgroundColor: COLORS.primary,
-        height: 56,
-        borderRadius: 16,
+        height: 48,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
         shadowColor: COLORS.primary,
@@ -440,8 +440,8 @@ const styles = StyleSheet.create({
     payButtonDisabled: { opacity: 0.6 },
     payButtonText: {
         color: '#fff',
-        fontSize: 18,
-        fontWeight: 'bold',
-        fontFamily: Fonts.bold,
+        fontSize: 15,
+        fontWeight: '600',
+        fontFamily: Fonts.semibold,
     },
 });

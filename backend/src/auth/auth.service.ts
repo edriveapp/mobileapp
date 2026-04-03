@@ -1,8 +1,8 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { User, UserRole } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
-import { SmsService } from './sms.service';
+import { EmailOtpService } from './email-otp.service';
 
 @Injectable()
 export class AuthService {
@@ -11,7 +11,7 @@ export class AuthService {
     constructor(
         private usersService: UsersService,
         private jwtService: JwtService,
-        private smsService: SmsService,
+        private emailOtpService: EmailOtpService,
     ) { }
 
     async validateUser(email: string, pass: string): Promise<any> {
@@ -31,35 +31,32 @@ export class AuthService {
         };
     }
 
-    async sendOtp(phoneNumber: string) {
-        if (!phoneNumber) {
-            throw new BadRequestException('Phone number is required.');
+    async sendOtp(email: string) {
+        if (!email) {
+            throw new BadRequestException('Email is required.');
         }
-        return this.smsService.sendOtp(phoneNumber);
+        return this.emailOtpService.sendOtp(email);
     }
 
     async register(userData: any, otpCode: string) {
-        const phoneNumber = userData.phone;
+        const email = userData.email;
 
-        if (!phoneNumber || !otpCode) {
-            throw new BadRequestException('Phone number and OTP code are required.');
+        if (!email || !otpCode) {
+            throw new BadRequestException('Email and OTP code are required.');
         }
 
-        // Verify the OTP via Twilio
-        const isValid = await this.smsService.verifyOtp(phoneNumber, otpCode);
+        const isValid = this.emailOtpService.verifyOtp(email, otpCode);
         if (!isValid) {
             throw new BadRequestException('Invalid or expired OTP code. Please try again.');
         }
 
-        this.logger.log(`OTP verified for phone number: ${phoneNumber}`);
+        this.logger.log(`OTP verified for email: ${email}`);
 
-        // Check if user already exists
-        let user = await this.usersService.findOneByEmail(userData.email);
+        let user = await this.usersService.findOneByEmail(email);
         if (user) {
-            throw new BadRequestException('User already exists');
+            throw new BadRequestException('An account with this email already exists.');
         }
 
-        // Force public registration to safe defaults.
         user = await this.usersService.create({
             email: userData.email,
             phone: userData.phone,
@@ -70,5 +67,41 @@ export class AuthService {
         });
 
         return this.login(user);
+    }
+
+    async forgotPassword(email: string) {
+        if (!email) {
+            throw new BadRequestException('Email is required.');
+        }
+        const user = await this.usersService.findOneByEmail(email);
+        if (!user) {
+            // Return success anyway to avoid email enumeration
+            return { success: true };
+        }
+        await this.emailOtpService.sendOtp(email);
+        return { success: true };
+    }
+
+    async resetPassword(email: string, otpCode: string, newPassword: string) {
+        if (!email || !otpCode || !newPassword) {
+            throw new BadRequestException('Email, OTP, and new password are required.');
+        }
+        if (newPassword.length < 6) {
+            throw new BadRequestException('Password must be at least 6 characters.');
+        }
+
+        const isValid = this.emailOtpService.verifyOtp(email, otpCode);
+        if (!isValid) {
+            throw new BadRequestException('Invalid or expired OTP code.');
+        }
+
+        const user = await this.usersService.findOneByEmail(email);
+        if (!user) {
+            throw new NotFoundException('Account not found.');
+        }
+
+        await this.usersService.updatePassword(user.id, newPassword);
+        this.logger.log(`Password reset for ${email}`);
+        return { success: true };
     }
 }

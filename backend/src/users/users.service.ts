@@ -131,6 +131,10 @@ export class UsersService {
         return updated;
     }
 
+    async updatePassword(userId: string, newPassword: string): Promise<void> {
+        await this.usersRepository.update(userId, { passwordHash: newPassword });
+    }
+
     async registerExpoPushToken(userId: string, token: string): Promise<User> {
         const user = await this.findOneById(userId);
         if (!user) throw new NotFoundException('User not found');

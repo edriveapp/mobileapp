@@ -1,6 +1,5 @@
 import { useAuthStore } from "@/app/stores/authStore";
 import { UserRole } from "@/app/types";
-import { IconSymbol } from "@/app/components/ui/icon-symbol";
 import { COLORS, Fonts, SPACING } from "@/constants/theme";
 import Feather from "@expo/vector-icons/Feather";
 import { Link, useRouter } from "expo-router";
@@ -64,8 +63,8 @@ export default function SignupScreen() {
     const role: UserRole = isDriver ? "driver" : "passenger";
 
     try {
-      // Send OTP via backend (Twilio)
-      await sendOtp(formattedPhone);
+      // Send OTP via email
+      await sendOtp(email);
 
       // Navigate to OTP screen with user details
       router.push({
@@ -175,8 +174,8 @@ export default function SignupScreen() {
                   secureTextEntry={!showPassword}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  <IconSymbol
-                    name={showPassword ? "eye" : "eye.slash"}
+                  <Feather
+                    name={showPassword ? "eye" : "eye-off"}
                     size={20}
                     color={COLORS.textSecondary}
                   />
@@ -196,8 +195,8 @@ export default function SignupScreen() {
                   secureTextEntry={!showConfirmPassword}
                 />
                 <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
-                  <IconSymbol
-                    name={showConfirmPassword ? "eye" : "eye.slash"}
+                  <Feather
+                    name={showConfirmPassword ? "eye" : "eye-off"}
                     size={20}
                     color={COLORS.textSecondary}
                   />
@@ -256,12 +255,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 10,
-    paddingBottom: 24,
+    paddingBottom: 16,
     paddingHorizontal: 20,
   },
   scrollContent: {
-    paddingBottom: SPACING.xl,
-    minHeight: "100%",
+    paddingBottom: 30,
+    flexGrow: 1,
   },
   tag: {
     backgroundColor: "#bdf7db",
@@ -312,7 +311,7 @@ const styles = StyleSheet.create({
   subtitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: SPACING.xl,
+    marginBottom: 16,
   },
   subtitle: {
     fontSize: 14,
@@ -329,7 +328,7 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
   inputContainer: {
-    marginBottom: SPACING.m,
+    marginBottom: 14,
   },
   label: {
     fontSize: 14,
@@ -371,7 +370,7 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: COLORS.primary,
-    height: 42,
+    height: 48,
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
@@ -379,9 +378,9 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: COLORS.white,
-    fontSize: 16,
-    fontWeight: "bold",
-    fontFamily: Fonts.rounded,
+    fontSize: 15,
+    fontWeight: "600",
+    fontFamily: Fonts.semibold,
   },
   footer: {
     flexDirection: "row",

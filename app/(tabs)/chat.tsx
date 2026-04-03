@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
         borderBottomColor: COLORS.border,
     },
     title: {
-        fontSize: 24,
+        fontSize: 20,
         fontFamily: Fonts.semibold,
         color: COLORS.text,
         textAlign: 'center',

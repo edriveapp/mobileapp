@@ -1,45 +1,33 @@
 import { useAuthStore } from '@/app/stores/authStore';
 import { COLORS, Fonts } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-export default function LoginScreen() {
+export default function ForgotPasswordScreen() {
     const router = useRouter();
-    const login = useAuthStore((state) => state.login);
+    const forgotPassword = useAuthStore((state) => state.forgotPassword);
     const isLoading = useAuthStore((state) => state.isLoading);
-
     const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
 
-    const handleLogin = async () => {
-        if (!email || !password) {
-            Alert.alert('oops', 'Please enter both email and password');
+    const handleNext = async () => {
+        if (!email.trim()) {
+            Alert.alert('Required', 'Please enter your email address.');
             return;
         }
-
-        // Email validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            Alert.alert('oops', 'Please enter a valid email address');
+        if (!emailRegex.test(email.trim())) {
+            Alert.alert('Invalid email', 'Please enter a valid email address.');
             return;
         }
 
         try {
-            await login({ email, password });
-
-            // Role-based redirect
-            const user = useAuthStore.getState().user;
-            if (user?.role === 'driver') {
-                router.replace('/(driver)');
-            } else {
-                router.replace('/(tabs)');
-            }
+            await forgotPassword(email.trim().toLowerCase());
+            router.push({ pathname: '/(auth)/forgot-otp', params: { email: email.trim().toLowerCase() } });
         } catch (error: any) {
-            const msg = error.response?.data?.message || 'Login failed. Please try again.';
-            Alert.alert('omo', msg);
+            const msg = error?.message || 'Failed to send reset code. Please try again.';
+            Alert.alert('Error', msg);
         }
     };
 
@@ -49,7 +37,7 @@ export default function LoginScreen() {
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={styles.header}>
                 <View style={styles.tag}>
-                    <Text style={styles.tagText}>Welcome Back</Text>
+                    <Text style={styles.tagText}>Change Password</Text>
                 </View>
                 <TouchableOpacity style={styles.helpButton}>
                     <Feather name="headphones" size={14} color="black" />
@@ -58,69 +46,41 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.content}>
-                <Text style={styles.title}>Log into your account</Text>
-                <Text style={styles.subtitle}>Enter your email and password to access your edrive account</Text>
+                <Text style={styles.title}>Forgot Password</Text>
+                <Text style={styles.subtitle}>Enter your account email and we'll send you a reset code.</Text>
 
-                <View style={styles.inputContainer}>
+                <View style={[styles.inputContainer, { marginTop: 24 }]}>
                     <Text style={styles.label}>Email Address</Text>
                     <View style={styles.inputWrapper}>
                         <TextInput
                             style={styles.input}
-                            placeholder="Type your email address"
+                            placeholder="Enter your email address"
                             placeholderTextColor="#B0B0B0"
                             value={email}
                             onChangeText={setEmail}
                             autoCapitalize="none"
                             keyboardType="email-address"
+                            autoComplete="email"
                         />
                     </View>
-                </View>
-
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Password</Text>
-                    <View style={styles.inputWrapper}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Type your password"
-                            placeholderTextColor="#B0B0B0"
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry={!showPassword}
-                        />
-                        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                            <Feather
-                                name={showPassword ? "eye" : "eye-off"}
-                                size={20}
-                                color="#141414ff"
-                            />
-                        </TouchableOpacity>
-                    </View>
-                    <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push('/(auth)/forgot-password')}>
-                        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                    </TouchableOpacity>
                 </View>
 
                 <View style={styles.bottomSection}>
                     <TouchableOpacity
-                        style={styles.button}
-                        onPress={handleLogin}
+                        style={[styles.button, isLoading && { opacity: 0.7 }]}
+                        onPress={handleNext}
                         disabled={isLoading}
                     >
                         {isLoading ? (
                             <ActivityIndicator color={COLORS.white} />
                         ) : (
-                            <Text style={styles.buttonText}>Log in</Text>
+                            <Text style={styles.buttonText}>Send Reset Code</Text>
                         )}
                     </TouchableOpacity>
 
-                    <View style={styles.footer}>
-                        <Text style={styles.footerText}>Don't have an edrive account? </Text>
-                        <Link href="/(auth)/signup" asChild>
-                            <TouchableOpacity>
-                                <Text style={styles.link}>Create account</Text>
-                            </TouchableOpacity>
-                        </Link>
-                    </View>
+                    <TouchableOpacity style={styles.backLink} onPress={() => router.back()}>
+                        <Text style={styles.backLinkText}>Back to Login</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
             </KeyboardAvoidingView>
@@ -131,9 +91,8 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffffff',
+        backgroundColor: '#fff',
         paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-
     },
     header: {
         flexDirection: 'row',
@@ -142,7 +101,6 @@ const styles = StyleSheet.create({
         marginTop: 10,
         paddingBottom: 24,
         paddingHorizontal: 20,
-
     },
     tag: {
         backgroundColor: '#BDF7DB',
@@ -178,7 +136,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 27,
         fontWeight: '400',
-        color: '#000000',
+        color: '#000',
         fontFamily: Fonts.rounded,
         marginBottom: 8,
         letterSpacing: -1.0,
@@ -186,19 +144,15 @@ const styles = StyleSheet.create({
     subtitle: {
         fontSize: 14,
         color: '#9CA3AF',
-        letterSpacing: -0.5,
         fontFamily: Fonts.rounded,
-        fontWeight: '500',
-        marginBottom: 38,
         lineHeight: 22,
+        marginBottom: 4,
     },
-    inputContainer: {
-        marginBottom: 18,
-    },
+    inputContainer: { marginBottom: 18 },
     label: {
         fontSize: 16,
         fontWeight: '400',
-        color: '#000000',
+        color: '#000',
         marginBottom: 3,
         fontFamily: Fonts.rounded,
     },
@@ -207,26 +161,15 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: COLORS.white,
         borderWidth: 0.5,
-        borderColor: '#b49f9fff',
+        borderColor: '#b49f9f',
         borderRadius: 12,
         paddingHorizontal: 10,
-
-        height: 45,
+        height: 48,
     },
     input: {
         flex: 1,
         fontSize: 13,
         color: COLORS.text,
-        fontFamily: Fonts.rounded,
-    },
-    forgotPassword: {
-        alignSelf: 'flex-end',
-        marginTop: 13,
-    },
-    forgotPasswordText: {
-        color: '#000000',
-        fontSize: 13,
-        fontWeight: '600',
         fontFamily: Fonts.rounded,
     },
     bottomSection: {
@@ -247,22 +190,14 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontFamily: Fonts.semibold,
     },
-    footer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        marginTop: 24,
+    backLink: {
         alignItems: 'center',
+        marginTop: 16,
+        paddingVertical: 8,
     },
-    footerText: {
-        color: '#9CA3AF',
-        fontSize: 12,
+    backLinkText: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
         fontFamily: Fonts.rounded,
-    },
-    link: {
-        color: COLORS.primary,
-        fontWeight: '500',
-        fontSize: 13,
-        fontFamily: Fonts.rounded,
-        textDecorationLine: 'underline',
     },
 });

@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    KeyboardAvoidingView,
     Platform,
     SafeAreaView,
     StatusBar,
@@ -22,6 +23,7 @@ export default function OtpScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { name, email, phoneNumber, password, role } = params;
+  const displayEmail = (email as string) || '';
 
   const verifyOtp = useAuthStore((state) => state.verifyOtp);
   const sendOtp = useAuthStore((state) => state.sendOtp);
@@ -77,9 +79,9 @@ export default function OtpScreen() {
   };
 
   const handleResend = async () => {
-    if (!canResend || !phoneNumber) return;
+    if (!canResend || !email) return;
     try {
-      await sendOtp(phoneNumber as string);
+      await sendOtp(email as string);
       setResendTimer(60);
       setCanResend(false);
       Alert.alert(
@@ -140,6 +142,7 @@ export default function OtpScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
         <View style={styles.tag}>
           <Text style={styles.tagText}>Verify number</Text>
@@ -154,7 +157,7 @@ export default function OtpScreen() {
         <Text style={styles.title}>Confirm OTP</Text>
         <Text style={styles.subtitle}>
           We sent a 4-digit code to{" "}
-          <Text style={styles.phoneHighlight}>{getMaskedPhone()}</Text>
+          <Text style={styles.phoneHighlight}>{displayEmail}</Text>
         </Text>
 
         <View style={styles.otpContainer}>
@@ -200,6 +203,7 @@ export default function OtpScreen() {
           )}
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -215,7 +219,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 42,
+    marginTop: 10,
     paddingBottom: SPACING.m,
   },
   tag: {
@@ -258,8 +262,8 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xl,
   },
   title: {
-    fontSize: 32,
-    fontWeight: "500",
+    fontSize: 27,
+    fontWeight: "400",
     color: COLORS.text,
     fontFamily: Fonts.rounded,
     marginBottom: 8,
@@ -330,18 +334,17 @@ const styles = StyleSheet.create({
 
   button: {
     backgroundColor: COLORS.primary,
-    height: 50,
-    borderRadius: 27,
+    height: 48,
+    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
     width: "100%",
     marginTop: SPACING.m,
-    paddingHorizontal: SPACING.xs,
   },
   buttonText: {
     color: COLORS.white,
-    fontSize: 18,
-    fontWeight: "bold",
-    fontFamily: Fonts.rounded,
+    fontSize: 15,
+    fontWeight: "600",
+    fontFamily: Fonts.semibold,
   },
 });

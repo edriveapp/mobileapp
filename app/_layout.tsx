@@ -1,126 +1,30 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect } from 'react';
+import React from 'react';
+import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, useFonts } from '@expo-google-fonts/poppins';
-import * as SplashScreen from 'expo-splash-screen';
-import { addNotificationResponseListener, syncPushToken } from './services/notifications';
 import AnimatedSplashScreen from './components/AnimatedSplashScreen';
 import { useAuthStore } from './stores/authStore';
-import { useChatStore } from './stores/chatStore';
-import { useRideRealtimeStore } from './stores/rideRealtimeStore';
-import { useSocketStore } from './stores/socketStore';
+import { useAppInitialization } from './hooks/use-app-initialization';
+import { useAuthRedirect } from './hooks/use-auth-redirect';
+import { useAppServices } from './hooks/use-app-services';
 
-SplashScreen.preventAutoHideAsync();
+// Prevent native splash screen from auto-hiding until we manually hide it in useAppInitialization
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* Already prevented or hidden */
+});
 
 export default function RootLayout() {
-  const [loaded] = useFonts({
-    Poppins_400Regular,
-    Poppins_500Medium,  
-    Poppins_600SemiBold,
-    Poppins_700Bold,
-  });
-
-
   const colorScheme = useColorScheme();
-  const { isAuthenticated, hasFinishedSplash, user } = useAuthStore();
-  const hydrateUnread = useChatStore((state) => state.hydrateUnread);
-  const { connect: connectSocket, disconnect: disconnectSocket, isConnected: isSocketConnected } = useSocketStore();
-  const setupRealtimeListeners = useRideRealtimeStore((state) => state.setupListeners);
-  const disconnectRealtime = () => disconnectSocket();
-  const latestAcceptedRide = useRideRealtimeStore((state) => state.latestAcceptedRide);
-  const latestBookedTrip = useRideRealtimeStore((state) => state.latestBookedTrip);
-  const latestChatMessage = useRideRealtimeStore((state) => state.latestChatMessage);
-  const clearLatestAcceptedRide = useRideRealtimeStore((state) => state.clearLatestAcceptedRide);
-  const clearLatestBookedTrip = useRideRealtimeStore((state) => state.clearLatestBookedTrip);
-  const clearLatestChatMessage = useRideRealtimeStore((state) => state.clearLatestChatMessage);
-  const segments = useSegments();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  useEffect(() => {
-    if (!loaded || !hasFinishedSplash) return;
-
-    const inAuthGroup = segments[0] === '(auth)';
-
-    if (!isAuthenticated && !inAuthGroup) {
-      router.replace('/(auth)/login');
-    } else if (isAuthenticated && inAuthGroup) {
-      if (user?.role === 'driver') {
-        router.replace('/(driver)');
-      } else {
-        router.replace('/(tabs)');
-      }
-    }
-  }, [hasFinishedSplash, isAuthenticated, loaded, router, segments, user?.role]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !user) {
-      disconnectSocket();
-      return;
-    }
-
-    connectSocket();
-    syncPushToken();
-    void hydrateUnread();
-  }, [connectSocket, disconnectSocket, hydrateUnread, isAuthenticated, user]);
-
-  useEffect(() => {
-    if (isSocketConnected) {
-      setupRealtimeListeners();
-    }
-  }, [isSocketConnected, setupRealtimeListeners]);
-
-  useEffect(() => {
-    if (!latestAcceptedRide || user?.role !== 'passenger') return;
-    clearLatestAcceptedRide();
-  }, [clearLatestAcceptedRide, latestAcceptedRide, user?.role]);
-
-  useEffect(() => {
-    const subscription = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data || {};
-      const rideId = typeof data.rideId === 'string' ? data.rideId : '';
-      const type = typeof data.type === 'string' ? data.type : '';
-
-      if (type === 'chat_message' && rideId) {
-        router.push(`/chat/${rideId}`);
-        return;
-      }
-
-      if ((type === 'ride_accepted' || type === 'trip_booked') && rideId) {
-        if (user?.role === 'driver') {
-          router.push('/(driver)/maps');
-        } else {
-          router.replace('/(tabs)');
-        }
-        return;
-      }
-
-      if (type === 'ride_request') {
-        router.push('/(driver)/requests');
-      }
-    });
-
-    return () => subscription.remove();
-  }, [router, user?.role]);
-
-  useEffect(() => {
-    if (!latestBookedTrip || user?.role !== 'driver') return;
-    clearLatestBookedTrip();
-  }, [clearLatestBookedTrip, latestBookedTrip, user?.role]);
-
-  useEffect(() => {
-    if (!latestChatMessage?.rideId) return;
-    clearLatestChatMessage();
-  }, [clearLatestChatMessage, latestChatMessage]);
+  const { hasFinishedSplash } = useAuthStore();
+  
+  // Custom hooks for app-level logic
+  const { loaded } = useAppInitialization();
+  useAuthRedirect(loaded);
+  useAppServices();
 
   if (!loaded) return null;
 
@@ -130,7 +34,6 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      {/* This renders the nested screens */}
       <Slot />
       <StatusBar style="auto" />
     </ThemeProvider>
