@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
 export default registerAs('database', () => ({
-    url: process.env.DATABASE_URL,
+    url: process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL,
     type: 'postgres' as const,
     // Never auto-sync schema in production — use migrations
     synchronize: false,
