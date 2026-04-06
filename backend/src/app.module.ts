@@ -20,23 +20,21 @@ import { User } from './users/user.entity';
 import { UsersModule } from './users/users.module';
 import { DriverWarning } from './admin/driver-warning.entity';
 import { NotificationCampaign } from './admin/notification-campaign.entity';
+import databaseConfig from './common/configs/database.config';
+import redisConfig from './common/configs/redis.config';
+import Redis from 'ioredis';
 
 @Module({
     imports: [
         ConfigModule.forRoot({
             isGlobal: true,
+            load: [databaseConfig, redisConfig],
         }),
         TypeOrmModule.forRootAsync({
             imports: [ConfigModule],
             useFactory: (configService: ConfigService) => ({
-                type: 'postgres',
-                host: configService.get<string>('DB_HOST') || 'localhost',
-                port: parseInt(configService.get<string>('DB_PORT') || '5432'),
-                username: configService.get<string>('DB_USER') || 'edrive',
-                password: configService.get<string>('DB_PASS') || 'edrive_password',
-                database: configService.get<string>('DB_NAME') || 'edrive_db',
+                ...configService.get('database'),
                 entities: [User, DriverProfile, Ride, Message, Rating, SavedPlace, SupportTicket, SupportMessage, DriverWarning, NotificationCampaign],
-                synchronize: true, // Auto-create tables (dev only)
             }),
             inject: [ConfigService],
         }),
@@ -51,6 +49,15 @@ import { NotificationCampaign } from './admin/notification-campaign.entity';
         AdminModule,
     ],
     controllers: [],
-    providers: [],
+    providers: [
+        {
+            provide: 'REDIS_CLIENT',
+            useFactory: (configService: ConfigService) => {
+                const url = configService.get<string>('redis.url');
+                return url ? new Redis(url) : null;
+            },
+            inject: [ConfigService],
+        },
+    ],
 })
 export class AppModule { }
