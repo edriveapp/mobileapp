@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Point } from 'geojson';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { MailerService } from '../common/mailer.service';
+import { RedisService } from '../common/redis.service';
 import { DriverProfile } from './driver-profile.entity';
 import { SavedPlace } from './saved-place.entity';
 import { AdminScope, User, UserRole, VerificationStatus } from './user.entity';
@@ -17,6 +17,7 @@ export class UsersService {
         @InjectRepository(SavedPlace)
         private savedPlaceRepository: Repository<SavedPlace>,
         private readonly mailerService: MailerService,
+        private readonly redisService: RedisService,
     ) { }
 
     async findOneByEmail(email: string): Promise<User | null> {
@@ -217,7 +218,7 @@ export class UsersService {
         }
 
         // Strip PostGIS geometry field to avoid serialisation issues
-        const { currentLocation, ...profileRest } = profile as any;
+        const { lastLocation, ...profileRest } = profile as any;
         return {
             ...profileRest,
             user: safeUser,
@@ -312,28 +313,25 @@ export class UsersService {
     }
 
     async updateDriverLocation(driverId: string, lat: number, lon: number): Promise<void> {
-        const point: Point = {
-            type: 'Point',
-            coordinates: [lon, lat],
-        };
+        await this.redisService.setDriverLocation(driverId, lat, lon);
 
         await this.driverProfileRepository.update(
             { user: { id: driverId } },
-            { currentLocation: point }
+            { lastLocation: { lat, lon } }
         );
     }
 
     async findNearbyDrivers(lat: number, lon: number, radiusKm: number = 5): Promise<DriverProfile[]> {
-        return this.driverProfileRepository
-            .createQueryBuilder('driver')
-            .leftJoinAndSelect('driver.user', 'user')
-            .where('ST_DWithin(driver.currentLocation, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :radius)', {
-                lon,
-                lat,
-                radius: radiusKm * 1000,
-            })
-            .andWhere('driver.isOnline = :isOnline', { isOnline: true })
-            .getMany();
+        const nearbyIds = await this.redisService.getNearbyDrivers(lat, lon, radiusKm);
+        if (!nearbyIds || nearbyIds.length === 0) return [];
+
+        return this.driverProfileRepository.find({
+            where: {
+                user: { id: In(nearbyIds) },
+                isOnline: true,
+            },
+            relations: ['user'],
+        });
     }
 
     private async getVerificationNotificationEmails() {

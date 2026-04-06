@@ -80,7 +80,7 @@ export class PaymentsService {
         const data = {
             email,
             amount: amount * 100, // Paystack expects kobo
-            callback_url: 'http://localhost:3000/payments/verify', // Or deep link to app
+            callback_url: `${this.configService.get<string>('APP_URL') ?? ''}/payments/verify`,
             metadata: {
                 rideId,
                 distanceInKm,

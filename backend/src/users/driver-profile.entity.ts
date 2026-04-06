@@ -1,5 +1,4 @@
-import { Point } from 'geojson';
-import { Column, Entity, Index, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { User } from './user.entity';
 
 @Entity('driver_profiles')
@@ -48,14 +47,8 @@ export class DriverProfile {
     @Column({ default: false })
     isVerified: boolean;
 
-    @Index({ spatial: true })
-    @Column({
-        type: 'geometry',
-        spatialFeatureType: 'Point',
-        srid: 4326,
-        nullable: true,
-    })
-    currentLocation: Point;
+    @Column({ type: 'jsonb', nullable: true })
+    lastLocation: { lat: number; lon: number };
 
     @Column({ default: false })
     isOnline: boolean;

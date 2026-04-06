@@ -22,7 +22,7 @@ import { DriverWarning } from './admin/driver-warning.entity';
 import { NotificationCampaign } from './admin/notification-campaign.entity';
 import databaseConfig from './common/configs/database.config';
 import redisConfig from './common/configs/redis.config';
-import Redis from 'ioredis';
+
 
 @Module({
     imports: [
@@ -49,15 +49,6 @@ import Redis from 'ioredis';
         AdminModule,
     ],
     controllers: [],
-    providers: [
-        {
-            provide: 'REDIS_CLIENT',
-            useFactory: (configService: ConfigService) => {
-                const url = configService.get<string>('redis.url');
-                return url ? new Redis(url) : null;
-            },
-            inject: [ConfigService],
-        },
-    ],
+    providers: [],
 })
 export class AppModule { }

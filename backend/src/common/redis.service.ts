@@ -1,54 +1,77 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createClient, RedisClientType } from 'redis';
+import Redis from 'ioredis';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
-    private client: RedisClientType;
+    private readonly logger = new Logger(RedisService.name);
+    private client: Redis;
 
     constructor(private configService: ConfigService) { }
 
-    async onModuleInit() {
-        this.client = createClient({
-            url: this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379',
+    onModuleInit() {
+        const url = this.configService.get<string>('REDIS_URL');
+        if (!url) {
+            this.logger.warn('REDIS_URL is not set — Redis features will be unavailable');
+            return;
+        }
+
+        this.client = new Redis(url, {
+            // Retry up to 10 times with exponential back-off (max 3 s between retries)
+            retryStrategy: (times: number) => {
+                if (times > 10) return null; // Stop retrying
+                return Math.min(times * 200, 3000);
+            },
+            enableReadyCheck: true,
+            maxRetriesPerRequest: 3,
+            lazyConnect: false,
         });
-        this.client.on('error', (err) => console.error('Redis Client Error', err));
-        await this.client.connect();
+
+        this.client.on('error', (err) => this.logger.error('Redis error', err.message));
+        this.client.on('connect', () => this.logger.log('Redis connected'));
+        this.client.on('ready', () => this.logger.log('Redis ready'));
     }
 
     async onModuleDestroy() {
-        await this.client.disconnect();
+        if (this.client) {
+            await this.client.quit();
+        }
     }
 
     async set(key: string, value: string, ttl?: number) {
+        if (!this.client) return;
         if (ttl) {
-            await this.client.set(key, value, { EX: ttl });
+            await this.client.set(key, value, 'EX', ttl);
         } else {
             await this.client.set(key, value);
         }
     }
 
     async get(key: string): Promise<string | null> {
+        if (!this.client) return null;
         return this.client.get(key);
     }
 
     async setDriverLocation(driverId: string, lat: number, lon: number) {
+        if (!this.client) return;
         // GEOADD key longitude latitude member
-        await this.client.geoAdd('drivers:locations', {
-            longitude: lon,
-            latitude: lat,
-            member: driverId,
-        });
+        await this.client.geoadd('drivers:locations', lon, lat, driverId);
     }
 
     async getNearbyDrivers(lat: number, lon: number, radiusKm: number): Promise<string[]> {
-        // GEORADIUS key longitude latitude radius m|km|ft|mi
-        // geoSearch is newer
-        const results = await this.client.geoSearch(
+        if (!this.client) return [];
+        // GEOSEARCH key FROMLONLAT lon lat BYRADIUS radius km ASC
+        const results = await this.client.call(
+            'GEOSEARCH',
             'drivers:locations',
-            { longitude: lon, latitude: lat },
-            { radius: radiusKm, unit: 'km' }
-        );
-        return results; // returns array of driverIds
+            'FROMLONLAT',
+            lon,
+            lat,
+            'BYRADIUS',
+            radiusKm,
+            'km',
+            'ASC',
+        ) as string[];
+        return results;
     }
 }
