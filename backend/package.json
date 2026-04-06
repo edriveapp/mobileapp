@@ -12,6 +12,7 @@
         "start:dev": "nest start --watch",
         "start:debug": "nest start --debug --watch",
         "start:prod": "node dist/main.js",
+        "start:prod:migrate": "typeorm migration:run -d dist/data-source.js && node dist/main.js",
         "postprebuild": "sed -i '' 's/prepare_react_native_project!/prepare_react_native_project!\\nuse_modular_headers!/' ios/Podfile && cd ios && pod install",
         "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
         "test": "jest",
