@@ -288,37 +288,50 @@ export class AdminService {
         return { success: true, warning };
     }
 
-    async toggleDriverRestriction(actorUserId: string, driverId: string, restrict: boolean) {
+    async toggleUserRestriction(actorUserId: string, userId: string, restrict: boolean) {
         const actor = await this.getActor(actorUserId);
         this.assertOperationsAdmin(actor);
 
-        const driver = await this.usersRepository.findOne({ where: { id: driverId } });
-        if (!driver) throw new NotFoundException('Driver not found');
+        const user = await this.usersRepository.findOne({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
 
-        driver.isRestricted = restrict;
-        await this.usersRepository.save(driver);
+        user.isRestricted = restrict;
+        await this.usersRepository.save(user);
 
-        // Notify driver
-        if (driver.expoPushTokens?.length) {
+        // Notify if user is a driver or passenger via push
+        if (user.expoPushTokens?.length) {
             await this.pushService.sendToExpoTokens(
-                driver.expoPushTokens,
+                user.expoPushTokens,
                 restrict ? '🔒 Account Restricted' : '✅ Account Reinstated',
                 restrict
-                    ? 'Your driver account has been restricted. Please contact support.'
-                    : 'Your driver account has been reinstated. You can now accept rides.',
+                    ? 'Your account has been restricted. Please contact support.'
+                    : 'Your account has been reinstated. You can now use the app.',
             );
         }
 
-        // Notify admin team
-        const adminEmails = await this.getAdminEmailsByScopes([AdminScope.SUPER_ADMIN, AdminScope.OPERATIONS]);
+        // Email the user
         await this.mailerService.sendEmail(
-            adminEmails,
-            `Driver account ${restrict ? 'restricted' : 'reinstated'}: ${driver.email}`,
-            `<p>Driver <strong>${driver.email}</strong> has been <strong>${restrict ? 'restricted' : 'reinstated'}</strong> by admin.</p>`,
-            `Driver ${driver.email} has been ${restrict ? 'restricted' : 'reinstated'}.`,
+            [user.email],
+            `eDrive Account ${restrict ? 'Restricted' : 'Reinstated'}`,
+            `<p>Hello ${user.firstName || 'User'},</p><p>Your eDrive account has been <strong>${restrict ? 'restricted' : 'reinstated'}</strong> by admin.</p>`,
+            `Your eDrive account has been ${restrict ? 'restricted' : 'reinstated'}.`,
         );
 
-        return { success: true, isRestricted: driver.isRestricted };
+        return { success: true, isRestricted: user.isRestricted };
+    }
+
+    async deleteUser(actorUserId: string, userId: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertSuperAdmin(actor);
+
+        const user = await this.usersRepository.findOne({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        // Note: For a real production app, you might want to soft-delete
+        // or ensure no orphaned records (rides, payments, etc.)
+        await this.usersRepository.delete(userId);
+
+        return { success: true };
     }
 
     async updateUserVerificationStatus(actorUserId: string, userId: string, status: VerificationStatus): Promise<User> {

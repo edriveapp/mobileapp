@@ -147,6 +147,8 @@ export default function TripDetailsScreen() {
   const driverRating = Number(driver?.rating || 4.8).toFixed(1);
   const driverTrips = Number(driver?.tripsCompleted || 0);
 
+  const isUnacceptedRide = !driver?.id || ['searching', 'pending_driver'].includes(String(trip?.status).toLowerCase());
+
   const openPaymentFlow = () => {
     setPaymentStep('method');
     setPaymentError(null);
@@ -326,48 +328,52 @@ export default function TripDetailsScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Driver</Text>
-          <TouchableOpacity style={styles.driverCard} onPress={() => setShowDriverModal(true)}>
-            <Image
-              source={{ uri: driver?.image || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=200' }}
-              style={styles.driverImage}
-            />
-            <View style={styles.driverInfo}>
-              <View style={styles.driverNameRow}>
-                <Text style={styles.driverName}>{driverName}</Text>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-              </View>
-              <View style={styles.ratingRow}>
-                <Ionicons name="star" size={14} color="#FFD700" />
-                <Text style={styles.ratingText}>{driverRating} • {driverTrips} trips</Text>
-              </View>
-              <Text style={styles.driverMetaText}>{driverVehicle}</Text>
+        {!isUnacceptedRide && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Driver</Text>
+              <TouchableOpacity style={styles.driverCard} onPress={() => setShowDriverModal(true)}>
+                <Image
+                  source={{ uri: driver?.image || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=200' }}
+                  style={styles.driverImage}
+                />
+                <View style={styles.driverInfo}>
+                  <View style={styles.driverNameRow}>
+                    <Text style={styles.driverName}>{driverName}</Text>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                  </View>
+                  <View style={styles.ratingRow}>
+                    <Ionicons name="star" size={14} color="#FFD700" />
+                    <Text style={styles.ratingText}>{driverRating} • {driverTrips} trips</Text>
+                  </View>
+                  <Text style={styles.driverMetaText}>{driverVehicle}</Text>
+                </View>
+
+                <View style={styles.contactActions}>
+                  <TouchableOpacity style={styles.iconButton} onPress={handleChatDriver}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={22} color={COLORS.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconButton} onPress={handleCallDriver}>
+                    <Ionicons name="call-outline" size={22} color={COLORS.primary} />
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.contactActions}>
-              <TouchableOpacity style={styles.iconButton} onPress={handleChatDriver}>
-                <Ionicons name="chatbubble-ellipses-outline" size={22} color={COLORS.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconButton} onPress={handleCallDriver}>
-                <Ionicons name="call-outline" size={22} color={COLORS.primary} />
-              </TouchableOpacity>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Vehicle</Text>
+              <View style={styles.vehicleCard}>
+                <View style={styles.vehicleIcon}>
+                  <Ionicons name="car-sport-outline" size={32} color={COLORS.textSecondary} />
+                </View>
+                <View>
+                  <Text style={styles.vehicleName}>{driverVehicle}</Text>
+                  <Text style={styles.vehiclePlate}>{driver?.plateNumber || 'Plate number pending'}</Text>
+                </View>
+              </View>
             </View>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Vehicle</Text>
-          <View style={styles.vehicleCard}>
-            <View style={styles.vehicleIcon}>
-              <Ionicons name="car-sport-outline" size={32} color={COLORS.textSecondary} />
-            </View>
-            <View>
-              <Text style={styles.vehicleName}>{driverVehicle}</Text>
-              <Text style={styles.vehiclePlate}>{driver?.plateNumber || 'Plate number pending'}</Text>
-            </View>
-          </View>
-        </View>
+          </>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Pickup and payment flow</Text>
@@ -391,6 +397,15 @@ export default function TripDetailsScreen() {
           const isPassenger = trip.passengerId === user?.id;
           const isPaid = (trip.paymentStatus || '').toLowerCase() === 'paid';
           const noSeats = (trip.availableSeats === 0 || trip.seats === 0);
+
+          if (isUnacceptedRide) {
+            return (
+              <View style={[styles.bookButton, { backgroundColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+                <ActivityIndicator size="small" color="#64748B" />
+                <Text style={[styles.bookButtonText, { color: '#64748B' }]}>Waiting for driver to accept...</Text>
+              </View>
+            );
+          }
 
           if (noSeats && !isPassenger) {
             return (

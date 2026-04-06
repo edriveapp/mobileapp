@@ -7,12 +7,10 @@ export const roundFare = (value: number, min = 500) => {
 
 export const estimatePrivateTripFare = (distanceKm: number) => {
   if (!distanceKm || distanceKm <= 0) return 0;
-  const runningCost = distanceKm * 285;
-  const setupCost = 12000;
-  const returnCover = distanceKm * 28;
-  const driverPay = distanceKm * 22;
-  const subtotal = runningCost + setupCost + returnCover + driverPay;
-  return roundFare(subtotal * 1.16);
+  const baseFare = 1500;
+  const perKmRate = 450;
+  const subtotal = baseFare + (distanceKm * perKmRate);
+  return roundFare(subtotal * 1.15, 2000); // 15% margin, 2000 min fare
 };
 
 export const getRiderOfferFloor = (estimatedPrivatePrice: number, rideMode: RideMode) => {

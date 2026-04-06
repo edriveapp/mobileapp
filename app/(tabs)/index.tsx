@@ -26,6 +26,7 @@ import Svg, { Path } from 'react-native-svg';
 import { LocationService } from '@/app/services/locationService';
 import { useTripStore } from '@/app/stores/tripStore';
 import { useRideRealtimeStore } from '@/app/stores/rideRealtimeStore';
+import { estimatePrivateTripFare } from '@/app/utils/pricing';
 import { COLORS, Fonts, SPACING } from '@/constants/theme';
 
 // Components
@@ -133,15 +134,6 @@ const detectRouteDistanceKm = (origin: string, destination: string) => {
   return match?.[1] || 0;
 };
 
-const estimatePrivateTripFare = (distanceKm: number) => {
-  if (!distanceKm) return 0;
-  const runningCost = distanceKm * 285;
-  const setupCost = 12000;
-  const returnCover = distanceKm * 28;
-  const driverPay = distanceKm * 22;
-  const subtotal = runningCost + setupCost + returnCover + driverPay;
-  return Math.round((subtotal * 1.16) / 50) * 50;
-};
 
 export default function HomeScreen() {
   const router = useRouter();

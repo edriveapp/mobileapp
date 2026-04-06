@@ -63,13 +63,18 @@ export class AdminController {
         return this.adminService.warnDriver(req.user.userId, id, body.level, body.reason);
     }
 
-    @Post('drivers/:id/restrict')
-    restrictDriver(
+    @Post('users/:id/restrict')
+    restrictUser(
         @Request() req: any,
         @Param('id') id: string,
         @Body() body: { restrict: boolean },
     ) {
-        return this.adminService.toggleDriverRestriction(req.user.userId, id, body.restrict);
+        return this.adminService.toggleUserRestriction(req.user.userId, id, body.restrict);
+    }
+
+    @Delete('users/:id')
+    deleteUser(@Request() req: any, @Param('id') id: string) {
+        return this.adminService.deleteUser(req.user.userId, id);
     }
 
     @Post('users/:id/verify')

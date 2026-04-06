@@ -21,7 +21,7 @@ import { NavigatrService } from '@/app/services/navigatrService';
 import RequestDetailsSheet, { RequestDetails } from '@/app/components/RequestDetailsSheet';
 import { useSettingsStore } from '@/app/stores/settingsStore';
 import { useTripStore } from '@/app/stores/tripStore';
-import { getRiderOfferFloor } from '@/app/utils/pricing';
+import { getRiderOfferFloor, estimatePrivateTripFare } from '@/app/utils/pricing';
 
 interface PlaceResult {
   place_id: string;
@@ -70,6 +70,20 @@ const overlapScore = (a: string, b: string) => {
   const bSet = new Set(bTokens);
   const common = aTokens.filter((token) => bSet.has(token)).length;
   return common / Math.max(aTokens.length, bTokens.length);
+};
+
+const getDistanceKm = (from: { lat: number; lon: number }, to: { lat: number; lon: number }) => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(to.lat - from.lat);
+  const dLon = toRad(to.lon - from.lon);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(from.lat)) *
+      Math.cos(toRad(to.lat)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 const getAddressText = (value: any) => {
@@ -127,37 +141,6 @@ const detectRouteDistanceKm = (origin: string, destination: string) => {
   return match?.[1] || 0;
 };
 
-const estimatePrivateTripFare = (distanceKm: number) => {
-  if (!distanceKm) return 0;
-  const runningCost = distanceKm * 285;
-  const setupCost = 12000;
-  const returnCover = distanceKm * 28;
-  const driverPay = distanceKm * 22;
-  const subtotal = runningCost + setupCost + returnCover + driverPay;
-  return Math.round((subtotal * 1.16) / 50) * 50;
-};
-
-const estimateLiveRequestPrivatePrice = (origin: string, destination: string, trips: any[]) => {
-  const rankedTrips = trips
-    .map((trip) => ({
-      baseFare: Number(trip?.fare || trip?.price || 0),
-      score: getDirectionScore(origin, destination, trip),
-    }))
-    .filter((item) => item.baseFare > 0 && item.score > 10)
-    .sort((a, b) => b.score - a.score);
-
-  const marketAverage = rankedTrips.length
-    ? rankedTrips.slice(0, 3).reduce((sum, item) => sum + item.baseFare, 0) / Math.min(rankedTrips.length, 3)
-    : 0;
-  const routeDistanceKm = detectRouteDistanceKm(origin, destination);
-  const expenseEstimate = estimatePrivateTripFare(routeDistanceKm);
-
-  return Math.max(
-    Math.round(marketAverage / 50) * 50,
-    expenseEstimate,
-    6000
-  );
-};
 
 export default function JoinRideView({ onClose }: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
@@ -166,6 +149,9 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
 
   const [originText, setOriginText] = useState('');
   const [destText, setDestText] = useState('');
+  const [originCoords, setOriginCoords] = useState<{lat: number; lon: number} | null>(null);
+  const [destCoords, setDestCoords] = useState<{lat: number; lon: number} | null>(null);
+  const [liveDistanceKm, setLiveDistanceKm] = useState(0);
   const [stopText, setStopText] = useState('');
   const [stops, setStops] = useState<string[]>([]);
   const [isLoadingLoc, setIsLoadingLoc] = useState(false);
@@ -221,8 +207,13 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
   }, []);
 
   const handleSearchLogic = useCallback((text: string, type: 'origin' | 'dest') => {
-    if (type === 'origin') setOriginText(text);
-    else setDestText(text);
+    if (type === 'origin') {
+       setOriginText(text);
+       setOriginCoords(null);
+    } else {
+       setDestText(text);
+       setDestCoords(null);
+    }
     setBookingStage('search');
     setSelectedDriverId(null);
 
@@ -254,8 +245,13 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
 
   const handleSelectPlace = (place: PlaceResult) => {
     const shortName = place.display_name.split(',')[0];
-    if (activeField === 'origin') setOriginText(shortName);
-    else setDestText(shortName);
+    if (activeField === 'origin') {
+      setOriginText(shortName);
+      setOriginCoords({ lat: Number(place.lat), lon: Number(place.lon) });
+    } else {
+      setDestText(shortName);
+      setDestCoords({ lat: Number(place.lat), lon: Number(place.lon) });
+    }
     setSearchResults([]);
     Keyboard.dismiss();
   };
@@ -264,7 +260,11 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
     setIsLoadingLoc(true);
     try {
       const address = await LocationService.getCurrentState();
-      if (address) setOriginText(address);
+      const coords = await LocationService.getCurrentCoordinates();
+      if (address) {
+        setOriginText(address);
+        if (coords) setOriginCoords({ lat: coords.latitude, lon: coords.longitude });
+      }
     } catch (error) {
       console.error("Location Error:", error);
     } finally {
@@ -351,13 +351,38 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
     return suggestions;
   };
 
-  const handleFindRides = () => {
+  const handleFindRides = async () => {
     if (!originText.trim() || !destText.trim()) {
       Alert.alert('Missing route', 'Enter your pickup and destination to find a matching driver.');
       return;
     }
-
     Keyboard.dismiss();
+
+    let finalOriginCoords = originCoords;
+    let finalDestCoords = destCoords;
+    
+    // Geocode if missing
+    try {
+      if (!finalOriginCoords) {
+         const res = await NavigatrService.geocode(originText);
+         finalOriginCoords = { lat: res.lat, lon: res.lng };
+         setOriginCoords(finalOriginCoords);
+      }
+      if (!finalDestCoords) {
+         const res = await NavigatrService.geocode(destText);
+         finalDestCoords = { lat: res.lat, lon: res.lng };
+         setDestCoords(finalDestCoords);
+      }
+    } catch (e) {
+      // Ignore geocode errors and fallback to static routing
+    }
+
+    if (finalOriginCoords && finalDestCoords) {
+      setLiveDistanceKm(getDistanceKm(finalOriginCoords, finalDestCoords));
+    } else {
+      setLiveDistanceKm(detectRouteDistanceKm(originText, destText));
+    }
+
     const matches = buildDriverMatches();
     if (!matches.length) {
       const suggestions = buildRouteSuggestions();
@@ -613,15 +638,15 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
             : 'Driver Matches';
 
   const selectedDriver = driverMatches.find((driver) => driver.id === selectedDriverId);
-  const footerBottom = keyboardHeight > 0 ? keyboardHeight + 8 : insets.bottom + 8;
-  const estimatedPrivateRequestPrice = estimateLiveRequestPrivatePrice(originText, destText, trendingTrips);
+  const footerBottom = insets.bottom + 8;
+  const estimatedRouteDistance = liveDistanceKm > 0 ? liveDistanceKm : detectRouteDistanceKm(originText, destText);
+  const estimatedPrivateRequestPrice = estimatePrivateTripFare(estimatedRouteDistance);
 
   const handleSubmitLiveRequest = async (details: RequestDetails) => {
     try {
       setIsCreatingLiveRequest(true);
-      const currentCoords = await LocationService.getCurrentCoordinates();
       const currentState = await LocationService.getCurrentState();
-      const routeDistance = detectRouteDistanceKm(originText, destText);
+      
       const floorPrice = getRiderOfferFloor(
         estimatedPrivateRequestPrice,
         details.rideMode === 'shared' ? 'shared' : 'solo'
@@ -637,19 +662,19 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
 
       await requestRide({
         origin: {
-          lat: currentCoords?.latitude ?? 0,
-          lon: currentCoords?.longitude ?? 0,
+          lat: originCoords?.lat ?? 0,
+          lon: originCoords?.lon ?? 0,
           address: originText.trim() || currentState || 'Current location',
         },
         destination: {
-          lat: currentCoords?.latitude ?? 0,
-          lon: currentCoords?.longitude ?? 0,
+          lat: destCoords?.lat ?? 0,
+          lon: destCoords?.lon ?? 0,
           address: destText.trim(),
         },
         tier: 'Lite',
         price: details.offerPrice,
         tripFare: estimatedPrivateRequestPrice,
-        distanceKm: routeDistance,
+        distanceKm: estimatedRouteDistance,
         notes: details.note,
         preferences: {
           shared: details.rideMode === 'shared',

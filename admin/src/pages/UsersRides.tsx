@@ -24,6 +24,7 @@ type UserItem = {
   role: 'passenger' | 'driver' | 'admin';
   adminScope?: 'none' | 'super_admin' | 'verification' | 'support' | 'operations';
   verificationStatus?: string;
+  isRestricted?: boolean;
   createdAt?: string;
 };
 
@@ -115,6 +116,33 @@ export default function UsersRides() {
       await fetchAll();
     } catch (err: any) {
       alert(err?.message || 'Unable to update admin scope');
+    }
+  };
+
+  const toggleRestrict = async (userId: string, currentStatus: boolean) => {
+    if (!window.confirm(`Are you sure you want to ${currentStatus ? 'unrestrict' : 'restrict'} this user?`)) return;
+    try {
+      await apiRequest(`/admin/users/${userId}/restrict`, {
+        method: 'POST',
+        token,
+        body: { restrict: !currentStatus },
+      });
+      await fetchAll();
+    } catch (err: any) {
+      alert(err?.message || 'Unable to toggle restriction');
+    }
+  };
+
+  const deleteUser = async (userId: string) => {
+    if (!window.confirm('PERMANENT DELETION: Are you sure you want to delete this user? This cannot be undone.')) return;
+    try {
+      await apiRequest(`/admin/users/${userId}`, {
+        method: 'DELETE',
+        token,
+      });
+      await fetchAll();
+    } catch (err: any) {
+      alert(err?.message || 'Unable to delete user');
     }
   };
 
@@ -325,6 +353,7 @@ export default function UsersRides() {
                 <th className="p-4 font-medium">Verification</th>
                 <th className="p-4 font-medium text-right">Assign Role</th>
                 <th className="p-4 font-medium text-right">Admin Scope</th>
+                <th className="p-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -363,6 +392,26 @@ export default function UsersRides() {
                       <option value="operations">Operations</option>
                       <option value="super_admin">Super Admin</option>
                     </select>
+                  </td>
+                  <td className="p-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => toggleRestrict(user.id, !!user.isRestricted)}
+                        className={`px-2 py-1 rounded-lg border ${user.isRestricted ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-gray-200 text-gray-500'} hover:bg-gray-50`}
+                        title={user.isRestricted ? 'Unrestrict user' : 'Restrict user'}
+                        disabled={currentAdmin?.adminScope !== 'super_admin'}
+                      >
+                        <span className="text-xs font-medium">{user.isRestricted ? 'Unrestrict' : 'Restrict'}</span>
+                      </button>
+                      <button
+                        onClick={() => deleteUser(user.id)}
+                        className="px-2 py-1 rounded-lg border border-red-100 bg-red-50 text-red-600 hover:bg-red-100"
+                        title="Delete user"
+                        disabled={currentAdmin?.adminScope !== 'super_admin'}
+                      >
+                        <span className="text-xs font-medium">Delete</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
