@@ -27,7 +27,8 @@
         "migration:generate:local": "npm run build && cross-env DATABASE_URL=$DATABASE_PUBLIC_URL typeorm migration:generate -d dist/data-source.js",
         "migration:run:local": "npm run build && cross-env DATABASE_URL=$DATABASE_PUBLIC_URL typeorm migration:run -d dist/data-source.js",
         "migration:revert:local": "npm run build && cross-env DATABASE_URL=$DATABASE_PUBLIC_URL typeorm migration:revert -d dist/data-source.js",
-        "migration:show:local": "npm run build && cross-env DATABASE_URL=$DATABASE_PUBLIC_URL typeorm migration:show -d dist/data-source.js"
+        "migration:show:local": "npm run build && cross-env DATABASE_URL=$DATABASE_PUBLIC_URL typeorm migration:show -d dist/data-source.js",
+        "admin:create:prod": "cross-env DATABASE_URL=$DATABASE_PUBLIC_URL npx ts-node scripts/create-admin.ts"
     },
     "dependencies": {
         "@nestjs/axios": "^4.0.1",

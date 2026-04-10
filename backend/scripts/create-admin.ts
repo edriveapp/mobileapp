@@ -15,25 +15,28 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
-
   try {
-    const admin = await usersService.create({
-      email,
-      passwordHash,
-      firstName: 'eDrive',
-      lastName: 'Admin',
-      role: UserRole.ADMIN,
-      adminScope: AdminScope.SUPER_ADMIN,
-    });
-    console.log('✅ Admin user created successfully:');
-    console.log(`Email: ${admin.email}`);
-  } catch (error: any) {
-    if (error.code === '23505') {
-       console.log('⚠️ Admin already exists.');
+    const existingUser = await usersService.findOneByEmail(email);
+    if (existingUser) {
+      console.log(`⚠️ User with email ${email} already exists. Updating to Admin...`);
+      await usersService.updatePassword(existingUser.id, password);
+      await usersService.setAdmin(existingUser.id, UserRole.ADMIN, AdminScope.SUPER_ADMIN);
+      console.log('✅ Admin user updated successfully.');
     } else {
-       console.error('Failed to create admin:', error);
+      const passwordHash = await bcrypt.hash(password, 12);
+      const admin = await usersService.create({
+        email,
+        passwordHash,
+        firstName: 'eDrive',
+        lastName: 'Admin',
+        role: UserRole.ADMIN,
+        adminScope: AdminScope.SUPER_ADMIN,
+      });
+      console.log('✅ Admin user created successfully:');
+      console.log(`Email: ${admin.email}`);
     }
+  } catch (error: any) {
+    console.error('❌ Failed to process admin user:', error);
   }
 
   await app.close();

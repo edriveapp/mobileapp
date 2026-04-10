@@ -132,6 +132,10 @@ export class UsersService {
         await this.usersRepository.update(userId, { passwordHash: hashed });
     }
 
+    async setAdmin(userId: string, role: UserRole, scope: AdminScope): Promise<void> {
+        await this.usersRepository.update(userId, { role, adminScope: scope });
+    }
+
     async registerExpoPushToken(userId: string, token: string): Promise<User> {
         const user = await this.findOneById(userId);
         if (!user) throw new NotFoundException('User not found');
