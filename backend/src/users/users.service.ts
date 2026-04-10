@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
 import { In, Repository } from 'typeorm';
 import { MailerService } from '../common/mailer.service';
 import { RedisService } from '../common/redis.service';
@@ -68,9 +69,7 @@ export class UsersService {
         if (!amount || amount <= 0) {
             throw new BadRequestException('Invalid amount');
         }
-        await this.usersRepository.update(userId, {
-            balance: () => `balance + ${amount}`,
-        });
+        await this.usersRepository.increment({ id: userId }, 'balance', amount);
         return this.getWallet(userId);
     }
 
@@ -86,10 +85,8 @@ export class UsersService {
             throw new BadRequestException('Insufficient wallet balance');
         }
 
-        await this.usersRepository.update(userId, {
-            balance: () => `balance - ${payAmount}`,
-            pendingRemittance: () => `pendingRemittance - ${payAmount}`,
-        });
+        await this.usersRepository.decrement({ id: userId }, 'balance', payAmount);
+        await this.usersRepository.decrement({ id: userId }, 'pendingRemittance', payAmount);
         return this.getWallet(userId);
     }
 
@@ -97,9 +94,7 @@ export class UsersService {
         if (!amount || amount <= 0) {
             throw new BadRequestException('Invalid amount');
         }
-        await this.usersRepository.update(userId, {
-            pendingRemittance: () => `pendingRemittance + ${amount}`,
-        });
+        await this.usersRepository.increment({ id: userId }, 'pendingRemittance', amount);
         return this.getWallet(userId);
     }
 
@@ -133,7 +128,8 @@ export class UsersService {
     }
 
     async updatePassword(userId: string, newPassword: string): Promise<void> {
-        await this.usersRepository.update(userId, { passwordHash: newPassword });
+        const hashed = await bcrypt.hash(newPassword, 12);
+        await this.usersRepository.update(userId, { passwordHash: hashed });
     }
 
     async registerExpoPushToken(userId: string, token: string): Promise<User> {

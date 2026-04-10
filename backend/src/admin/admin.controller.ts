@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { AdminScope, UserRole, VerificationStatus } from '../users/user.entity';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { SupportTicketStatus } from '../support/support-ticket.entity';
 import { AdminService } from './admin.service';
 import { CampaignRepeat } from './notification-campaign.entity';
 import { WarningLevel } from './driver-warning.entity';
@@ -160,5 +161,117 @@ export class AdminController {
     @Post('campaigns/:id/send-now')
     sendCampaignNow(@Request() req: any, @Param('id') id: string) {
         return this.adminService.sendCampaignNow(req.user.userId, id);
+    }
+
+    // ─── Ride Management ──────────────────────────────────────────────────────
+
+    @Get('rides/:id')
+    getRideDetail(@Request() req: any, @Param('id') id: string) {
+        return this.adminService.getRideDetail(req.user.userId, id);
+    }
+
+    @Patch('rides/:id/cancel')
+    forceCancelRide(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body() body: { reason: string },
+    ) {
+        return this.adminService.forceCancelRide(req.user.userId, id, body.reason);
+    }
+
+    // ─── Payments & Refunds ───────────────────────────────────────────────────
+
+    @Get('payments')
+    getPayments(
+        @Request() req: any,
+        @Query('status') status?: string,
+        @Query('page') page?: string,
+    ) {
+        return this.adminService.getPayments(req.user.userId, { status, page: page ? Number(page) : 1 });
+    }
+
+    @Post('payments/:rideId/refund')
+    refundRide(
+        @Request() req: any,
+        @Param('rideId') rideId: string,
+        @Body() body: { reason: string; amount?: number },
+    ) {
+        return this.adminService.refundRide(req.user.userId, rideId, body.reason, body.amount);
+    }
+
+    // ─── User Detail & Wallet ─────────────────────────────────────────────────
+
+    @Get('users/:id/detail')
+    getUserDetail(@Request() req: any, @Param('id') id: string) {
+        return this.adminService.getUserDetail(req.user.userId, id);
+    }
+
+    @Post('users/:id/wallet')
+    adjustWallet(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body() body: { amount: number; type: 'credit' | 'debit'; reason: string },
+    ) {
+        return this.adminService.adjustWallet(req.user.userId, id, body.amount, body.type, body.reason);
+    }
+
+    @Post('users/:id/wallet/clear-remittance')
+    clearRemittance(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body() body: { reason: string },
+    ) {
+        return this.adminService.clearDriverRemittance(req.user.userId, id, body.reason);
+    }
+
+    @Post('users/:id/notify')
+    sendDirectNotification(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body() body: { title: string; body: string },
+    ) {
+        return this.adminService.sendDirectNotification(req.user.userId, id, body.title, body.body);
+    }
+
+    // ─── Support Tickets ──────────────────────────────────────────────────────
+
+    @Get('support')
+    getSupportTickets(
+        @Request() req: any,
+        @Query('status') status?: SupportTicketStatus,
+    ) {
+        return this.adminService.getAllSupportTickets(req.user.userId, status);
+    }
+
+    @Get('support/:id')
+    getSupportTicketDetail(@Request() req: any, @Param('id') id: string) {
+        return this.adminService.getSupportTicketDetail(req.user.userId, id);
+    }
+
+    @Post('support/:id/reply')
+    replySupportTicket(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body() body: { text: string },
+    ) {
+        return this.adminService.replySupportTicket(req.user.userId, id, body.text);
+    }
+
+    @Patch('support/:id/status')
+    updateSupportTicketStatus(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body() body: { status: SupportTicketStatus },
+    ) {
+        return this.adminService.updateSupportTicketStatus(req.user.userId, id, body.status);
+    }
+
+    @Patch('support/:id/assign')
+    assignSupportTicket(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body() body: { assignToUserId: string },
+    ) {
+        return this.adminService.assignSupportTicket(req.user.userId, id, body.assignToUserId);
     }
 }

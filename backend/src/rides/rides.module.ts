@@ -17,9 +17,11 @@ import { User } from '../users/user.entity';
         UsersModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
-            useFactory: (configService: ConfigService) => ({
-                secret: configService.get<string>('JWT_SECRET') || 'secretKey',
-            }),
+            useFactory: (configService: ConfigService) => {
+                const secret = configService.get<string>('JWT_SECRET');
+                if (!secret) throw new Error('JWT_SECRET environment variable is not set');
+                return { secret };
+            },
             inject: [ConfigService],
         }),
     ],

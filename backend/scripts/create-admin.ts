@@ -1,38 +1,36 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../src/app.module';
-import { UsersService } from '../src/users/users.service';
 import * as bcrypt from 'bcrypt';
+import { AppModule } from '../src/app.module';
+import { AdminScope, UserRole } from '../src/users/user.entity';
+import { UsersService } from '../src/users/users.service';
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
   const usersService = app.get(UsersService);
 
-  const email = 'admin@edrive.com';
-  const password = await bcrypt.hash('password123', 10);
+  const email = process.env.ADMIN_EMAIL || 'admin@edrive.com';
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) {
+    console.error('❌ ADMIN_PASSWORD environment variable is required');
+    process.exit(1);
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
 
   try {
     const admin = await usersService.create({
       email,
-      password,
+      passwordHash,
       firstName: 'eDrive',
       lastName: 'Admin',
-      role: 'admin',
+      role: UserRole.ADMIN,
+      adminScope: AdminScope.SUPER_ADMIN,
     });
     console.log('✅ Admin user created successfully:');
-    console.log(`Email: ${email}`);
-    console.log(`Password: password123`);
+    console.log(`Email: ${admin.email}`);
   } catch (error: any) {
     if (error.code === '23505') {
-       console.log('⚠️ Admin already exists! Trying to update role...');
-       const existing = await usersService.findByEmail(email);
-       if (existing) {
-         existing.role = 'admin';
-         existing.password = password;
-         await usersService.update(existing.id, existing);
-         console.log('✅ Updated existing user to admin!');
-         console.log(`Email: ${email}`);
-         console.log(`Password: password123`);
-       }
+       console.log('⚠️ Admin already exists.');
     } else {
        console.error('Failed to create admin:', error);
     }

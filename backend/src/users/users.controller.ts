@@ -20,11 +20,7 @@ export class UsersController {
         return this.usersService.updatePreferences(req.user.userId, body);
     }
 
-    @Patch(':id/verification')
-    updateVerificationStatus(@Param('id') id: string, @Body() body: { status: 'unverified' | 'pending' | 'approved' | 'rejected' }) {
-        // In a real app we would guard this with Admin role check
-        return this.usersService.updateVerificationStatus(id, body.status);
-    }
+    // Verification status changes are admin-only — handled via admin controller
 
     @UseGuards(AuthGuard('jwt'))
     @Get('wallet')
@@ -33,21 +29,9 @@ export class UsersController {
     }
 
     @UseGuards(AuthGuard('jwt'))
-    @Post('wallet/fund')
-    fundWallet(@Request() req: any, @Body() body: { amount: number }) {
-        return this.usersService.fundWallet(req.user.userId, Number(body?.amount || 0));
-    }
-
-    @UseGuards(AuthGuard('jwt'))
     @Post('wallet/pay-commission')
     payCommission(@Request() req: any, @Body() body: { amount?: number }) {
         return this.usersService.payCommission(req.user.userId, body?.amount ? Number(body.amount) : undefined);
-    }
-
-    @UseGuards(AuthGuard('jwt'))
-    @Post('wallet/add-debt')
-    addCommissionDebt(@Request() req: any, @Body() body: { amount: number }) {
-        return this.usersService.addCommissionDebt(req.user.userId, Number(body?.amount || 0));
     }
 
     @UseGuards(AuthGuard('jwt'))
@@ -87,6 +71,7 @@ export class UsersController {
 
     // --- Drivers ---
 
+    @UseGuards(AuthGuard('jwt'))
     @Get('drivers/nearby')
     getNearbyDrivers(@Query('lat') lat: number, @Query('lon') lon: number) {
         return this.usersService.findNearbyDrivers(lat, lon);

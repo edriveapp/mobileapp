@@ -1,6 +1,6 @@
 import { createHmac } from 'crypto';
 import { HttpService } from '@nestjs/axios';
-import { Injectable, InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
 
@@ -45,7 +45,7 @@ export class PaymentsService {
         const distance = Number(metadata?.distanceInKm ?? customMap?.distance_km ?? 0);
         const split = this.calculatePaymentSplit(amount, distance);
 
-        await this.ridesService.updatePaymentDetails(rideId, 'paid', split.driverAmount, split.platformFee);
+        await this.ridesService.updatePaymentDetails(rideId, 'paid', split.driverAmount, split.platformFee, data?.reference);
         this.logger.log(`Webhook payment confirmed: rideId=${rideId} amount=₦${amount}`);
     }
 
@@ -132,10 +132,11 @@ export class PaymentsService {
                 if (rideId) {
                     const split = this.calculatePaymentSplit(amount, distance);
                     await this.ridesService.updatePaymentDetails(
-                        rideId, 
-                        'paid', 
-                        split.driverAmount, 
-                        split.platformFee
+                        rideId,
+                        'paid',
+                        split.driverAmount,
+                        split.platformFee,
+                        data.data.reference,
                     );
                 }
             }
@@ -143,6 +144,40 @@ export class PaymentsService {
             return data;
         } catch (error) {
             throw new InternalServerErrorException('Payment verification failed');
+        }
+    }
+
+    async initiateRefund(rideId: string, reason: string, amountNaira?: number): Promise<{ refundReference: string; amount: number }> {
+        const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
+        if (!secretKey) throw new InternalServerErrorException('PAYSTACK_SECRET_KEY is not configured');
+
+        // Get the ride to find its Paystack reference
+        const ride = await this.ridesService.findRideById(rideId);
+        if (!ride) throw new NotFoundException('Ride not found');
+        if (!ride.paystackReference) throw new BadRequestException('No payment reference found for this ride — cash rides cannot be refunded via Paystack');
+        if (ride.paymentStatus === 'refunded') throw new BadRequestException('This ride has already been refunded');
+        if (ride.paymentStatus !== 'paid') throw new BadRequestException('Only paid rides can be refunded');
+
+        const refundAmountKobo = amountNaira ? Math.round(amountNaira * 100) : undefined;
+
+        const url = 'https://api.paystack.co/refund';
+        const headers = { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' };
+        const body: any = { transaction: ride.paystackReference };
+        if (refundAmountKobo) body.amount = refundAmountKobo;
+
+        try {
+            const response = await lastValueFrom(this.httpService.post(url, body, { headers }));
+            const refundData = response.data?.data;
+            const refundReference = refundData?.id?.toString() || `refund_${Date.now()}`;
+            const refundedAmount = (refundData?.amount ?? refundAmountKobo ?? (Number(ride.tripFare) * 100)) / 100;
+
+            await this.ridesService.markRefunded(rideId, refundReference, reason);
+            this.logger.log(`Refund initiated for ride ${rideId}: ref=${refundReference} amount=₦${refundedAmount}`);
+            return { refundReference, amount: refundedAmount };
+        } catch (error) {
+            const msg = error.response?.data?.message || error.message;
+            this.logger.error(`Paystack refund failed for ride ${rideId}: ${msg}`);
+            throw new InternalServerErrorException(`Refund failed: ${msg}`);
         }
     }
 }

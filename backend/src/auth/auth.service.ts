@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
 import { User, UserRole } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { EmailOtpService } from './email-otp.service';
@@ -16,7 +17,7 @@ export class AuthService {
 
     async validateUser(email: string, pass: string): Promise<any> {
         const user = await this.usersService.findOneByEmail(email);
-        if (user && user.passwordHash === pass) {
+        if (user && user.passwordHash && await bcrypt.compare(pass, user.passwordHash)) {
             const { passwordHash, ...result } = user;
             return result;
         }
@@ -57,10 +58,12 @@ export class AuthService {
             throw new BadRequestException('An account with this email already exists.');
         }
 
+        const rawPassword = userData.password || userData.passwordHash || '';
+        const hashedPassword = rawPassword ? await bcrypt.hash(rawPassword, 12) : '';
         user = await this.usersService.create({
             email: userData.email,
             phone: userData.phone,
-            passwordHash: userData.passwordHash || userData.password || '',
+            passwordHash: hashedPassword,
             firstName: userData.firstName,
             lastName: userData.lastName,
             role: UserRole.PASSENGER,

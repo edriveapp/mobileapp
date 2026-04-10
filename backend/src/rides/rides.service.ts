@@ -1,17 +1,21 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThanOrEqual, Repository } from 'typeorm';
+import { OSRMService } from '../common/osrm.service';
 import { Ride, RideStatus } from './ride.entity';
 import { User } from '../users/user.entity';
 import { buildTrendingAreas } from './trending-areas.util';
 
 @Injectable()
 export class RidesService {
+    private readonly logger = new Logger(RidesService.name);
+
     constructor(
         @InjectRepository(Ride)
         private ridesRepository: Repository<Ride>,
         @InjectRepository(User)
         private usersRepository: Repository<User>,
+        private osrmService: OSRMService,
     ) { }
 
     private getRiderOfferFloor(estimatedPrivateFare: number, isShared: boolean): number {
@@ -94,6 +98,16 @@ export class RidesService {
     async createRide(data: any): Promise<Ride> {
         if (data?.passengerId) {
             this.enforcePassengerRequestFloor(data);
+            const passenger = await this.usersRepository.findOne({ where: { id: data.passengerId } });
+            if (passenger?.isRestricted) {
+                throw new ForbiddenException('Your account has been restricted. Contact support.');
+            }
+        }
+        if (data?.driverId) {
+            const driver = await this.usersRepository.findOne({ where: { id: data.driverId } });
+            if (driver?.isRestricted) {
+                throw new ForbiddenException('Your account has been restricted. Contact support.');
+            }
         }
         const isFuture = this.isFutureReservation(data?.departureTime);
         if (!isFuture && data?.passengerId) {
@@ -150,10 +164,23 @@ export class RidesService {
 
     async acceptRide(rideId: string, driverId: string): Promise<Ride> {
         // .findOne returns 'Ride | null'. We must check for null.
+        const driver = await this.usersRepository.findOne({ where: { id: driverId } });
+        if (!driver) throw new NotFoundException('Driver not found');
+        if (driver.isRestricted) {
+            throw new ForbiddenException('Your account has been restricted. Contact support.');
+        }
+        if (driver.verificationStatus !== 'approved') {
+            throw new ForbiddenException('Your account must be verified before accepting rides.');
+        }
+
         const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
 
         if (!ride) throw new NotFoundException('Ride not found'); // Use NestJS built-in exceptions
         if (ride.status !== RideStatus.SEARCHING) throw new BadRequestException('Ride no longer available');
+
+        if (ride.passengerId && ride.passengerId === driverId) {
+            throw new ForbiddenException('You cannot accept your own ride request.');
+        }
         if (!this.isFutureReservation(ride.departureTime)) {
             await this.assertNoImmediateRideConflict(driverId, 'driver', ride.id);
             if (ride.passengerId) {
@@ -319,6 +346,24 @@ export class RidesService {
 
         ride.status = status;
         await this.ridesRepository.save(ride);
+
+        // Dispatch route calculation asynchronously when the driver starts the trip.
+        // Non-blocking — failures are logged but don't fail the status update.
+        if (status === RideStatus.IN_PROGRESS && ride.origin?.lat && ride.destination?.lat) {
+            this.osrmService.getRoute(
+                { lat: ride.origin.lat, lon: ride.origin.lon },
+                { lat: ride.destination.lat, lon: ride.destination.lon },
+            ).then((route) => {
+                if (route) {
+                    this.ridesRepository.update(rideId, {
+                        distanceKm: route.distance / 1000,
+                    });
+                }
+            }).catch((err) => {
+                this.logger.warn(`OSRM route calculation failed for ride ${rideId}: ${err.message}`);
+            });
+        }
+
         return (await this.findRideById(rideId)) as Ride;
     }
 
@@ -343,25 +388,67 @@ export class RidesService {
         return (await this.findRideById(rideId)) as Ride;
     }
 
-    async updatePaymentDetails(rideId: string, status: string, driverEarnings?: number, platformCut?: number): Promise<Ride> {
+    async updatePaymentDetails(rideId: string, status: string, driverEarnings?: number, platformCut?: number, paystackReference?: string): Promise<Ride> {
         const ride = await this.ridesRepository.findOne({ where: { id: rideId }, relations: ['driver'] });
         if (!ride) throw new NotFoundException('Ride not found');
+
+        // Guard against double-payment
+        if (ride.paymentStatus === 'paid') {
+            return ride;
+        }
+
+        // Validate the total paid amount is within 1% of the recorded fare
+        if (status === 'paid' && ride.tripFare) {
+            const totalPaid = (driverEarnings || 0) + (platformCut || 0);
+            const recordedFare = Number(ride.tripFare);
+            const tolerance = recordedFare * 0.01;
+            if (Math.abs(totalPaid - recordedFare) > tolerance) {
+                throw new BadRequestException(`Payment amount ₦${totalPaid} does not match ride fare ₦${recordedFare}`);
+            }
+        }
 
         ride.paymentStatus = status;
         if (driverEarnings !== undefined) ride.driverEarnings = driverEarnings;
         if (platformCut !== undefined) ride.platformCut = platformCut;
+        if (paystackReference) ride.paystackReference = paystackReference;
 
         const savedRide = await this.ridesRepository.save(ride);
 
         if (status === 'paid' && ride.driver) {
-            await this.usersRepository.update(ride.driverId, {
-                balance: () => `balance + ${driverEarnings || 0}`,
-                pendingRemittance: () => `pendingRemittance + ${platformCut || 0}`
-            });
+            const isCash = ride.paymentMethod === 'cash';
+            if (isCash) {
+                // Cash rides: driver collected the full fare from the passenger.
+                // Platform cut is owed back to the platform — track as debt on the driver.
+                if ((platformCut || 0) > 0) {
+                    await this.usersRepository.increment({ id: ride.driverId }, 'pendingRemittance', platformCut || 0);
+                }
+            } else {
+                // Online payment (Paystack): platform already received the full amount.
+                // Credit the driver their earnings — platform keeps the rest as pure revenue.
+                if ((driverEarnings || 0) > 0) {
+                    await this.usersRepository.increment({ id: ride.driverId }, 'balance', driverEarnings || 0);
+                }
+            }
         }
 
         return savedRide;
     }
+
+    async markRefunded(rideId: string, refundReference: string, refundReason: string): Promise<Ride> {
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId }, relations: ['driver'] });
+        if (!ride) throw new NotFoundException('Ride not found');
+
+        // Reverse the driver's credited balance for online payments
+        if (ride.paymentMethod !== 'cash' && ride.driverEarnings && Number(ride.driverEarnings) > 0 && ride.driverId) {
+            await this.usersRepository.decrement({ id: ride.driverId }, 'balance', Number(ride.driverEarnings));
+        }
+
+        ride.paymentStatus = 'refunded';
+        ride.refundReference = refundReference;
+        ride.refundReason = refundReason;
+        return this.ridesRepository.save(ride);
+    }
+
     async getActiveRides(userId: string, role: string) {
         const query = this.ridesRepository.createQueryBuilder('ride')
             .leftJoinAndSelect('ride.driver', 'driver')

@@ -13,11 +13,13 @@ export class PaymentsController {
         return this.paymentsService.initializePayment(req.user.email, body.amount, body.distance || 0, body.rideId);
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Get('verify')
     async verify(@Query('reference') reference: string) {
         return this.paymentsService.verifyPayment(reference);
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Get('verify/:reference')
     async verifyByPath(@Param('reference') reference: string) {
         return this.paymentsService.verifyPayment(reference);

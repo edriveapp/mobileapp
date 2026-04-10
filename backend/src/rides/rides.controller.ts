@@ -54,6 +54,7 @@ export class RidesController {
         return { active, history, count };
     }
 
+    @UseGuards(AuthGuard('jwt'))
     @Get('available')
     async getAvailable(@Query() query) {
         return this.ridesService.getAvailableRides(query);

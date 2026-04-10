@@ -1,12 +1,16 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { MailerService } from '../common/mailer.service';
 import { PushNotificationsService } from '../common/push-notifications.service';
+import { PaymentsService } from '../payments/payments.service';
 import { AdminScope, User, UserRole, VerificationStatus } from '../users/user.entity';
 import { Ride, RideStatus } from '../rides/ride.entity';
 import { Rating } from '../ratings/rating.entity';
 import { buildTrendingAreas, extractAreaName } from '../rides/trending-areas.util';
+import { SupportMessage } from '../support/support-message.entity';
+import { SupportTicket, SupportTicketStatus } from '../support/support-ticket.entity';
 import { DriverWarning, WarningLevel } from './driver-warning.entity';
 import { CampaignRepeat, CampaignStatus, NotificationCampaign } from './notification-campaign.entity';
 
@@ -23,8 +27,13 @@ export class AdminService {
         private warningsRepository: Repository<DriverWarning>,
         @InjectRepository(NotificationCampaign)
         private campaignsRepository: Repository<NotificationCampaign>,
+        @InjectRepository(SupportTicket)
+        private ticketsRepository: Repository<SupportTicket>,
+        @InjectRepository(SupportMessage)
+        private supportMessagesRepository: Repository<SupportMessage>,
         private readonly mailerService: MailerService,
         private readonly pushService: PushNotificationsService,
+        private readonly paymentsService: PaymentsService,
     ) {}
 
     // ─── RBAC Helpers ──────────────────────────────────────────────────────────
@@ -324,8 +333,16 @@ export class AdminService {
         const actor = await this.getActor(actorUserId);
         this.assertSuperAdmin(actor);
 
+        if (userId === actorUserId) {
+            throw new ForbiddenException('You cannot delete your own account');
+        }
+
         const user = await this.usersRepository.findOne({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
+
+        if (user.role === UserRole.ADMIN && user.adminScope === AdminScope.SUPER_ADMIN) {
+            throw new ForbiddenException('Super admin accounts cannot be deleted');
+        }
 
         // Note: For a real production app, you might want to soft-delete
         // or ensure no orphaned records (rides, payments, etc.)
@@ -603,7 +620,7 @@ export class AdminService {
             await this.usersRepository.update(existing.id, {
                 role: UserRole.ADMIN,
                 adminScope: payload.adminScope,
-                passwordHash: payload.password,
+                passwordHash: await bcrypt.hash(payload.password, 12),
                 firstName: payload.firstName || existing.firstName,
                 lastName: payload.lastName || existing.lastName,
             });
@@ -614,7 +631,7 @@ export class AdminService {
 
         const created = this.usersRepository.create({
             email: payload.email.trim().toLowerCase(),
-            passwordHash: payload.password,
+            passwordHash: await bcrypt.hash(payload.password, 12),
             firstName: payload.firstName || '',
             lastName: payload.lastName || '',
             role: UserRole.ADMIN,
@@ -630,6 +647,392 @@ export class AdminService {
         );
 
         return this.toSafeUser(saved);
+    }
+
+    // ─── Ride Management ──────────────────────────────────────────────────────
+
+    async getRideDetail(actorUserId: string, rideId: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        const ride = await this.ridesRepository.findOne({
+            where: { id: rideId },
+            relations: ['driver', 'driver.driverProfile', 'passenger'],
+        });
+        if (!ride) throw new NotFoundException('Ride not found');
+
+        const ratings = await this.ratingsRepository.find({ where: { rideId } });
+
+        return {
+            id: ride.id,
+            status: ride.status,
+            paymentStatus: ride.paymentStatus,
+            paymentMethod: ride.paymentMethod,
+            paystackReference: ride.paystackReference,
+            refundReference: ride.refundReference,
+            refundReason: ride.refundReason,
+            fare: Number(ride.tripFare || 0),
+            driverEarnings: Number(ride.driverEarnings || 0),
+            platformCut: Number(ride.platformCut || 0),
+            distanceKm: ride.distanceKm,
+            origin: ride.origin,
+            destination: ride.destination,
+            departureTime: ride.departureTime,
+            createdAt: ride.createdAt,
+            updatedAt: ride.updatedAt,
+            driver: ride.driver ? this.toSafeUser(ride.driver) : null,
+            passenger: ride.passenger ? this.toSafeUser(ride.passenger) : null,
+            ratings,
+        };
+    }
+
+    async forceCancelRide(actorUserId: string, rideId: string, reason: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        const ride = await this.ridesRepository.findOne({
+            where: { id: rideId },
+            relations: ['driver', 'passenger'],
+        });
+        if (!ride) throw new NotFoundException('Ride not found');
+
+        const nonCancellable = [RideStatus.COMPLETED, RideStatus.CANCELLED];
+        if (nonCancellable.includes(ride.status)) {
+            throw new BadRequestException(`Cannot cancel a ride with status: ${ride.status}`);
+        }
+
+        ride.status = RideStatus.CANCELLED;
+        await this.ridesRepository.save(ride);
+
+        const tokens: string[] = [];
+        if (ride.driver?.expoPushTokens) tokens.push(...ride.driver.expoPushTokens);
+        if (ride.passenger?.expoPushTokens) tokens.push(...ride.passenger.expoPushTokens);
+        if (tokens.length) {
+            await this.pushService.sendToExpoTokens(tokens, 'Ride Cancelled by Admin', reason || 'Your ride was cancelled by admin.');
+        }
+
+        return { success: true, rideId, status: RideStatus.CANCELLED };
+    }
+
+    // ─── Payments & Refunds ───────────────────────────────────────────────────
+
+    async getPayments(actorUserId: string, filters?: { status?: string; page?: number }) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        const page = Math.max(1, filters?.page || 1);
+        const take = 50;
+        const skip = (page - 1) * take;
+
+        const query = this.ridesRepository.createQueryBuilder('ride')
+            .leftJoinAndSelect('ride.driver', 'driver')
+            .leftJoinAndSelect('ride.passenger', 'passenger')
+            .where('ride.paymentStatus IS NOT NULL')
+            .orderBy('ride.updatedAt', 'DESC')
+            .take(take)
+            .skip(skip);
+
+        if (filters?.status) {
+            query.andWhere('ride.paymentStatus = :status', { status: filters.status });
+        }
+
+        const [rides, total] = await query.getManyAndCount();
+
+        return {
+            total,
+            page,
+            data: rides.map((r) => ({
+                rideId: r.id,
+                paymentStatus: r.paymentStatus,
+                paymentMethod: r.paymentMethod,
+                amount: Number(r.tripFare || 0),
+                driverEarnings: Number(r.driverEarnings || 0),
+                platformCut: Number(r.platformCut || 0),
+                paystackReference: r.paystackReference || null,
+                refundReference: r.refundReference || null,
+                refundReason: r.refundReason || null,
+                driver: r.driver ? `${r.driver.firstName || ''} ${r.driver.lastName || ''}`.trim() || r.driver.email : null,
+                passenger: r.passenger ? `${r.passenger.firstName || ''} ${r.passenger.lastName || ''}`.trim() || r.passenger.email : null,
+                origin: (r.origin as any)?.address || r.origin,
+                destination: (r.destination as any)?.address || r.destination,
+                date: r.updatedAt,
+            })),
+        };
+    }
+
+    async refundRide(actorUserId: string, rideId: string, reason: string, amountNaira?: number) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        const result = await this.paymentsService.initiateRefund(rideId, reason, amountNaira);
+
+        // Notify passenger
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId }, relations: ['passenger'] });
+        if (ride?.passenger?.expoPushTokens?.length) {
+            await this.pushService.sendToExpoTokens(
+                ride.passenger.expoPushTokens,
+                'Refund Processed',
+                `Your payment of ₦${result.amount.toLocaleString()} has been refunded. ${reason}`,
+                { type: 'refund', rideId },
+            );
+        }
+        if (ride?.passenger?.email) {
+            await this.mailerService.sendEmail(
+                [ride.passenger.email],
+                'Your eDrive refund has been processed',
+                `<p>Hi ${ride.passenger.firstName || 'there'},</p><p>Your payment of <strong>₦${result.amount.toLocaleString()}</strong> for ride <strong>${(ride.origin as any)?.address || ''} → ${(ride.destination as any)?.address || ''}</strong> has been refunded.</p><p><strong>Reason:</strong> ${reason}</p><p>Funds should appear in your account within 3–5 business days depending on your bank.</p>`,
+                `Your refund of ₦${result.amount.toLocaleString()} has been processed.`,
+            );
+        }
+
+        return { success: true, ...result };
+    }
+
+    // ─── User Detail ──────────────────────────────────────────────────────────
+
+    async getUserDetail(actorUserId: string, userId: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        const user = await this.usersRepository.findOne({
+            where: { id: userId },
+            relations: ['driverProfile'],
+        });
+        if (!user) throw new NotFoundException('User not found');
+
+        const rideQuery = user.role === UserRole.DRIVER
+            ? { driverId: userId }
+            : { passengerId: userId };
+
+        const rides = await this.ridesRepository.find({
+            where: rideQuery,
+            order: { createdAt: 'DESC' },
+            take: 50,
+            relations: ['driver', 'passenger'],
+        });
+
+        const ratings = await this.ratingsRepository.find({
+            where: { rateeId: userId },
+            order: { createdAt: 'DESC' },
+            take: 20,
+        });
+
+        const warnings = user.role === UserRole.DRIVER
+            ? await this.warningsRepository.find({ where: { driverId: userId }, order: { createdAt: 'DESC' } })
+            : [];
+
+        const tickets = await this.ticketsRepository.find({
+            where: { createdByUserId: userId },
+            order: { createdAt: 'DESC' },
+            take: 20,
+        });
+
+        const completedRides = rides.filter((r) => r.status === RideStatus.COMPLETED);
+        const totalSpend = completedRides.reduce((s, r) => s + Number(r.tripFare || 0), 0);
+
+        return {
+            user: this.toSafeUser(user),
+            stats: {
+                totalRides: rides.length,
+                completedRides: completedRides.length,
+                cancelledRides: rides.filter((r) => r.status === RideStatus.CANCELLED).length,
+                totalSpend: Number(totalSpend.toFixed(2)),
+                averageRating: user.rating,
+                walletBalance: Number(user.balance || 0),
+                pendingRemittance: Number(user.pendingRemittance || 0),
+            },
+            rides: rides.map((r) => ({
+                id: r.id,
+                status: r.status,
+                paymentStatus: r.paymentStatus,
+                fare: Number(r.tripFare || 0),
+                origin: (r.origin as any)?.address || r.origin,
+                destination: (r.destination as any)?.address || r.destination,
+                date: r.createdAt,
+            })),
+            ratings: ratings.map((rv) => ({ value: rv.value, comment: rv.comment, date: rv.createdAt })),
+            warnings,
+            tickets: tickets.map((t) => ({ id: t.id, subject: t.subject, status: t.status, date: t.createdAt })),
+        };
+    }
+
+    async adjustWallet(actorUserId: string, userId: string, amount: number, type: 'credit' | 'debit', reason: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertSuperAdmin(actor);
+
+        if (!amount || amount <= 0) throw new BadRequestException('Amount must be positive');
+        const user = await this.usersRepository.findOne({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        if (type === 'credit') {
+            await this.usersRepository.increment({ id: userId }, 'balance', amount);
+        } else {
+            if (Number(user.balance || 0) < amount) throw new BadRequestException('Insufficient wallet balance');
+            await this.usersRepository.decrement({ id: userId }, 'balance', amount);
+        }
+
+        const updated = await this.usersRepository.findOne({ where: { id: userId } });
+
+        if (user.expoPushTokens?.length) {
+            await this.pushService.sendToExpoTokens(
+                user.expoPushTokens,
+                type === 'credit' ? 'Wallet Credited' : 'Wallet Debited',
+                `₦${amount.toLocaleString()} has been ${type === 'credit' ? 'added to' : 'removed from'} your wallet. ${reason}`,
+            );
+        }
+
+        return { success: true, newBalance: Number(updated?.balance || 0), type, amount, reason };
+    }
+
+    async clearDriverRemittance(actorUserId: string, userId: string, reason: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertSuperAdmin(actor);
+
+        const user = await this.usersRepository.findOne({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        const cleared = Number(user.pendingRemittance || 0);
+        await this.usersRepository.update(userId, { pendingRemittance: 0 });
+
+        if (user.expoPushTokens?.length) {
+            await this.pushService.sendToExpoTokens(
+                user.expoPushTokens,
+                'Commission Cleared',
+                `Your outstanding commission of ₦${cleared.toLocaleString()} has been cleared. ${reason}`,
+            );
+        }
+
+        return { success: true, cleared, reason };
+    }
+
+    // ─── Support Ticket Management ────────────────────────────────────────────
+
+    async getAllSupportTickets(actorUserId: string, status?: SupportTicketStatus) {
+        const actor = await this.getActor(actorUserId);
+        this.assertAdmin(actor);
+        if (![AdminScope.SUPER_ADMIN, AdminScope.SUPPORT, AdminScope.OPERATIONS].includes(actor.adminScope)) {
+            throw new ForbiddenException('Support access required');
+        }
+
+        const where: any = {};
+        if (status) where.status = status;
+
+        const tickets = await this.ticketsRepository.find({
+            where,
+            order: { updatedAt: 'DESC' },
+            take: 200,
+        });
+
+        // Attach creator info
+        const userIds = [...new Set(tickets.map((t) => t.createdByUserId))];
+        const users = userIds.length
+            ? await this.usersRepository.find({ where: userIds.map((id) => ({ id })) })
+            : [];
+        const userMap = new Map(users.map((u) => [u.id, u]));
+
+        return tickets.map((t) => {
+            const creator = userMap.get(t.createdByUserId);
+            return {
+                ...t,
+                createdBy: creator ? { id: creator.id, email: creator.email, name: `${creator.firstName || ''} ${creator.lastName || ''}`.trim(), role: creator.role } : null,
+            };
+        });
+    }
+
+    async getSupportTicketDetail(actorUserId: string, ticketId: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertAdmin(actor);
+
+        const ticket = await this.ticketsRepository.findOne({ where: { id: ticketId } });
+        if (!ticket) throw new NotFoundException('Ticket not found');
+
+        const messages = await this.supportMessagesRepository.find({
+            where: { ticketId },
+            order: { createdAt: 'ASC' },
+        });
+
+        const creator = await this.usersRepository.findOne({ where: { id: ticket.createdByUserId } });
+
+        return {
+            ...ticket,
+            messages,
+            createdBy: creator ? this.toSafeUser(creator) : null,
+        };
+    }
+
+    async replySupportTicket(actorUserId: string, ticketId: string, text: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertAdmin(actor);
+
+        const ticket = await this.ticketsRepository.findOne({ where: { id: ticketId } });
+        if (!ticket) throw new NotFoundException('Ticket not found');
+
+        const message = this.supportMessagesRepository.create({
+            ticketId,
+            senderId: actor.id,
+            senderRole: actor.role,
+            text,
+        });
+        await this.supportMessagesRepository.save(message);
+        await this.ticketsRepository.update(ticketId, {
+            updatedAt: new Date(),
+            status: ticket.status === SupportTicketStatus.RESOLVED ? SupportTicketStatus.IN_PROGRESS : ticket.status,
+        });
+
+        // Notify the ticket creator
+        const creator = await this.usersRepository.findOne({ where: { id: ticket.createdByUserId } });
+        if (creator?.expoPushTokens?.length) {
+            await this.pushService.sendToExpoTokens(
+                creator.expoPushTokens,
+                'Support Ticket Update',
+                `Admin replied to your ticket: ${ticket.subject}`,
+                { type: 'support', ticketId },
+            );
+        }
+
+        return { success: true };
+    }
+
+    async updateSupportTicketStatus(actorUserId: string, ticketId: string, status: SupportTicketStatus) {
+        const actor = await this.getActor(actorUserId);
+        this.assertAdmin(actor);
+
+        const ticket = await this.ticketsRepository.findOne({ where: { id: ticketId } });
+        if (!ticket) throw new NotFoundException('Ticket not found');
+
+        await this.ticketsRepository.update(ticketId, { status });
+        return { success: true, ticketId, status };
+    }
+
+    async assignSupportTicket(actorUserId: string, ticketId: string, assignToUserId: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertAdmin(actor);
+
+        const ticket = await this.ticketsRepository.findOne({ where: { id: ticketId } });
+        if (!ticket) throw new NotFoundException('Ticket not found');
+
+        await this.ticketsRepository.update(ticketId, {
+            assignedToUserId: assignToUserId,
+            status: SupportTicketStatus.IN_PROGRESS,
+        });
+        return { success: true };
+    }
+
+    // ─── Direct Notifications ─────────────────────────────────────────────────
+
+    async sendDirectNotification(actorUserId: string, userId: string, title: string, body: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        const user = await this.usersRepository.findOne({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        if (!user.expoPushTokens?.length) {
+            return { success: false, reason: 'User has no registered push tokens' };
+        }
+
+        await this.pushService.sendToExpoTokens(user.expoPushTokens, title, body, { type: 'admin_direct' });
+        return { success: true };
     }
 
     // ─── Private Helpers ───────────────────────────────────────────────────────
@@ -750,7 +1153,7 @@ export class AdminService {
         };
     }
 
-    private async getAdminEmailsByScopes(scopes: AdminScope[]) {
+    async getAdminEmailsByScopes(scopes: AdminScope[]) {
         const admins = await this.usersRepository.find({
             where: { role: UserRole.ADMIN },
         });

@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AdminModule } from './admin/admin.module';
@@ -39,6 +41,7 @@ import redisConfig from './common/configs/redis.config';
             }),
             inject: [ConfigService],
         }),
+        ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
         UsersModule,
         AuthModule,
         RidesModule,
@@ -50,6 +53,6 @@ import redisConfig from './common/configs/redis.config';
         AdminModule,
     ],
     controllers: [AppController],
-    providers: [],
+    providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule { }

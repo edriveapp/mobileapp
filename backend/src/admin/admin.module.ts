@@ -4,7 +4,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/user.entity';
 import { Ride } from '../rides/ride.entity';
 import { Rating } from '../ratings/rating.entity';
+import { SupportMessage } from '../support/support-message.entity';
+import { SupportTicket } from '../support/support-ticket.entity';
 import { CommonModule } from '../common/common.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { DriverWarning } from './driver-warning.entity';
@@ -14,8 +17,9 @@ import { NotificationSchedulerService } from './notification-scheduler.service';
 @Module({
     imports: [
         ScheduleModule.forRoot(),
-        TypeOrmModule.forFeature([User, Ride, Rating, DriverWarning, NotificationCampaign]),
+        TypeOrmModule.forFeature([User, Ride, Rating, DriverWarning, NotificationCampaign, SupportTicket, SupportMessage]),
         CommonModule,
+        PaymentsModule,
     ],
     controllers: [AdminController],
     providers: [AdminService, NotificationSchedulerService],

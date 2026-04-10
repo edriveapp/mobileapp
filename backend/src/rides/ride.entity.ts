@@ -114,6 +114,15 @@ export class Ride {
     platformCut: number;
 
     @Column({ nullable: true })
+    paystackReference: string;
+
+    @Column({ nullable: true })
+    refundReference: string;
+
+    @Column({ nullable: true })
+    refundReason: string;
+
+    @Column({ nullable: true })
     departureTime: Date;
 
     @CreateDateColumn()

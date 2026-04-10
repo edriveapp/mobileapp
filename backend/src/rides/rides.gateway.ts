@@ -14,7 +14,12 @@ import { RedisService } from '../common/redis.service';
 import { UsersService } from '../users/users.service';
 import { RidesService } from './rides.service';
 
-@WebSocketGateway({ cors: true })
+@WebSocketGateway({
+    cors: {
+        origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : false,
+        credentials: true,
+    },
+})
 export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: Server;
@@ -218,9 +223,12 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     @SubscribeMessage('accept_ride')
     async handleAcceptRide(
-        @MessageBody() data: { rideId: string; driverId: string },
+        @MessageBody() data: { rideId: string },
+        @ConnectedSocket() client: Socket,
     ) {
-        const updatedRide = await this.ridesService.acceptRide(data.rideId, data.driverId);
+        const driverId = client.data.userId;
+        if (!driverId) return;
+        const updatedRide = await this.ridesService.acceptRide(data.rideId, driverId);
         await this.broadcastRideAccepted(updatedRide);
 
         return updatedRide;
