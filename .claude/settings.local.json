@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(head -20 grep -n \"normalizeUser\\\\|driverProfile\" /Users/s/Documents/work/mobileapp/app/stores/authStore.ts)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
