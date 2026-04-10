@@ -7,8 +7,9 @@ async function bootstrap() {
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
     : [];
+  
   app.enableCors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true, // Allow true (all) if no specific origins are set, or for dev
     credentials: true,
   });
 

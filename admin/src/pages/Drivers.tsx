@@ -186,28 +186,40 @@ function DriverDetailModal({
               <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Driver Documents</h3>
               <div className="flex flex-col gap-2">
                 {driver.driverProfile?.licenseDetails?.documentUrl && (
-                  <a href={driver.driverProfile.licenseDetails.documentUrl} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                    <FileText className="w-4 h-4" /> View License
-                  </a>
+                  driver.driverProfile.licenseDetails.documentUrl.startsWith('file://') ? (
+                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100 italic">
+                      ⚠️ Data corrupted: Local URI (re-onboarding required)
+                    </span>
+                  ) : (
+                    <a href={driver.driverProfile.licenseDetails.documentUrl} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
+                      <FileText className="w-4 h-4" /> View License
+                    </a>
+                  )
                 )}
                 {driver.driverProfile?.vehicleDetails?.insuranceDocumentUrl && (
-                  <a href={driver.driverProfile.vehicleDetails.insuranceDocumentUrl} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                    <FileText className="w-4 h-4" /> View Insurance
-                  </a>
+                   driver.driverProfile.vehicleDetails.insuranceDocumentUrl.startsWith('file://') ? null : (
+                    <a href={driver.driverProfile.vehicleDetails.insuranceDocumentUrl} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
+                      <FileText className="w-4 h-4" /> View Insurance
+                    </a>
+                  )
                 )}
                 {driver.driverProfile?.vehicleDetails?.worthinessCertificateUrl && (
-                  <a href={driver.driverProfile.vehicleDetails.worthinessCertificateUrl} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                    <FileText className="w-4 h-4" /> Worthiness Certificate
-                  </a>
+                  driver.driverProfile.vehicleDetails.worthinessCertificateUrl.startsWith('file://') ? null : (
+                    <a href={driver.driverProfile.vehicleDetails.worthinessCertificateUrl} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
+                      <FileText className="w-4 h-4" /> Worthiness Certificate
+                    </a>
+                  )
                 )}
                 {(driver.driverProfile?.vehicleDetails?.vehiclePhotoUrls || []).map((url, i) => (
-                  <a key={url} href={url} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                    <FileText className="w-4 h-4" /> Vehicle Photo {i + 1}
-                  </a>
+                  url.startsWith('file://') ? null : (
+                    <a key={url} href={url} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
+                      <FileText className="w-4 h-4" /> Vehicle Photo {i + 1}
+                    </a>
+                  )
                 ))}
               </div>
               <div className="mt-4">
