@@ -76,6 +76,40 @@ export const useDriverStore = create<DriverState>((set) => ({
 
   completeOnboarding: async () => {
     const { driverInfo, vehicleInfo, documents } = useDriverStore.getState();
+    const { uploadFile, uploadMultipleFiles } = require('../services/mediaService');
+
+    // 1. Upload all documents to the backend
+    console.log("Uploading documents...");
+    
+    let uploadedInsuranceUrl = documents.insuranceImageUri;
+    if (documents.insuranceImageUri && !documents.insuranceImageUri.startsWith('http')) {
+      uploadedInsuranceUrl = await uploadFile(documents.insuranceImageUri);
+    }
+
+    let uploadedWorthinessUrl = documents.worthinessImageUri;
+    if (documents.worthinessImageUri && !documents.worthinessImageUri.startsWith('http')) {
+      uploadedWorthinessUrl = await uploadFile(documents.worthinessImageUri);
+    }
+
+    let uploadedLicenseUrl = documents.licenseImageUri;
+    if (documents.licenseImageUri && !documents.licenseImageUri.startsWith('http')) {
+      uploadedLicenseUrl = await uploadFile(documents.licenseImageUri);
+    }
+
+    let uploadedSelfieUrl = documents.selfieUri;
+    if (documents.selfieUri && !documents.selfieUri.startsWith('http')) {
+      uploadedSelfieUrl = await uploadFile(documents.selfieUri);
+    }
+
+    let uploadedVehiclePhotos = documents.vehiclePhotos;
+    const localPhotos = documents.vehiclePhotos.filter(p => !p.startsWith('http'));
+    if (localPhotos.length > 0) {
+      const newPhotoUrls = await uploadMultipleFiles(localPhotos);
+      // Replace only local ones with uploaded ones
+      uploadedVehiclePhotos = documents.vehiclePhotos.map(p => 
+        p.startsWith('http') ? p : (newPhotoUrls.shift() || p)
+      );
+    }
 
     const payload = {
       vehicleDetails: {
@@ -85,14 +119,14 @@ export const useDriverStore = create<DriverState>((set) => ({
         year: vehicleInfo.year,
         plateNumber: vehicleInfo.plateNumber,
         capacity: vehicleInfo.capacity || '',
-        insuranceDocumentUrl: documents.insuranceImageUri || '',
-        worthinessCertificateUrl: documents.worthinessImageUri || '',
-        vehiclePhotoUrls: documents.vehiclePhotos || [],
+        insuranceDocumentUrl: uploadedInsuranceUrl || '',
+        worthinessCertificateUrl: uploadedWorthinessUrl || '',
+        vehiclePhotoUrls: uploadedVehiclePhotos || [],
       },
       licenseDetails: {
         number: driverInfo.licenseNumber,
         expiryDate: driverInfo.licenseExpiry,
-        documentUrl: documents.licenseImageUri || '',
+        documentUrl: uploadedLicenseUrl || '',
       },
       onboardingMeta: {
         fullName: driverInfo.fullName,
@@ -111,8 +145,8 @@ export const useDriverStore = create<DriverState>((set) => ({
     await api.post('/users/driver-profile', payload);
 
     // Persist selfie as the driver's profile photo
-    if (documents.selfieUri) {
-        await api.patch('/users/me', { avatarUrl: documents.selfieUri });
+    if (uploadedSelfieUrl) {
+        await api.patch('/users/me', { avatarUrl: uploadedSelfieUrl });
     }
 
     await useAuthStore.getState().refreshProfile();

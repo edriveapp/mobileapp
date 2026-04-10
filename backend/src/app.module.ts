@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AppController } from './app.controller';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
@@ -25,6 +27,7 @@ import { DriverWarning } from './admin/driver-warning.entity';
 import { NotificationCampaign } from './admin/notification-campaign.entity';
 import databaseConfig from './common/configs/database.config';
 import redisConfig from './common/configs/redis.config';
+import { MediaModule } from './common/media/media.module';
 
 
 @Module({
@@ -42,6 +45,10 @@ import redisConfig from './common/configs/redis.config';
             inject: [ConfigService],
         }),
         ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
+        ServeStaticModule.forRoot({
+            rootPath: join(__dirname, '..', '..', 'public'),
+            serveRoot: '/public',
+        }),
         UsersModule,
         AuthModule,
         RidesModule,
@@ -51,6 +58,7 @@ import redisConfig from './common/configs/redis.config';
         RatingsModule,
         SupportModule,
         AdminModule,
+        MediaModule,
     ],
     controllers: [AppController],
     providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

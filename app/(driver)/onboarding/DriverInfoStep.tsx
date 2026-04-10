@@ -82,13 +82,10 @@ export default function DriverInfoStep() {
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
-        >
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
             >
                 <Text style={styles.title}>Driver Information</Text>
                 <Text style={styles.subtitle}>
@@ -266,7 +263,6 @@ export default function DriverInfoStep() {
                     </View>
                 </View>
             </ScrollView>
-        </KeyboardAvoidingView>
     );
 }
 

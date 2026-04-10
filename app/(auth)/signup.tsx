@@ -214,42 +214,42 @@ export default function SignupScreen() {
               </View>
             </View>
           </View>
-
-          <View style={styles.bottomWrap}>
-            <TouchableOpacity
-              style={styles.button}
-              onPress={handleSignup}
-              disabled={isLoading}
-              activeOpacity={0.8}
-            >
-              {isLoading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.buttonText}>Sign Up</Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>
-                {isDriver ? "switch to user?" : "want to become a driver?"}
-              </Text>
-              <TouchableOpacity
-                onPress={toggleDriverRole}
-                activeOpacity={0.8}
-                disabled={isDriverToggling || isLoading}
-              >
-                {isDriverToggling ? (
-                  <ActivityIndicator size="small" color={COLORS.primary} />
-                ) : (
-                  <Text style={styles.link}>
-                    {isDriver ? "Switch to edrive" : "Create account"}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
         </View>
       </ScrollView>
+
+      <View style={[styles.bottomWrap, { paddingHorizontal: 20, paddingBottom: 20 }]}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleSignup}
+          disabled={isLoading}
+          activeOpacity={0.8}
+        >
+          {isLoading ? (
+            <ActivityIndicator color={COLORS.white} />
+          ) : (
+            <Text style={styles.buttonText}>Sign Up</Text>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            {isDriver ? "switch to user?" : "want to become a driver?"}
+          </Text>
+          <TouchableOpacity
+            onPress={toggleDriverRole}
+            activeOpacity={0.8}
+            disabled={isDriverToggling || isLoading}
+          >
+            {isDriverToggling ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Text style={styles.link}>
+                {isDriver ? "Switch to edrive" : "Create account"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

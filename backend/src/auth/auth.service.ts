@@ -66,7 +66,7 @@ export class AuthService {
             passwordHash: hashedPassword,
             firstName: userData.firstName,
             lastName: userData.lastName,
-            role: UserRole.PASSENGER,
+            role: userData.role || UserRole.PASSENGER,
         });
 
         return this.login(user);

@@ -82,13 +82,10 @@ export default function VehicleDocumentsStep() {
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
-        >
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
             >
                 <Text style={styles.title}>Vehicle & Documents</Text>
                 <Text style={styles.subtitle}>
@@ -273,7 +270,6 @@ export default function VehicleDocumentsStep() {
                     </View>
                 </View>
             </ScrollView>
-        </KeyboardAvoidingView>
     );
 }
 

@@ -47,61 +47,67 @@ export default function LoginScreen() {
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-                <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <View style={styles.header}>
-                <View style={styles.tag}>
-                    <Text style={styles.tagText}>Welcome Back</Text>
-                </View>
-                <TouchableOpacity style={styles.helpButton}>
-                    <Feather name="headphones" size={14} color="black" />
-                    <Text style={styles.helpText}>Help</Text>
-                </TouchableOpacity>
-            </View>
-
-            <View style={styles.content}>
-                <Text style={styles.title}>Log into your account</Text>
-                <Text style={styles.subtitle}>Enter your email and password to access your edrive account</Text>
-
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Email Address</Text>
-                    <View style={styles.inputWrapper}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Type your email address"
-                            placeholderTextColor="#B0B0B0"
-                            value={email}
-                            onChangeText={setEmail}
-                            autoCapitalize="none"
-                            keyboardType="email-address"
-                        />
-                    </View>
-                </View>
-
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Password</Text>
-                    <View style={styles.inputWrapper}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Type your password"
-                            placeholderTextColor="#B0B0B0"
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry={!showPassword}
-                        />
-                        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                            <Feather
-                                name={showPassword ? "eye" : "eye-off"}
-                                size={20}
-                                color="#141414ff"
-                            />
+                <ScrollView 
+                    contentContainerStyle={{ flexGrow: 1 }} 
+                    keyboardShouldPersistTaps="handled" 
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={styles.header}>
+                        <View style={styles.tag}>
+                            <Text style={styles.tagText}>Welcome Back</Text>
+                        </View>
+                        <TouchableOpacity style={styles.helpButton}>
+                            <Feather name="headphones" size={14} color="black" />
+                            <Text style={styles.helpText}>Help</Text>
                         </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push('/(auth)/forgot-password')}>
-                        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                    </TouchableOpacity>
-                </View>
 
-                <View style={styles.bottomSection}>
+                    <View style={styles.content}>
+                        <Text style={styles.title}>Log into your account</Text>
+                        <Text style={styles.subtitle}>Enter your email and password to access your edrive account</Text>
+
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.label}>Email Address</Text>
+                            <View style={styles.inputWrapper}>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Type your email address"
+                                    placeholderTextColor="#B0B0B0"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    autoCapitalize="none"
+                                    keyboardType="email-address"
+                                />
+                            </View>
+                        </View>
+
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.label}>Password</Text>
+                            <View style={styles.inputWrapper}>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Type your password"
+                                    placeholderTextColor="#B0B0B0"
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    secureTextEntry={!showPassword}
+                                />
+                                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                                    <Feather
+                                        name={showPassword ? "eye" : "eye-off"}
+                                        size={20}
+                                        color="#141414ff"
+                                    />
+                                </TouchableOpacity>
+                            </View>
+                            <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push('/(auth)/forgot-password')}>
+                                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </ScrollView>
+
+                <View style={[styles.bottomSection, { paddingHorizontal: 20 }]}>
                     <TouchableOpacity
                         style={styles.button}
                         onPress={handleLogin}
@@ -123,8 +129,6 @@ export default function LoginScreen() {
                         </Link>
                     </View>
                 </View>
-            </View>
-            </ScrollView>
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
