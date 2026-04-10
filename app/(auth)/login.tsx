@@ -3,7 +3,7 @@ import { COLORS, Fonts } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function LoginScreen() {
     const router = useRouter();
@@ -47,6 +47,7 @@ export default function LoginScreen() {
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.header}>
                 <View style={styles.tag}>
                     <Text style={styles.tagText}>Welcome Back</Text>
@@ -123,6 +124,7 @@ export default function LoginScreen() {
                     </View>
                 </View>
             </View>
+            </ScrollView>
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
@@ -230,8 +232,8 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.rounded,
     },
     bottomSection: {
-        flex: 1,
         justifyContent: 'flex-end',
+        paddingTop: 30,
         paddingBottom: 24,
     },
     button: {

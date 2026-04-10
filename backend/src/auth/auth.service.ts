@@ -46,7 +46,7 @@ export class AuthService {
             throw new BadRequestException('Email and OTP code are required.');
         }
 
-        const isValid = this.emailOtpService.verifyOtp(email, otpCode);
+        const isValid = await this.emailOtpService.verifyOtp(email, otpCode);
         if (!isValid) {
             throw new BadRequestException('Invalid or expired OTP code. Please try again.');
         }
@@ -93,7 +93,7 @@ export class AuthService {
             throw new BadRequestException('Password must be at least 6 characters.');
         }
 
-        const isValid = this.emailOtpService.verifyOtp(email, otpCode);
+        const isValid = await this.emailOtpService.verifyOtp(email, otpCode);
         if (!isValid) {
             throw new BadRequestException('Invalid or expired OTP code.');
         }

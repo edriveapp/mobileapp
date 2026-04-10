@@ -1,19 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
-
-interface OtpRecord {
-  code: string;
-  expiresAt: number;
-}
+import { RedisService } from '../common/redis.service';
 
 @Injectable()
 export class EmailOtpService {
   private readonly logger = new Logger(EmailOtpService.name);
-  private readonly otpStore = new Map<string, OtpRecord>();
   private transporter: nodemailer.Transporter;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private redisService: RedisService,
+  ) {
     this.transporter = nodemailer.createTransport({
       host: this.configService.get<string>('SMTP_HOST'),
       port: Number(this.configService.get<string>('SMTP_PORT') || 587),
@@ -32,9 +30,8 @@ export class EmailOtpService {
 
   async sendOtp(email: string): Promise<{ success: boolean }> {
     const code = this.generateCode();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-    this.otpStore.set(email.toLowerCase(), { code, expiresAt });
+    // Use Redis for OTP storage, expires in 600s (10 minutes)
+    await this.redisService.set(`otp:${email.toLowerCase()}`, code, 600);
 
     const from = this.configService.get<string>('SMTP_FROM') || 'noreply@edrive.ng';
 
@@ -55,15 +52,14 @@ export class EmailOtpService {
     }
   }
 
-  verifyOtp(email: string, code: string): boolean {
-    const record = this.otpStore.get(email.toLowerCase());
-    if (!record) return false;
-    if (Date.now() > record.expiresAt) {
-      this.otpStore.delete(email.toLowerCase());
-      return false;
-    }
-    if (record.code !== code.trim()) return false;
-    this.otpStore.delete(email.toLowerCase()); // one-time use
+  async verifyOtp(email: string, code: string): Promise<boolean> {
+    const storedCode = await this.redisService.get(`otp:${email.toLowerCase()}`);
+    if (!storedCode) return false;
+    
+    if (storedCode.trim() !== code.trim()) return false;
+    
+    // Clear correctly on success (We cheat here by setting TTL to 1s or overwriting since RedisService doesn't expose DELETE directly)
+    await this.redisService.set(`otp:${email.toLowerCase()}`, '', 1); 
     return true;
   }
 
