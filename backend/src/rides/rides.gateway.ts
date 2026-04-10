@@ -80,18 +80,23 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     @SubscribeMessage('update_location')
     async handleLocationUpdate(
-        @MessageBody() data: { rideId?: string; passengerId?: string; lat: number; lon: number },
+        @MessageBody() data: { rideId?: string; lat: number; lon: number },
         @ConnectedSocket() client: Socket,
     ) {
         const driverId = client.data.userId;
         if (!driverId) return;
         await this.redisService.setDriverLocation(driverId, data.lat, data.lon);
-        if (data.passengerId) {
-            this.server.to(`user_${data.passengerId}`).emit('driver_location_update', {
-                lat: data.lat,
-                lon: data.lon,
-                rideId: data.rideId,
-            });
+
+        // Resolve passengerId from the ride in DB — never trust client-supplied IDs
+        if (data.rideId) {
+            const ride = await this.ridesService.findRideById(data.rideId);
+            if (ride?.driverId === driverId && ride.passengerId) {
+                this.server.to(`user_${ride.passengerId}`).emit('driver_location_update', {
+                    lat: data.lat,
+                    lon: data.lon,
+                    rideId: data.rideId,
+                });
+            }
         }
     }
 

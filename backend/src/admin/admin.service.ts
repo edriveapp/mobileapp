@@ -64,6 +64,13 @@ export class AdminService {
         }
     }
 
+    private assertSupportAdmin(actor: User) {
+        this.assertAdmin(actor);
+        if (![AdminScope.SUPER_ADMIN, AdminScope.SUPPORT, AdminScope.OPERATIONS].includes(actor.adminScope)) {
+            throw new ForbiddenException('Support admin access required');
+        }
+    }
+
     private assertOperationsAdmin(actor: User) {
         this.assertAdmin(actor);
         if (![AdminScope.SUPER_ADMIN, AdminScope.OPERATIONS].includes(actor.adminScope)) {
@@ -861,6 +868,8 @@ export class AdminService {
         this.assertSuperAdmin(actor);
 
         if (!amount || amount <= 0) throw new BadRequestException('Amount must be positive');
+        if (amount > 1_000_000) throw new BadRequestException('Single adjustment cannot exceed ₦1,000,000');
+        if (!reason?.trim()) throw new BadRequestException('A reason is required for wallet adjustments');
         const user = await this.usersRepository.findOne({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
@@ -941,7 +950,7 @@ export class AdminService {
 
     async getSupportTicketDetail(actorUserId: string, ticketId: string) {
         const actor = await this.getActor(actorUserId);
-        this.assertAdmin(actor);
+        this.assertSupportAdmin(actor);
 
         const ticket = await this.ticketsRepository.findOne({ where: { id: ticketId } });
         if (!ticket) throw new NotFoundException('Ticket not found');
@@ -962,7 +971,7 @@ export class AdminService {
 
     async replySupportTicket(actorUserId: string, ticketId: string, text: string) {
         const actor = await this.getActor(actorUserId);
-        this.assertAdmin(actor);
+        this.assertSupportAdmin(actor);
 
         const ticket = await this.ticketsRepository.findOne({ where: { id: ticketId } });
         if (!ticket) throw new NotFoundException('Ticket not found');
@@ -995,7 +1004,7 @@ export class AdminService {
 
     async updateSupportTicketStatus(actorUserId: string, ticketId: string, status: SupportTicketStatus) {
         const actor = await this.getActor(actorUserId);
-        this.assertAdmin(actor);
+        this.assertSupportAdmin(actor);
 
         const ticket = await this.ticketsRepository.findOne({ where: { id: ticketId } });
         if (!ticket) throw new NotFoundException('Ticket not found');
@@ -1006,7 +1015,7 @@ export class AdminService {
 
     async assignSupportTicket(actorUserId: string, ticketId: string, assignToUserId: string) {
         const actor = await this.getActor(actorUserId);
-        this.assertAdmin(actor);
+        this.assertSupportAdmin(actor);
 
         const ticket = await this.ticketsRepository.findOne({ where: { id: ticketId } });
         if (!ticket) throw new NotFoundException('Ticket not found');

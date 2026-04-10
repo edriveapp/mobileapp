@@ -6,7 +6,12 @@ import { RidesService } from '../rides/rides.service';
 import { UsersService } from '../users/users.service';
 import { ChatService } from './chat.service';
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({
+    cors: {
+        origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : false,
+        credentials: true,
+    },
+})
 export class ChatGateway implements OnGatewayConnection {
   constructor(
     private chatService: ChatService,
