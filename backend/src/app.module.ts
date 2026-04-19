@@ -14,6 +14,7 @@ import { CommonModule } from './common/common.module';
 import { PaymentsModule } from './payments/payments.module';
 import { Rating } from './ratings/rating.entity';
 import { RatingsModule } from './ratings/ratings.module';
+import { Booking } from './rides/booking.entity';
 import { Ride } from './rides/ride.entity';
 import { RidesModule } from './rides/rides.module';
 import { SupportMessage } from './support/support-message.entity';
@@ -40,7 +41,7 @@ import { MediaModule } from './common/media/media.module';
             imports: [ConfigModule],
             useFactory: (configService: ConfigService) => ({
                 ...configService.get('database'),
-                entities: [User, DriverProfile, Ride, Message, Rating, SavedPlace, SupportTicket, SupportMessage, DriverWarning, NotificationCampaign],
+                entities: [User, DriverProfile, Ride, Booking, Message, Rating, SavedPlace, SupportTicket, SupportMessage, DriverWarning, NotificationCampaign],
             }),
             inject: [ConfigService],
         }),

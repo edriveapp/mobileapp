@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 
 import { Message } from './chat/message.entity';
 import { Rating } from './ratings/rating.entity';
+import { Booking } from './rides/booking.entity';
 import { Ride } from './rides/ride.entity';
 import { SupportMessage } from './support/support-message.entity';
 import { SupportTicket } from './support/support-ticket.entity';
@@ -22,6 +23,7 @@ export const AppDataSource = new DataSource({
         User,
         DriverProfile,
         Ride,
+        Booking,
         Message,
         Rating,
         SavedPlace,
