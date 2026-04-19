@@ -7,22 +7,21 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Platform,
-  SafeAreaView,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  KeyboardAvoidingView,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import KeyboardSafeView from "../components/KeyboardSafeView";
 
 export default function SignupScreen() {
   const router = useRouter();
   const isLoading = useAuthStore((state) => state.isLoading);
   const sendOtp = useAuthStore((state) => state.sendOtp);
+  const insets = useSafeAreaInsets();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -59,20 +58,16 @@ export default function SignupScreen() {
       return;
     }
 
-    // Ensure phone number has country code
     let formattedPhone = phoneNumber.replace(/[^0-9+]/g, '');
     if (!formattedPhone.startsWith("+")) {
-      // Default to Nigeria country code
       formattedPhone = "+234" + formattedPhone.replace(/^0+/, "");
     }
 
     const role: UserRole = isDriver ? "driver" : "passenger";
 
     try {
-      // Send OTP via email
       await sendOtp(email);
 
-      // Navigate to OTP screen with user details
       router.push({
         pathname: "/(auth)/otp",
         params: {
@@ -96,13 +91,10 @@ export default function SignupScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollContent}
-      >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" />
+
+      <KeyboardSafeView>
         <View style={styles.header}>
           <View style={styles.tag}>
             <Text style={styles.tagText}>Create an account</Text>
@@ -114,110 +106,109 @@ export default function SignupScreen() {
         </View>
 
         <View style={styles.content}>
-          <View style={styles.formWrap}>
-            <Text style={styles.title}>
-              Create {isDriver ? "a driver" : "an edrive"} account
-            </Text>
-            <View style={styles.subtitleRow}>
-              <Text style={styles.subtitle}>I have an edrive account? </Text>
-              <Link href="/(auth)/login" asChild>
-                <TouchableOpacity>
-                  <Text style={styles.subtitleLink}>Login</Text>
-                </TouchableOpacity>
-              </Link>
-            </View>
+          <Text style={styles.title}>
+            Create {isDriver ? "a driver" : "an edrive"} account
+          </Text>
+          <View style={styles.subtitleRow}>
+            <Text style={styles.subtitle}>I have an edrive account? </Text>
+            <Link href="/(auth)/login" asChild>
+              <TouchableOpacity>
+                <Text style={styles.subtitleLink}>Login</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Full Name</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your full name"
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={name}
-                  onChangeText={setName}
-                />
-              </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Full Name</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your full name"
+                placeholderTextColor={COLORS.textSecondary}
+                value={name}
+                onChangeText={setName}
+              />
             </View>
+          </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Phone Number</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="+234 701 234 5671"
-                  placeholderTextColor={COLORS.textSecondary}
-                  keyboardType="phone-pad"
-                  value={phoneNumber}
-                  onChangeText={setPhoneNumber}
-                />
-              </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Phone Number</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="+234 701 234 5671"
+                placeholderTextColor={COLORS.textSecondary}
+                keyboardType="phone-pad"
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+              />
             </View>
+          </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Email Address</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your email address"
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-              </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Email Address</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your email address"
+                placeholderTextColor={COLORS.textSecondary}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
             </View>
+          </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your password"
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your password"
+                placeholderTextColor={COLORS.textSecondary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                <Feather
+                  name={showPassword ? "eye" : "eye-off"}
+                  size={20}
+                  color={COLORS.textSecondary}
                 />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  <Feather
-                    name={showPassword ? "eye" : "eye-off"}
-                    size={20}
-                    color={COLORS.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-              {password.length > 0 && password.length < 8 && (
-                <Text style={styles.errorText}>8 characters minimum</Text>
-              )}
+              </TouchableOpacity>
             </View>
+            {password.length > 0 && password.length < 8 && (
+              <Text style={styles.errorText}>8 characters minimum</Text>
+            )}
+          </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Confirm Password</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter Password Again"
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry={!showConfirmPassword}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Confirm Password</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter Password Again"
+                placeholderTextColor={COLORS.textSecondary}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showConfirmPassword}
+              />
+              <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                <Feather
+                  name={showConfirmPassword ? "eye" : "eye-off"}
+                  size={20}
+                  color={COLORS.textSecondary}
                 />
-                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
-                  <Feather
-                    name={showConfirmPassword ? "eye" : "eye-off"}
-                    size={20}
-                    color={COLORS.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
-      </ScrollView>
+      </KeyboardSafeView>
 
-      <View style={[styles.bottomWrap, { paddingHorizontal: 20, paddingBottom: 20 }]}>
+      {/* CTA pinned at bottom — outside KeyboardSafeView so it never shifts */}
+      <View style={[styles.bottomWrap, { paddingBottom: insets.bottom + 16 }]}>
         <TouchableOpacity
           style={styles.button}
           onPress={handleSignup}
@@ -250,8 +241,7 @@ export default function SignupScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -259,7 +249,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#ffff",
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
   },
   header: {
     flexDirection: "row",
@@ -268,10 +257,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingBottom: 16,
     paddingHorizontal: 20,
-  },
-  scrollContent: {
-    paddingBottom: 30,
-    flexGrow: 1,
   },
   tag: {
     backgroundColor: "#bdf7db",
@@ -305,12 +290,8 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    justifyContent: "space-between",
+    paddingBottom: 20,
   },
-  formWrap: {
-    flex: 1,
-  },
-  bottomWrap: {},
   title: {
     fontSize: 27,
     fontWeight: "400",
@@ -364,20 +345,9 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontFamily: Fonts.rounded,
   },
-  roleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: SPACING.m,
-  },
-  roleLabel: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  roleLink: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: "bold",
-    textDecorationLine: "underline",
+  bottomWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
   },
   button: {
     backgroundColor: COLORS.primary,
@@ -385,7 +355,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: SPACING.l,
   },
   buttonText: {
     color: COLORS.white,

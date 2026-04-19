@@ -4,13 +4,11 @@ import { COLORS, Fonts, SPACING } from "@/constants/theme";
 import Feather from "@expo/vector-icons/Feather";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-
 import {
     ActivityIndicator,
     Alert,
     KeyboardAvoidingView,
     Platform,
-    SafeAreaView,
     StatusBar,
     StyleSheet,
     Text,
@@ -19,12 +17,14 @@ import {
     View,
     Vibration,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function OtpScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { name, email, phoneNumber, password, role } = params;
   const displayEmail = (email as string) || '';
+  const insets = useSafeAreaInsets();
 
   const verifyOtp = useAuthStore((state) => state.verifyOtp);
   const sendOtp = useAuthStore((state) => state.sendOtp);
@@ -34,7 +34,6 @@ export default function OtpScreen() {
   const [isError, setIsError] = useState(false);
   const inputs = useRef<Array<TextInput | null>>([]);
 
-  // Resend timer
   const [resendTimer, setResendTimer] = useState(60);
   const [canResend, setCanResend] = useState(false);
 
@@ -54,7 +53,6 @@ export default function OtpScreen() {
     }
   }, [resendTimer]);
 
-  // Mask phone number: +234 ****5671
   const getMaskedPhone = () => {
     const phone = (phoneNumber as string) || "";
     if (phone.length < 4) return phone;
@@ -93,10 +91,7 @@ export default function OtpScreen() {
       await sendOtp(email as string);
       setResendTimer(60);
       setCanResend(false);
-      Alert.alert(
-        "OTP Resent",
-        "A new verification code has been sent to your phone.",
-      );
+      Alert.alert("OTP Resent", "A new verification code has been sent to your phone.");
     } catch (error: any) {
       const msg =
         error.response?.data?.message ||
@@ -107,15 +102,10 @@ export default function OtpScreen() {
   };
 
   const handleVerify = async (otpString: string) => {
-    if (otpString.length !== 4) {
-      return;
-    }
+    if (otpString.length !== 4) return;
 
     if (!name || !email || !phoneNumber || !password || !role) {
-      Alert.alert(
-        "Error",
-        "Missing signup information. Please try signing up again.",
-      );
+      Alert.alert("Error", "Missing signup information. Please try signing up again.");
       router.back();
       return;
     }
@@ -130,7 +120,6 @@ export default function OtpScreen() {
         role: userRole,
       };
 
-      // Verify OTP via backend
       await verifyOtp(otpString, userData);
 
       if (userRole === "driver") {
@@ -145,69 +134,69 @@ export default function OtpScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.header}>
-        <View style={styles.tag}>
-          <Text style={styles.tagText}>Verify number</Text>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" />
+
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.header}>
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>Verify number</Text>
+          </View>
+          <TouchableOpacity style={styles.helpButton}>
+            <Feather name="headphones" size={14} color="black" />
+            <Text style={styles.helpText}>Help</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.helpButton}>
-          <Feather name="headphones" size={14} color="black" />
-          <Text style={styles.helpText}>Help</Text>
-        </TouchableOpacity>
-      </View>
 
-      <View style={styles.content}>
-        <Text style={styles.title}>Confirm OTP</Text>
-        <Text style={styles.subtitle}>
-          We sent a 4-digit code to{" "}
-          <Text style={styles.phoneHighlight}>{displayEmail}</Text>
-        </Text>
+        <View style={styles.content}>
+          <Text style={styles.title}>Confirm OTP</Text>
+          <Text style={styles.subtitle}>
+            We sent a 4-digit code to{" "}
+            <Text style={styles.phoneHighlight}>{displayEmail}</Text>
+          </Text>
 
-        <View style={styles.otpContainer}>
-          {otp.map((digit, index) => (
-            <TextInput
-              key={index}
-              style={[
-                  styles.otpInput, 
+          <View style={styles.otpContainer}>
+            {otp.map((digit, index) => (
+              <TextInput
+                key={index}
+                style={[
+                  styles.otpInput,
                   digit ? styles.otpInputFilled : null,
-                  isError ? styles.otpInputError : null
-              ]}
-              value={digit}
-              onChangeText={(value) => handleOtpChange(value, index)}
-              onKeyPress={({ nativeEvent }) =>
-                handleBackspace(nativeEvent.key, index)
-              }
-              keyboardType="numeric"
-              maxLength={1}
-              editable={!isLoading}
-              ref={(ref) => {
-                inputs.current[index] = ref;
-              }}
-            />
-          ))}
-        </View>
+                  isError ? styles.otpInputError : null,
+                ]}
+                value={digit}
+                onChangeText={(value) => handleOtpChange(value, index)}
+                onKeyPress={({ nativeEvent }) => handleBackspace(nativeEvent.key, index)}
+                keyboardType="numeric"
+                maxLength={1}
+                editable={!isLoading}
+                ref={(ref) => { inputs.current[index] = ref; }}
+              />
+            ))}
+          </View>
 
-        {/* Resend & Loading */}
-        <View style={styles.resendRow}>
-          {isLoading ? (
-             <ActivityIndicator color={COLORS.primary} />
-          ) : (
-            <>
-              <Text style={styles.resendText}>Didn't receive the code? </Text>
-              {canResend ? (
-                <TouchableOpacity onPress={handleResend}>
-                  <Text style={styles.resendLink}>Resend Code</Text>
-                </TouchableOpacity>
-              ) : (
-                <Text style={styles.resendTimer}>Resend in {resendTimer}s</Text>
-              )}
-            </>
-          )}
+          <View style={styles.resendRow}>
+            {isLoading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : (
+              <>
+                <Text style={styles.resendText}>Didn't receive the code? </Text>
+                {canResend ? (
+                  <TouchableOpacity onPress={handleResend}>
+                    <Text style={styles.resendLink}>Resend Code</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.resendTimer}>Resend in {resendTimer}s</Text>
+                )}
+              </>
+            )}
+          </View>
         </View>
-      </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -215,8 +204,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#ffff",
-    paddingHorizontal: SPACING.m,
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
+  },
+  flex: {
+    flex: 1,
   },
   header: {
     flexDirection: "row",
@@ -224,7 +214,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
     paddingBottom: 16,
-    paddingHorizontal:20,
+    paddingHorizontal: 20,
   },
   tag: {
     backgroundColor: "#bdf7db",
@@ -314,8 +304,6 @@ const styles = StyleSheet.create({
     borderColor: "#ef4444",
     backgroundColor: "#fef2f2",
   },
-
-  // Resend
   resendRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -339,7 +327,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontFamily: Fonts.rounded,
   },
-
   button: {
     backgroundColor: COLORS.primary,
     height: 48,
