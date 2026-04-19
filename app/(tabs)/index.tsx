@@ -9,7 +9,7 @@ import {
   Dimensions,
   Easing,
   FlatList,
-  Keyboard, Pressable,
+  Keyboard, Modal, Pressable,
   Platform,
   StyleSheet,
   Text,
@@ -34,7 +34,6 @@ import ActiveTripSheet from '../components/ActiveTripSheet';
 import JoinRideView from '../components/joinride';
 import RequestDetailsSheet, { RequestDetails } from '../components/RequestDetailsSheet';
 import RatingModal from '../components/RatingModal';
-import LocationPermissionScreen from '../components/LocationPermissionScreen';
 import LocationDeniedScreen from '../components/LocationDeniedScreen';
 import { useLocationPermission } from '../hooks/use-location-permission';
 
@@ -161,17 +160,7 @@ const {
 
   // --- LOCATION PERMISSION ---
   const { status: permissionStatus, requestPermission, openSettings } = useLocationPermission();
-  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [bypassPermission, setBypassPermission] = useState(false);
-
-  const handleAllowLocation = async () => {
-    setIsRequestingPermission(true);
-    const granted = await requestPermission();
-    setIsRequestingPermission(false);
-    if (granted) {
-      loadLocationData();
-    }
-  };
 
   // --- ANIMATION STATE ---
   const sheetHeight = useRef(new Animated.Value(SHEET_COLLAPSED_HEIGHT)).current;
@@ -202,6 +191,12 @@ const {
   }, [sheetHeight]);
 
   const loadLocationData = useCallback(async () => {
+    if (permissionStatus === 'undetermined') {
+      const granted = await requestPermission();
+      if (!granted) return;
+    } else if (permissionStatus === 'denied') {
+      return;
+    }
     const coords = await LocationService.getCurrentCoordinates();
     if (coords) {
       const newRegion = {
@@ -385,32 +380,16 @@ const {
     return Math.max(routeEstimate, liveFare);
   }, [currentRide?.destination, currentRide?.fare, currentRide?.origin, currentRide?.preferences?.shared, currentRide?.price]);
 
-  if (permissionStatus === 'undetermined' && !bypassPermission) {
-    return (
-      <LocationPermissionScreen
-        onAllow={handleAllowLocation}
-        onSkip={() => setBypassPermission(true)}
-        isRequesting={isRequestingPermission}
-      />
-    );
-  }
-
-  if (permissionStatus === 'denied' && !bypassPermission) {
-    return (
-      <LocationDeniedScreen
-        onOpenSettings={openSettings}
-        onContinueWithout={() => setBypassPermission(true)}
-      />
-    );
-  }
-
-  if (permissionStatus === 'checking') {
-    return <View style={styles.container} />;
-  }
-
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
+
+      <Modal visible={permissionStatus === 'denied' && !bypassPermission} animationType="slide" transparent={false}>
+        <LocationDeniedScreen
+          onOpenSettings={openSettings}
+          onContinueWithout={() => setBypassPermission(true)}
+        />
+      </Modal>
 
       {/* 1. MAP */}
       <MapView

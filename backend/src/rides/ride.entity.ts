@@ -1,5 +1,6 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { User } from '../users/user.entity';
+import { Booking } from './booking.entity';
 
 export enum RideStatus {
     SEARCHING = 'searching',
@@ -28,6 +29,9 @@ export class Ride {
 
     @Column({ nullable: true })
     driverId: string;
+
+    @OneToMany(() => Booking, (booking) => booking.ride)
+    bookings: Booking[];
 
     @Column('simple-json')
     origin: {

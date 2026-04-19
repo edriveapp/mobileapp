@@ -33,6 +33,9 @@ export const uploadFile = async (
   } as any);
 
   try {
+    console.log(`[MediaService] Attempting to upload to: ${api.defaults.baseURL}/media/upload`);
+    console.log(`[MediaService] Local URI: ${uri}`);
+    
     const response = await api.post<UploadResponse>(
       fieldName === "files" ? "/media/upload-multiple" : "/media/upload",
       formData,
@@ -40,11 +43,19 @@ export const uploadFile = async (
         headers: {
           "Content-Type": "multipart/form-data",
         },
+        timeout: 30000, // Increase timeout for large file uploads
       }
     );
+    
+    console.log(`[MediaService] Upload successful:`, response.data.url);
     return response.data.url;
-  } catch (error) {
-    console.error("Upload failed:", error);
+  } catch (error: any) {
+    console.error("[MediaService] Upload failed:", {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data,
+      status: error.response?.status
+    });
     throw error;
   }
 };
