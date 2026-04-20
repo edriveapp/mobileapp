@@ -9,8 +9,8 @@ export class AddBookingsTable1744200000000 implements MigrationInterface {
         await queryRunner.query(`
             CREATE TABLE "bookings" (
                 "id"              uuid                        NOT NULL DEFAULT uuid_generate_v4(),
-                "rideId"          character varying           NOT NULL,
-                "passengerId"     character varying           NOT NULL,
+                "rideId"          uuid                        NOT NULL,
+                "passengerId"     uuid                        NOT NULL,
                 "seatsBooked"     integer                     NOT NULL DEFAULT 1,
                 "pickupLocation"  text,
                 "paymentMethod"   character varying           DEFAULT 'cash',

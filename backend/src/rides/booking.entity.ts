@@ -25,14 +25,14 @@ export class Booking {
     @JoinColumn({ name: 'rideId' })
     ride: Ride;
 
-    @Column()
+    @Column({ type: 'uuid' })
     rideId: string;
 
     @ManyToOne(() => User, { eager: true })
     @JoinColumn({ name: 'passengerId' })
     passenger: User;
 
-    @Column()
+    @Column({ type: 'uuid' })
     passengerId: string;
 
     @Column({ type: 'int', default: 1 })
