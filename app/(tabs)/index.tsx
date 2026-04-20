@@ -209,8 +209,14 @@ const {
       await fetchNearbyDrivers(coords.latitude, coords.longitude);
     }
 
-    const details = await LocationService.getCurrentLocationDetails();
-    setLocationState(details.area || "Unknown");
+    let details = await LocationService.getCurrentLocationDetails();
+    if (details.state === 'Unknown' || details.city === 'Unknown') {
+      const ipLoc = await LocationService.getLocationFromIP();
+      if (ipLoc.city || ipLoc.state) {
+        details = { city: ipLoc.city, state: ipLoc.state, area: [ipLoc.city, ipLoc.state].filter(Boolean).join(', ') };
+      }
+    }
+    setLocationState(details.area || 'Unknown');
     setEmergencyContacts(LocationService.getEmergencyNumbersFromParts(details.city, details.state));
   }, [fetchNearbyDrivers]);
 
@@ -487,9 +493,10 @@ const {
       )}
 
       {/* 3. SIDE MENU */}
-      {menuVisible && (
-        <Pressable style={[styles.menuBackdrop, { paddingTop: insets.top }]} onPress={() => setMenuVisible(false)}>
-          <View style={styles.sideMenuContainer}>
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: 'white' }} pointerEvents="none" />
+        <Pressable style={styles.menuBackdrop} onPress={() => setMenuVisible(false)}>
+          <View style={[styles.sideMenuContainer, { marginTop: insets.top }]}>
             <View style={styles.menuHeader}>
               <Text style={styles.menuTitle}>Safety & Support</Text>
               <TouchableOpacity onPress={() => setMenuVisible(false)}>
@@ -528,7 +535,7 @@ const {
             </TouchableOpacity>
           </View>
         </Pressable>
-      )}
+      </Modal>
 
       {/* 4. ANIMATED BOTTOM SHEET */}
       <Animated.View style={[styles.bottomSheet, { height: sheetHeight }]}>
@@ -645,7 +652,7 @@ const styles = StyleSheet.create({
   locationPillText: { fontWeight: '400', marginLeft: 8, fontSize: 14, fontFamily: Fonts.rounded },
   fab: { position: 'absolute', right: 20, bottom: '48%', backgroundColor: 'white', width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 5, elevation: 5, zIndex: 9 },
   menuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 55, justifyContent: 'flex-start' },
-  sideMenuContainer: { width: '75%', height: '100%', backgroundColor: 'white', padding: SPACING.l, paddingTop: 20, shadowColor: '#000', shadowOffset: { width: 2, height: 0 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
+   sideMenuContainer: { width: '75%', height: '100%', backgroundColor: 'white', padding: SPACING.l, paddingTop: 20, shadowColor: '#000', shadowOffset: { width: 2, height: 0 }, shadowOpacity: 0, shadowRadius: 1, elevation: 1 },
   menuHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.m },
   menuTitle: { fontSize: 22, fontFamily: Fonts.bold },
   locationBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F9F4', padding: 8, borderRadius: 8, alignSelf: 'flex-start', marginBottom: SPACING.l },
@@ -657,10 +664,10 @@ const styles = StyleSheet.create({
   emergencyIcon: { width: 40, height: 40, backgroundColor: '#FFF0F0', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   emergencyLabel: { fontSize: 12, color: COLORS.textSecondary },
   emergencyValue: { fontSize: 16, fontWeight: 'bold' },
-  supportButton: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: '#F5F5F5', borderRadius: 12, marginTop: SPACING.s },
+  supportButton: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: '#F5F5F5', borderRadius: 12, marginTop: 'auto', marginBottom: 48 },
   supportText: { fontSize: 16, fontWeight: '500' },
   bottomSheet: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.l, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 16, zIndex: 50, fontFamily: Fonts.rounded },
-  greetingTitle: { fontSize: 20, fontWeight: '600', marginBottom: SPACING.m, color: '#000', fontFamily: Fonts.semibold },
+  greetingTitle: { fontSize: 22, fontWeight: '700', marginBottom: SPACING.m, color: '#000', fontFamily: Fonts.bold },
   placeholderText: { fontSize: 16, color: COLORS.textSecondary, fontFamily: Fonts.rounded, fontWeight: '500' },
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 12, paddingHorizontal: SPACING.m, height: 50, marginBottom: SPACING.l, borderWidth: 1, borderColor: '#E0E0E0' },
   searchIcon: { marginRight: SPACING.s },

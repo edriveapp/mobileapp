@@ -135,22 +135,20 @@ export default function ProfileScreen() {
 
                 {/* Avatar Section */}
                 <View style={styles.avatarContainer}>
-                    <View style={styles.avatar}>
-                        {user.avatarUrl ? (
-                            <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
-                        ) : (
-                            <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
-                        )}
-                    </View>
-                    <TouchableOpacity style={styles.photoButton} onPress={handleUpdatePhoto} disabled={isUpdatingPhoto}>
-                        {isUpdatingPhoto ? (
-                            <ActivityIndicator size="small" color={COLORS.primary} />
-                        ) : (
-                            <>
-                                <Ionicons name="camera-outline" size={14} color={COLORS.primary} />
-                                <Text style={styles.photoButtonText}>Update photo</Text>
-                            </>
-                        )}
+                    <TouchableOpacity onPress={handleUpdatePhoto} disabled={isUpdatingPhoto} activeOpacity={0.85} style={styles.avatarWrapper}>
+                        <View style={styles.avatar}>
+                            {user.avatarUrl ? (
+                                <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+                            ) : (
+                                <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                            )}
+                        </View>
+                        <View style={styles.cameraBadge}>
+                            {isUpdatingPhoto
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Ionicons name="camera" size={14} color="#fff" />
+                            }
+                        </View>
                     </TouchableOpacity>
                     <Text style={styles.userName}>{displayName}</Text>
                     <Text style={styles.userEmail}>{user.email}</Text>
@@ -281,7 +279,7 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: COLORS.border,
     },
-    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, fontFamily: Fonts.bold },
+    headerTitle: { fontSize: 22, fontWeight: '600', color: COLORS.text, fontFamily: Fonts.semibold },
 
     content: { padding: SPACING.l, paddingBottom: 40 },
 
@@ -291,6 +289,10 @@ const styles = StyleSheet.create({
         marginBottom: SPACING.xl,
         marginTop: SPACING.s,
     },
+    avatarWrapper: {
+        position: 'relative',
+        marginBottom: SPACING.s,
+    },
     avatar: {
         width: 80,
         height: 80,
@@ -298,12 +300,24 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.primary,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: SPACING.s,
         shadowColor: COLORS.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 8,
         elevation: 4,
+    },
+    cameraBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: COLORS.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
     },
     avatarImage: {
         width: '100%',
@@ -321,23 +335,6 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         marginBottom: 2,
         fontFamily: Fonts.bold,
-    },
-    photoButton: {
-        marginBottom: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 999,
-        backgroundColor: '#F4FBF6',
-        borderWidth: 1,
-        borderColor: '#D1E7D7',
-    },
-    photoButtonText: {
-        color: COLORS.primary,
-        fontSize: 12,
-        fontFamily: Fonts.semibold,
     },
     userEmail: {
         fontSize: 14,

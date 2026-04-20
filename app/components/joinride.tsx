@@ -716,6 +716,7 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
             <TextInput
               style={styles.inputField}
               placeholder="Enter Current Location"
+              placeholderTextColor="#9CA3AF"
               value={originText}
               onFocus={() => setActiveField('origin')}
               onChangeText={(t) => handleSearchLogic(t, 'origin')}
@@ -738,6 +739,7 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
             <TextInput
               style={styles.inputField}
               placeholder="Where to?"
+              placeholderTextColor="#9CA3AF"
               value={destText}
               onFocus={() => setActiveField('dest')}
               onChangeText={(t) => handleSearchLogic(t, 'dest')}
@@ -753,6 +755,7 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
             <TextInput
               style={styles.stopInput}
               placeholder="Add stop (optional)"
+              placeholderTextColor="#9CA3AF"
               value={stopText}
               onChangeText={setStopText}
               onSubmitEditing={handleAddStop}

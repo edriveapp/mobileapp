@@ -187,10 +187,11 @@ const styles = StyleSheet.create({
         borderBottomColor: COLORS.border,
     },
     title: {
-        fontSize: 20,
+        fontSize: 22,
         fontFamily: Fonts.semibold,
         color: COLORS.text,
         textAlign: 'center',
+        fontWeight:700,
     },
     list: {
         padding: SPACING.m,

@@ -697,7 +697,7 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     fontSize: 22,
-    fontFamily: Fonts?.bold,
+    fontFamily: Fonts?.semibold,
     color: COLORS.text,
     textAlign: 'center',
     marginBottom: SPACING.s,
