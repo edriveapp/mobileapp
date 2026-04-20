@@ -60,7 +60,13 @@ const getDirections = async (startLoc: { latitude: number; longitude: number }, 
 export default function DriverMapScreen() {
     const mapRef = useRef<MapView>(null);
     const insets = useSafeAreaInsets();
-    const tabBarHeight = useBottomTabBarHeight();
+    const rawTabBarHeight = useBottomTabBarHeight();
+    // On Android, useBottomTabBarHeight includes the bottom inset which the
+    // absolute panel already accounts for via the system window insets, so we
+    // strip it to avoid the panel floating above the tab bar.
+    const tabBarHeight = Platform.OS === 'android'
+        ? rawTabBarHeight - insets.bottom
+        : rawTabBarHeight;
     const router = useRouter();
     const { tripId: paramTripId } = useLocalSearchParams<{ tripId?: string }>();
     const {
@@ -125,7 +131,8 @@ export default function DriverMapScreen() {
         );
         if (!ride) return;
 
-        const pickup = ride.pickupLocation || ride.origin;
+        // Always use origin for coords — pickupLocation from booking may be a plain string
+        const pickup = ride.origin;
         if (!pickup?.lat || !pickup?.lon) return;
 
         autoNavigatedRef.current = paramTripId;

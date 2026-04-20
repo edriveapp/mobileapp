@@ -163,18 +163,17 @@ export const useTripStore = create<TripState>((set, get) => ({
     fetchAvailableTrips: async (filters) => {
         set({ isLoading: true, error: null });
         try {
-            // We need to know if we are searching as a driver or rider. 
-            // Better to pass it or get from authStore. But simpler to pass in filters.
             const response = await api.get('/rides/available', { params: filters });
             const normalized = Array.isArray(response.data)
                 ? response.data.map(normalizeTrip)
                 : [];
+            // Only update trendingTrips for rider-context fetches so driver-mode
+            // calls don't overwrite the driver-route list shown in JoinRideView.
+            const isRiderFetch = !filters?.role || filters?.role === 'rider';
             set({
                 availableTrips: normalized,
                 trips: normalized,
-                // We derive trending trips from the available list (e.g., top 5)
-                // or you can point this to a specific /rides/trending endpoint
-                trendingTrips: normalized.slice(0, 8)
+                ...(isRiderFetch ? { trendingTrips: normalized.slice(0, 8) } : {}),
             });
         } catch (error: any) {
             console.error("Fetch Available Trips Error:", error);

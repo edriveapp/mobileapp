@@ -3,13 +3,16 @@ import { COLORS, Fonts } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 
 export default function CreatePasswordScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
     const email = (params.email as string) || '';
     const otp = (params.otp as string) || '';
+    const insets = useSafeAreaInsets();
 
     const resetPassword = useAuthStore((state) => state.resetPassword);
     const isLoading = useAuthStore((state) => state.isLoading);
@@ -47,76 +50,78 @@ export default function CreatePasswordScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={[styles.container, { paddingTop: insets.top }]}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.header}>
-                <View style={styles.tag}>
-                    <Text style={styles.tagText}>Change Password</Text>
-                </View>
-                <TouchableOpacity style={styles.helpButton}>
-                    <Feather name="headphones" size={14} color="black" />
-                    <Text style={styles.helpText}>Help</Text>
-                </TouchableOpacity>
-            </View>
 
-            <View style={styles.content}>
-                <Text style={styles.title}>Create a new password</Text>
-                <Text style={styles.subtitle}>Your new password must be at least 8 characters.</Text>
-
-                <View style={[styles.inputContainer, { marginTop: 24 }]}>
-                    <Text style={styles.label}>New Password</Text>
-                    <View style={styles.inputWrapper}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Enter a new password"
-                            placeholderTextColor="#B0B0B0"
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry={!showPassword}
-                        />
-                        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                            <Feather name={showPassword ? 'eye' : 'eye-off'} size={18} color="#999" />
-                        </TouchableOpacity>
+            <KeyboardSafeView>
+                <View style={styles.header}>
+                    <View style={styles.tag}>
+                        <Text style={styles.tagText}>Change Password</Text>
                     </View>
-                    {password.length > 0 && password.length < 8 && (
-                        <Text style={styles.errorText}>8 characters minimum</Text>
-                    )}
-                </View>
-
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Confirm Password</Text>
-                    <View style={styles.inputWrapper}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Confirm new password"
-                            placeholderTextColor="#B0B0B0"
-                            value={confirmPassword}
-                            onChangeText={setConfirmPassword}
-                            secureTextEntry={!showConfirm}
-                        />
-                        <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)}>
-                            <Feather name={showConfirm ? 'eye' : 'eye-off'} size={18} color="#999" />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                <View style={styles.bottomSection}>
-                    <TouchableOpacity
-                        style={[styles.button, isLoading && { opacity: 0.7 }]}
-                        onPress={handleReset}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? (
-                            <ActivityIndicator color={COLORS.white} />
-                        ) : (
-                            <Text style={styles.buttonText}>Reset Password</Text>
-                        )}
+                    <TouchableOpacity style={styles.helpButton}>
+                        <Feather name="headphones" size={14} color="black" />
+                        <Text style={styles.helpText}>Help</Text>
                     </TouchableOpacity>
                 </View>
+
+                <View style={styles.content}>
+                    <Text style={styles.title}>Create a new password</Text>
+                    <Text style={styles.subtitle}>Your new password must be at least 8 characters.</Text>
+
+                    <View style={[styles.inputContainer, { marginTop: 24 }]}>
+                        <Text style={styles.label}>New Password</Text>
+                        <View style={styles.inputWrapper}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Enter a new password"
+                                placeholderTextColor="#B0B0B0"
+                                value={password}
+                                onChangeText={setPassword}
+                                secureTextEntry={!showPassword}
+                            />
+                            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                                <Feather name={showPassword ? 'eye' : 'eye-off'} size={18} color="#999" />
+                            </TouchableOpacity>
+                        </View>
+                        {password.length > 0 && password.length < 8 && (
+                            <Text style={styles.errorText}>8 characters minimum</Text>
+                        )}
+                    </View>
+
+                    <View style={styles.inputContainer}>
+                        <Text style={styles.label}>Confirm Password</Text>
+                        <View style={styles.inputWrapper}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Confirm new password"
+                                placeholderTextColor="#B0B0B0"
+                                value={confirmPassword}
+                                onChangeText={setConfirmPassword}
+                                secureTextEntry={!showConfirm}
+                            />
+                            <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)}>
+                                <Feather name={showConfirm ? 'eye' : 'eye-off'} size={18} color="#999" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </KeyboardSafeView>
+
+            {/* CTA pinned at bottom — outside KeyboardSafeView so it never shifts */}
+            <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
+                <TouchableOpacity
+                    style={[styles.button, isLoading && { opacity: 0.7 }]}
+                    onPress={handleReset}
+                    disabled={isLoading}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                        <Text style={styles.buttonText}>Reset Password</Text>
+                    )}
+                </TouchableOpacity>
             </View>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -124,7 +129,6 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#fff',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     },
     header: {
         flexDirection: 'row',
@@ -164,6 +168,7 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         paddingHorizontal: 20,
+        paddingBottom: 20,
     },
     title: {
         fontSize: 27,
@@ -205,9 +210,8 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.rounded,
     },
     bottomSection: {
-        flex: 1,
-        justifyContent: 'flex-end',
-        paddingBottom: 24,
+        paddingHorizontal: 20,
+        paddingTop: 12,
     },
     button: {
         backgroundColor: COLORS.primary,

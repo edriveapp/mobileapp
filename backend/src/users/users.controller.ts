@@ -29,6 +29,12 @@ export class UsersController {
     }
 
     @UseGuards(AuthGuard('jwt'))
+    @Post('wallet/fund')
+    fundWallet(@Request() req: any, @Body() body: { amount: number }) {
+        return this.usersService.fundWallet(req.user.userId, Number(body.amount));
+    }
+
+    @UseGuards(AuthGuard('jwt'))
     @Post('wallet/pay-commission')
     payCommission(@Request() req: any, @Body() body: { amount?: number }) {
         return this.usersService.payCommission(req.user.userId, body?.amount ? Number(body.amount) : undefined);

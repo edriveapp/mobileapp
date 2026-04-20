@@ -3,12 +3,15 @@ import { COLORS, Fonts } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 
 export default function ForgotPasswordScreen() {
     const router = useRouter();
     const forgotPassword = useAuthStore((state) => state.forgotPassword);
     const isLoading = useAuthStore((state) => state.isLoading);
+    const insets = useSafeAreaInsets();
     const [email, setEmail] = useState('');
 
     const handleNext = async () => {
@@ -32,59 +35,61 @@ export default function ForgotPasswordScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={[styles.container, { paddingTop: insets.top }]}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.header}>
-                <View style={styles.tag}>
-                    <Text style={styles.tagText}>Change Password</Text>
+
+            <KeyboardSafeView>
+                <View style={styles.header}>
+                    <View style={styles.tag}>
+                        <Text style={styles.tagText}>Change Password</Text>
+                    </View>
+                    <TouchableOpacity style={styles.helpButton}>
+                        <Feather name="headphones" size={14} color="black" />
+                        <Text style={styles.helpText}>Help</Text>
+                    </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.helpButton}>
-                    <Feather name="headphones" size={14} color="black" />
-                    <Text style={styles.helpText}>Help</Text>
-                </TouchableOpacity>
-            </View>
 
-            <View style={styles.content}>
-                <Text style={styles.title}>Forgot Password</Text>
-                <Text style={styles.subtitle}>Enter your account email and we'll send you a reset code.</Text>
+                <View style={styles.content}>
+                    <Text style={styles.title}>Forgot Password</Text>
+                    <Text style={styles.subtitle}>Enter your account email and we'll send you a reset code.</Text>
 
-                <View style={[styles.inputContainer, { marginTop: 24 }]}>
-                    <Text style={styles.label}>Email Address</Text>
-                    <View style={styles.inputWrapper}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Enter your email address"
-                            placeholderTextColor="#B0B0B0"
-                            value={email}
-                            onChangeText={setEmail}
-                            autoCapitalize="none"
-                            keyboardType="email-address"
-                            autoComplete="email"
-                        />
+                    <View style={[styles.inputContainer, { marginTop: 24 }]}>
+                        <Text style={styles.label}>Email Address</Text>
+                        <View style={styles.inputWrapper}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Enter your email address"
+                                placeholderTextColor="#B0B0B0"
+                                value={email}
+                                onChangeText={setEmail}
+                                autoCapitalize="none"
+                                keyboardType="email-address"
+                                autoComplete="email"
+                            />
+                        </View>
                     </View>
                 </View>
+            </KeyboardSafeView>
 
-                <View style={styles.bottomSection}>
-                    <TouchableOpacity
-                        style={[styles.button, isLoading && { opacity: 0.7 }]}
-                        onPress={handleNext}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? (
-                            <ActivityIndicator color={COLORS.white} />
-                        ) : (
-                            <Text style={styles.buttonText}>Send Reset Code</Text>
-                        )}
-                    </TouchableOpacity>
+            {/* CTA pinned at bottom — outside KeyboardSafeView so it never shifts */}
+            <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
+                <TouchableOpacity
+                    style={[styles.button, isLoading && { opacity: 0.7 }]}
+                    onPress={handleNext}
+                    disabled={isLoading}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                        <Text style={styles.buttonText}>Send Reset Code</Text>
+                    )}
+                </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.backLink} onPress={() => router.back()}>
-                        <Text style={styles.backLinkText}>Back to Login</Text>
-                    </TouchableOpacity>
-                </View>
+                <TouchableOpacity style={styles.backLink} onPress={() => router.back()}>
+                    <Text style={styles.backLinkText}>Back to Login</Text>
+                </TouchableOpacity>
             </View>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -92,7 +97,6 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#fff',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     },
     header: {
         flexDirection: 'row',
@@ -132,6 +136,7 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         paddingHorizontal: 20,
+        paddingBottom: 20,
     },
     title: {
         fontSize: 27,
@@ -173,9 +178,8 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.rounded,
     },
     bottomSection: {
-        flex: 1,
-        justifyContent: 'flex-end',
-        paddingBottom: 24,
+        paddingHorizontal: 20,
+        paddingTop: 12,
     },
     button: {
         backgroundColor: COLORS.primary,

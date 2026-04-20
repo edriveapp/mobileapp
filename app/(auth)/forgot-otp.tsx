@@ -2,13 +2,16 @@ import { COLORS, Fonts } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '@/app/services/api';
 
 export default function ForgotOtpScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
     const email = (params.email as string) || '';
+    const insets = useSafeAreaInsets();
+
     const [otp, setOtp] = useState(['', '', '', '']);
     const inputs = useRef<Array<TextInput | null>>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -58,8 +61,6 @@ export default function ForgotOtpScreen() {
         }
         setIsLoading(true);
         try {
-            // Verify OTP exists and is valid before proceeding
-            // We pass it along to create-password to do the actual reset
             router.push({ pathname: '/(auth)/create-password', params: { email, otp: code } });
         } finally {
             setIsLoading(false);
@@ -67,68 +68,73 @@ export default function ForgotOtpScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={[styles.container, { paddingTop: insets.top }]}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.header}>
-                <View style={styles.tag}>
-                    <Text style={styles.tagText}>Change Password</Text>
-                </View>
-                <TouchableOpacity style={styles.helpButton}>
-                    <Feather name="headphones" size={14} color="black" />
-                    <Text style={styles.helpText}>Help</Text>
-                </TouchableOpacity>
-            </View>
 
-            <View style={styles.content}>
-                <Text style={styles.title}>Confirm OTP</Text>
-                <Text style={styles.subtitle}>
-                    We sent a 4-digit code to{'\n'}
-                    <Text style={styles.emailHighlight}>{email}</Text>
-                </Text>
-
-                <View style={styles.otpContainer}>
-                    {otp.map((digit, index) => (
-                        <TextInput
-                            key={index}
-                            style={[styles.otpInput, digit ? styles.otpInputFilled : null]}
-                            value={digit}
-                            onChangeText={(value) => handleOtpChange(value, index)}
-                            onKeyPress={({ nativeEvent }) => handleBackspace(nativeEvent.key, index)}
-                            keyboardType="numeric"
-                            maxLength={1}
-                            ref={(ref) => { inputs.current[index] = ref; }}
-                        />
-                    ))}
-                </View>
-
-                <View style={styles.resendRow}>
-                    <Text style={styles.resendText}>Didn't receive the code? </Text>
-                    {canResend ? (
-                        <TouchableOpacity onPress={handleResend}>
-                            <Text style={styles.resendLink}>Resend</Text>
-                        </TouchableOpacity>
-                    ) : (
-                        <Text style={styles.resendTimer}>Resend in {resendTimer}s</Text>
-                    )}
-                </View>
-
-                <View style={styles.bottomSection}>
-                    <TouchableOpacity
-                        style={[styles.button, isLoading && { opacity: 0.7 }]}
-                        onPress={handleNext}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? (
-                            <ActivityIndicator color={COLORS.white} />
-                        ) : (
-                            <Text style={styles.buttonText}>Continue</Text>
-                        )}
+            <KeyboardAvoidingView
+                style={styles.flex}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                <View style={styles.header}>
+                    <View style={styles.tag}>
+                        <Text style={styles.tagText}>Change Password</Text>
+                    </View>
+                    <TouchableOpacity style={styles.helpButton}>
+                        <Feather name="headphones" size={14} color="black" />
+                        <Text style={styles.helpText}>Help</Text>
                     </TouchableOpacity>
                 </View>
-            </View>
+
+                <View style={styles.content}>
+                    <Text style={styles.title}>Confirm OTP</Text>
+                    <Text style={styles.subtitle}>
+                        We sent a 4-digit code to{'\n'}
+                        <Text style={styles.emailHighlight}>{email}</Text>
+                    </Text>
+
+                    <View style={styles.otpContainer}>
+                        {otp.map((digit, index) => (
+                            <TextInput
+                                key={index}
+                                style={[styles.otpInput, digit ? styles.otpInputFilled : null]}
+                                value={digit}
+                                onChangeText={(value) => handleOtpChange(value, index)}
+                                onKeyPress={({ nativeEvent }) => handleBackspace(nativeEvent.key, index)}
+                                keyboardType="numeric"
+                                maxLength={1}
+                                ref={(ref) => { inputs.current[index] = ref; }}
+                            />
+                        ))}
+                    </View>
+
+                    <View style={styles.resendRow}>
+                        <Text style={styles.resendText}>Didn't receive the code? </Text>
+                        {canResend ? (
+                            <TouchableOpacity onPress={handleResend}>
+                                <Text style={styles.resendLink}>Resend</Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <Text style={styles.resendTimer}>Resend in {resendTimer}s</Text>
+                        )}
+                    </View>
+                </View>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+
+            {/* CTA pinned at bottom — outside KeyboardAvoidingView so it never shifts */}
+            <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
+                <TouchableOpacity
+                    style={[styles.button, isLoading && { opacity: 0.7 }]}
+                    onPress={handleNext}
+                    disabled={isLoading}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                        <Text style={styles.buttonText}>Continue</Text>
+                    )}
+                </TouchableOpacity>
+            </View>
+        </View>
     );
 }
 
@@ -136,7 +142,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#fff',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    },
+    flex: {
+        flex: 1,
     },
     header: {
         flexDirection: 'row',
@@ -177,6 +185,7 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingHorizontal: 20,
         alignItems: 'center',
+        paddingTop: 16,
     },
     title: {
         fontSize: 27,
@@ -248,10 +257,8 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.rounded,
     },
     bottomSection: {
-        flex: 1,
-        justifyContent: 'flex-end',
-        paddingBottom: 24,
-        width: '100%',
+        paddingHorizontal: 20,
+        paddingTop: 12,
     },
     button: {
         backgroundColor: COLORS.primary,
