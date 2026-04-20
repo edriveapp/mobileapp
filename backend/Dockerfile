@@ -11,5 +11,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
+# Create uploads directory so ServeStaticModule and media uploads don't crash on startup
+RUN mkdir -p /app/public/uploads
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

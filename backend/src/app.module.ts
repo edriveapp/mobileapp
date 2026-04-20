@@ -47,7 +47,7 @@ import { MediaModule } from './common/media/media.module';
         }),
         ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
         ServeStaticModule.forRoot({
-            rootPath: join(__dirname, '..', '..', 'public'),
+            rootPath: join(__dirname, '..', 'public'),
             serveRoot: '/public',
         }),
         UsersModule,
