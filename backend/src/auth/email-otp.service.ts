@@ -125,7 +125,7 @@ export class EmailOtpService {
           <tr>
             <td style="background:#005124;padding:32px 40px;text-align:center;">
               <p style="margin:0;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">edrive</p>
-              <p style="margin:6px 0 0;font-size:13px;color:#a3d4b5;">Travel Smarter, Travel Together</p>
+              <p style="margin:6px 0 0;font-size:13px;color:#a3d4b5;">Travel with comfort</p>
             </td>
           </tr>
           <!-- Body -->
@@ -228,7 +228,7 @@ export class EmailOtpService {
           <tr>
             <td style="background:#005124;padding:32px 40px;text-align:center;">
               <p style="margin:0;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">edrive</p>
-              <p style="margin:6px 0 0;font-size:13px;color:#a3d4b5;">Travel Smarter, Travel Together</p>
+              <p style="margin:6px 0 0;font-size:13px;color:#a3d4b5;">Travel with Comfort</p>
             </td>
           </tr>
           <tr>

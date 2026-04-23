@@ -48,10 +48,10 @@ export function generateDriverVerificationEmail({
     approved: {
       caption: 'Your Driver Account Has Been Approved',
       subheading: "You're verified and ready to drive",
-      bodyHtml: `<p>Congratulations <strong>${driverName}</strong>! Your driver account has been reviewed and <strong>approved</strong>.</p><p>You can now log in to the eDrive app and start accepting ride requests. Welcome to the team!</p>`,
+      bodyHtml: `<p>Congratulations <strong>${driverName}</strong>! Your driver account has been reviewed and <strong>approved</strong>.</p><p>You can now log in to the edrive app and start accepting ride requests. Welcome to the team!</p>`,
     },
     rejected: {
-      caption: 'eDrive Verification Update',
+      caption: 'edrive Verification Update',
       subheading: 'Your verification could not be completed',
       bodyHtml: `<p>Dear <strong>${driverName}</strong>, unfortunately we were unable to approve your driver account at this time.${reason ? `</p><p><strong>Reason:</strong> ${reason}` : ''}</p><p>Please ensure your submitted documents are clear, valid, and up-to-date. You may resubmit your documents for another review. Contact our support team if you need assistance.</p>`,
     },
@@ -79,14 +79,14 @@ export function generateDriverWarningEmail({
 }: DriverWarningEmailProps): string {
   const levelUpper = level.toUpperCase();
   const bodyHtml = `<p>Dear <strong>${driverName}</strong>,</p>
-<p>You have received a <strong>${levelUpper} WARNING</strong> from the eDrive team.</p>
+<p>You have received a <strong>${levelUpper} WARNING</strong> from the edrive team.</p>
 <p><strong>Reason:</strong> ${reason}</p>
 <p>Please review our community guidelines and ensure compliance to avoid further action. Repeated violations may result in suspension or permanent removal from the platform.</p>
 <p>If you believe this warning was issued in error, please contact our support team and we will review your case.</p>`;
 
   return generateBroadcastEmailHtml({
     caption: `Account Warning — ${level.charAt(0).toUpperCase() + level.slice(1)}`,
-    subheading: 'Important notice from the eDrive team',
+    subheading: 'Important notice from the edrive team',
     bodyHtml,
     year,
   });
@@ -149,7 +149,7 @@ export function generateBroadcastEmailHtml({
               <p style="margin:0;font-family:'DM Sans',Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;
                 color:#ffffff;letter-spacing:-0.5px;">edrive</p>
               <p style="margin:6px 0 0;font-size:12px;color:#a3d4b5;letter-spacing:0.8px;text-transform:uppercase;">
-                Ride smarter, together
+               travel with comfort
               </p>
             </td>
           </tr>

@@ -295,11 +295,11 @@ export class AdminService {
             );
         }
 
-        // Email the driver using eDrive branded template
+        // Email the driver using edrive branded template
         const driverName = `${driver.firstName || ''} ${driver.lastName || ''}`.trim() || 'Driver';
         await this.mailerService.sendEmail(
             [driver.email],
-            `eDrive Account Warning – ${level.toUpperCase()}`,
+            `edrive Account Warning – ${level.toUpperCase()}`,
             generateDriverWarningEmail({ driverName, level, reason }),
             `You have received a ${level} warning: ${reason}`,
             { from: 'safety@edriveapp.com' },
@@ -332,9 +332,9 @@ export class AdminService {
         // Email the user
         await this.mailerService.sendEmail(
             [user.email],
-            `eDrive Account ${restrict ? 'Restricted' : 'Reinstated'}`,
-            `<p>Hello ${user.firstName || 'User'},</p><p>Your eDrive account has been <strong>${restrict ? 'restricted' : 'reinstated'}</strong> by admin.</p>`,
-            `Your eDrive account has been ${restrict ? 'restricted' : 'reinstated'}.`,
+            `edrive Account ${restrict ? 'Restricted' : 'Reinstated'}`,
+            `<p>Hello ${user.firstName || 'User'},</p><p>Your edrive account has been <strong>${restrict ? 'restricted' : 'reinstated'}</strong> by admin.</p>`,
+            `Your edrive account has been ${restrict ? 'restricted' : 'reinstated'}.`,
             { from: 'safety@edriveapp.com' },
         );
 
@@ -391,20 +391,20 @@ export class AdminService {
             );
         }
 
-        // Email the driver with branded eDrive template
+        // Email the driver with branded edrive template
         const driverName = `${saved.firstName || ''} ${saved.lastName || ''}`.trim() || 'Driver';
         const emailableStatuses: VerificationStatus[] = [VerificationStatus.APPROVED, VerificationStatus.REJECTED, VerificationStatus.PENDING];
         if (emailableStatuses.includes(status) && saved.email) {
             const subjectMap: Record<string, string> = {
-                [VerificationStatus.APPROVED]: 'Your eDrive Driver Account Has Been Approved',
-                [VerificationStatus.REJECTED]: 'eDrive Verification Update',
-                [VerificationStatus.PENDING]: 'Your eDrive Documents Are Under Review',
+                [VerificationStatus.APPROVED]: 'Your edrive Driver Account Has Been Approved',
+                [VerificationStatus.REJECTED]: 'edrive Verification Update',
+                [VerificationStatus.PENDING]: 'Your edrive Documents Are Under Review',
             };
             await this.mailerService.sendEmail(
                 [saved.email],
-                subjectMap[status] || `eDrive Verification: ${status}`,
+                subjectMap[status] || `edrive Verification: ${status}`,
                 generateDriverVerificationEmail({ driverName, status: status as 'approved' | 'rejected' | 'pending' }),
-                `Your eDrive driver verification status has been updated to: ${status}.`,
+                `Your edrive driver verification status has been updated to: ${status}.`,
                 { from: 'support@edriveapp.com' },
             );
         }
@@ -838,7 +838,7 @@ export class AdminService {
 
         await this.mailerService.sendEmail(
             [saved.email],
-            'Your eDrive admin account is ready',
+            'Your edrive admin account is ready',
             `<p>Hello ${saved.firstName || 'Admin'}, your admin account has been created with <strong>${payload.adminScope}</strong> scope.</p>`,
             `Your admin account has been created with ${payload.adminScope} scope.`,
             { from: 'no-reply@edriveapp.com' },
@@ -977,7 +977,7 @@ export class AdminService {
         if (ride?.passenger?.email) {
             await this.mailerService.sendEmail(
                 [ride.passenger.email],
-                'Your eDrive refund has been processed',
+                'Your edrive refund has been processed',
                 `<p>Hi ${ride.passenger.firstName || 'there'},</p><p>Your payment of <strong>₦${result.amount.toLocaleString()}</strong> for ride <strong>${(ride.origin as any)?.address || ''} → ${(ride.destination as any)?.address || ''}</strong> has been refunded.</p><p><strong>Reason:</strong> ${reason}</p><p>Funds should appear in your account within 3–5 business days depending on your bank.</p>`,
                 `Your refund of ₦${result.amount.toLocaleString()} has been processed.`,
                 { from: 'support@edriveapp.com' },

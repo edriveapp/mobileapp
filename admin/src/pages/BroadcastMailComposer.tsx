@@ -75,10 +75,10 @@ const BROADCAST_TEMPLATES = [
     label: 'Announcement',
     emoji: '📢',
     desc: 'New feature or platform news',
-    subject: 'Important update from eDrive',
+    subject: 'Important update from edrive',
     subheading: "Here's what's new",
     previewText: 'We have an exciting update to share with you.',
-    body: '<p>Hi {{firstname}},</p><p>We have some exciting news to share with you about eDrive.</p><p>[Write your announcement here]</p><p>As always, thank you for being part of our community.</p>',
+    body: '<p>Hi {{firstname}},</p><p>We have some exciting news to share with you about edrive.</p><p>[Write your announcement here]</p><p>As always, thank you for being part of our community.</p>',
   },
   {
     id: 'promo',
@@ -98,57 +98,57 @@ const BROADCAST_TEMPLATES = [
     subject: "We haven't seen you in a while",
     subheading: 'Your next ride is waiting',
     previewText: "It's been a while. Come back and ride with us.",
-    body: '<p>Hi {{firstname}},</p><p>We noticed it has been a while since your last trip with us, and we wanted to check in.</p><p>Whether you are heading to work, catching up with friends, or just need to get somewhere — eDrive is ready whenever you are.</p><p>Open the app and book your next ride today.</p>',
+    body: '<p>Hi {{firstname}},</p><p>We noticed it has been a while since your last trip with us, and we wanted to check in.</p><p>Whether you are heading to work, catching up with friends, or just need to get somewhere — edrive is ready whenever you are.</p><p>Open the app and book your next ride today.</p>',
   },
   {
     id: 'safety',
     label: 'Safety Update',
     emoji: '🛡️',
     desc: 'Safety tip or policy notice',
-    subject: 'A safety reminder from eDrive',
+    subject: 'A safety reminder from edrive',
     subheading: 'Your safety is our priority',
-    previewText: 'Important safety information from the eDrive team.',
-    body: '<p>Hi {{firstname}},</p><p>At eDrive, your safety is our highest priority. We want to share a few important reminders to help keep every trip safe for everyone.</p><p>[Add your safety tips or policy update here]</p><p>If you ever feel unsafe during a trip, please use the emergency button in the app to get immediate assistance.</p>',
+    previewText: 'Important safety information from the edrive team.',
+    body: '<p>Hi {{firstname}},</p><p>At edrive, your safety is our highest priority. We want to share a few important reminders to help keep every trip safe for everyone.</p><p>[Add your safety tips or policy update here]</p><p>If you ever feel unsafe during a trip, please use the emergency button in the app to get immediate assistance.</p>',
   },
   {
     id: 'service_update',
     label: 'Service Update',
     emoji: '🔧',
     desc: 'Maintenance, outage, or new area',
-    subject: 'A service update from eDrive',
+    subject: 'A service update from edrive',
     subheading: 'Please keep this in mind',
-    previewText: 'An update about your eDrive service.',
-    body: '<p>Hi {{firstname}},</p><p>We have an important update about our service to share with you.</p><p>[Describe the service update, new coverage area, schedule change, or maintenance window here]</p><p>Thank you for your patience and your continued support of eDrive.</p>',
+    previewText: 'An update about your edrive service.',
+    body: '<p>Hi {{firstname}},</p><p>We have an important update about our service to share with you.</p><p>[Describe the service update, new coverage area, schedule change, or maintenance window here]</p><p>Thank you for your patience and your continued support of edrive.</p>',
   },
   {
     id: 'app_update',
     label: 'App Update',
     emoji: '📱',
     desc: 'New version available',
-    subject: 'Update your eDrive app',
+    subject: 'Update your edrive app',
     subheading: 'New features are waiting for you',
-    previewText: 'A new version of eDrive is now available.',
-    body: '<p>Hi {{firstname}},</p><p>We have released a new version of the eDrive app with improvements and exciting new features.</p><p>[List what is new in this update]</p><p>Update from the App Store or Google Play to enjoy the latest experience.</p>',
+    previewText: 'A new version of edrive is now available.',
+    body: '<p>Hi {{firstname}},</p><p>We have released a new version of the edrive app with improvements and exciting new features.</p><p>[List what is new in this update]</p><p>Update from the App Store or Google Play to enjoy the latest experience.</p>',
   },
   {
     id: 'driver_tips',
     label: 'Driver Tips',
     emoji: '🚗',
     desc: 'Earnings tips for drivers',
-    subject: 'Tips to boost your earnings on eDrive',
+    subject: 'Tips to boost your earnings on edrive',
     subheading: 'Drive smarter, earn more',
-    previewText: 'Here are some tips to help you earn more with eDrive.',
-    body: '<p>Hi {{firstname}},</p><p>We want to help you make the most of your time on the road with eDrive.</p><p>[Add your driver tips, peak hour info, or incentive details here]</p><p>Thank you for being a valued part of the eDrive driver community.</p>',
+    previewText: 'Here are some tips to help you earn more with edrive.',
+    body: '<p>Hi {{firstname}},</p><p>We want to help you make the most of your time on the road with edrive.</p><p>[Add your driver tips, peak hour info, or incentive details here]</p><p>Thank you for being a valued part of the edrive driver community.</p>',
   },
   {
     id: 'seasonal',
     label: 'Seasonal / Holiday',
     emoji: '🎉',
     desc: 'Holiday or seasonal greetings',
-    subject: "Season's greetings from eDrive",
+    subject: "Season's greetings from edrive",
     subheading: 'Wishing you a wonderful season',
-    previewText: 'A message for the season from the eDrive team.',
-    body: '<p>Hi {{firstname}},</p><p>From everyone at eDrive, we wish you and your loved ones a wonderful season filled with joy, laughter, and great memories.</p><p>[Add your seasonal message here]</p><p>Stay safe on the roads — and remember, we are always here when you need a ride.</p>',
+    previewText: 'A message for the season from the edrive team.',
+    body: '<p>Hi {{firstname}},</p><p>From everyone at edrive, we wish you and your loved ones a wonderful season filled with joy, laughter, and great memories.</p><p>[Add your seasonal message here]</p><p>Stay safe on the roads — and remember, we are always here when you need a ride.</p>',
   },
 ] as const;
 
@@ -415,19 +415,24 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
 
   const handlePreview = () => {
     const bodyHtml = editorRef.current?.innerHTML ?? '';
-    const safeBody = bodyHtml.replace(/<a\s/gi, '<a style="color:#16a34a;text-decoration:underline;font-weight:600;" ');
+    // Replace {{firstname}} with a sample name so the preview shows personalisation
+    const personalised = bodyHtml.replace(/\{\{firstname\}\}/gi, 'Alex');
+    const safeBody = personalised.replace(/<a\s/gi, '<a style="color:#16a34a;text-decoration:underline;font-weight:600;" ');
     setPreviewHtml(`
       <div style="font-family:Inter,Helvetica Neue,sans-serif;background:#f1f5f9;min-height:100vh;padding:40px 16px;">
-        <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 20px 50px rgba(15,23,42,0.08);">
-          <div style="padding:28px 32px;background:linear-gradient(135deg,#052e16,#166534);color:#fff;">
-            <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.78;">edrive campaign</div>
-            <div style="margin-top:10px;font-size:28px;font-weight:700;">${caption || 'Campaign subject'}</div>
-            <div style="margin-top:8px;font-size:14px;opacity:0.88;">From ${senderEmail || defaultSenderEmail}</div>
-          </div>
-          <div style="padding:32px;">
-            ${previewText ? `<div style="font-size:12px;color:#64748b;margin-bottom:16px;">${previewText}</div>` : ''}
-            ${subheading ? `<p style="margin:0 0 14px;font-size:16px;font-weight:600;color:#16a34a;">${subheading}</p>` : ''}
-            <div style="font-size:15px;line-height:1.8;color:#334155;">${safeBody || '<p style="color:#94a3b8">Your message preview appears here.</p>'}</div>
+        <div style="max-width:640px;margin:0 auto;">
+          <p style="text-align:center;font-size:11px;color:#94a3b8;margin:0 0 12px;letter-spacing:0.1em;text-transform:uppercase;">Preview — {{firstname}} shown as <strong style="color:#64748b">Alex</strong></p>
+          <div style="background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 20px 50px rgba(15,23,42,0.08);">
+            <div style="padding:28px 32px;background:linear-gradient(135deg,#052e16,#166534);color:#fff;">
+              <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.78;">edrive campaign</div>
+              <div style="margin-top:10px;font-size:28px;font-weight:700;">${caption || 'Campaign subject'}</div>
+              <div style="margin-top:8px;font-size:14px;opacity:0.88;">From ${senderEmail || defaultSenderEmail}</div>
+            </div>
+            <div style="padding:32px;">
+              ${previewText ? `<div style="font-size:12px;color:#64748b;margin-bottom:16px;">${previewText}</div>` : ''}
+              ${subheading ? `<p style="margin:0 0 14px;font-size:16px;font-weight:600;color:#16a34a;">${subheading}</p>` : ''}
+              <div style="font-size:15px;line-height:1.8;color:#334155;">${safeBody || '<p style="color:#94a3b8">Your message preview appears here.</p>'}</div>
+            </div>
           </div>
         </div>
       </div>
