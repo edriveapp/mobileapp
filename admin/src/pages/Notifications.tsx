@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bell, Plus, Send, Trash2, Pause, Play, Calendar,
-  Clock, Repeat, Megaphone, X, Edit2, CheckCircle, Mail,
+  Clock, Repeat, Megaphone, X, Edit2, CheckCircle, Mail, Inbox,
 } from 'lucide-react';
 import { apiRequest } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
@@ -26,6 +26,21 @@ type Campaign = {
 type BroadcastAudienceSummary = {
   defaultSenderEmail: string;
   segments: AudienceSegment[];
+};
+
+type SupportTicketSummary = {
+  id: string;
+  subject: string;
+  description: string;
+  category?: string;
+  priority?: string;
+  createdByRole: string;
+  createdByUserId: string | null;
+  createdByEmail?: string | null;
+  creatorName?: string;
+  createdAt: string;
+  updatedAt: string;
+  status: 'open' | 'in_progress' | 'resolved';
 };
 
 const REPEAT_LABELS: Record<RepeatOption, string> = {
@@ -234,6 +249,7 @@ export default function Notifications() {
   const [emailComposerOpen, setEmailComposerOpen] = useState(false);
   const [emailSegments, setEmailSegments] = useState<AudienceSegment[]>([]);
   const [defaultSenderEmail, setDefaultSenderEmail] = useState('support@edriveapp.com');
+  const [inboundEmails, setInboundEmails] = useState<SupportTicketSummary[]>([]);
 
   const handleEmailSend = async (payload: BroadcastPayload) => {
     await apiRequest('/admin/broadcast/send', { method: 'POST', token, body: payload });
@@ -265,6 +281,19 @@ export default function Notifications() {
 
     loadAudienceSummary();
   }, [token]);
+
+  const loadInboundEmails = useCallback(async () => {
+    try {
+      const tickets = await apiRequest<SupportTicketSummary[]>('/support/tickets/admin', { token });
+      setInboundEmails((tickets || []).filter((ticket) => ticket.category === 'inbound_email').slice(0, 8));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadInboundEmails();
+  }, [loadInboundEmails]);
 
   const handleSaved = (campaign: Campaign) => {
     setCampaigns((prev) => {
@@ -377,6 +406,65 @@ export default function Notifications() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Inbound Emails */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+              <Inbox className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-900">Inbound Emails</h2>
+              <p className="text-sm text-gray-500">Recent emails received into the support inbox.</p>
+            </div>
+          </div>
+          <button
+            onClick={loadInboundEmails}
+            className="px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {inboundEmails.length === 0 ? (
+          <div className="p-8 text-center">
+            <Mail className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-500">No inbound emails yet</p>
+            <p className="text-xs text-gray-400 mt-1">Incoming support emails will appear here automatically.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {inboundEmails.map((email) => (
+              <div key={email.id} className="p-5 flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                  <Mail className="w-4 h-4 text-gray-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-gray-900 truncate">{email.subject}</h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium uppercase tracking-wide">
+                      inbound
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium uppercase tracking-wide">
+                      {email.status}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">
+                    From {email.createdByEmail || email.creatorName || 'Unknown sender'}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-2 line-clamp-3">
+                    {email.description}
+                  </p>
+                </div>
+                <div className="text-xs text-gray-400 shrink-0">
+                  {new Date(email.updatedAt).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {loading && <p className="text-sm text-gray-400">Loading campaigns…</p>}
