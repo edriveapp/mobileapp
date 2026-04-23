@@ -2,7 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { MoreThanOrEqual, Repository } from 'typeorm';
-import { MailerService } from '../common/mailer.service';
+import { generateDriverVerificationEmail, generateDriverWarningEmail } from '../common/emailTemplate';
+import { BatchEmailMessage, MailerService } from '../common/mailer.service';
 import { PushNotificationsService } from '../common/push-notifications.service';
 import { PaymentsService } from '../payments/payments.service';
 import { AdminScope, User, UserRole, VerificationStatus } from '../users/user.entity';
@@ -11,6 +12,7 @@ import { Rating } from '../ratings/rating.entity';
 import { buildTrendingAreas, extractAreaName } from '../rides/trending-areas.util';
 import { SupportMessage } from '../support/support-message.entity';
 import { SupportTicket, SupportTicketStatus } from '../support/support-ticket.entity';
+import { generateBroadcastEmailHtml } from '../common/emailTemplate';
 import { DriverWarning, WarningLevel } from './driver-warning.entity';
 import { CampaignRepeat, CampaignStatus, NotificationCampaign } from './notification-campaign.entity';
 
@@ -293,12 +295,14 @@ export class AdminService {
             );
         }
 
-        // Email the driver
+        // Email the driver using eDrive branded template
+        const driverName = `${driver.firstName || ''} ${driver.lastName || ''}`.trim() || 'Driver';
         await this.mailerService.sendEmail(
             [driver.email],
             `eDrive Account Warning – ${level.toUpperCase()}`,
-            `<p>Dear ${driver.firstName || 'Driver'},</p><p>You have received a <strong>${level}</strong> warning from the eDrive team.</p><p><strong>Reason:</strong> ${reason}</p><p>Please review our community guidelines and ensure compliance to avoid further action.</p>`,
+            generateDriverWarningEmail({ driverName, level, reason }),
             `You have received a ${level} warning: ${reason}`,
+            { from: 'safety@edriveapp.com' },
         );
 
         return { success: true, warning };
@@ -331,6 +335,7 @@ export class AdminService {
             `eDrive Account ${restrict ? 'Restricted' : 'Reinstated'}`,
             `<p>Hello ${user.firstName || 'User'},</p><p>Your eDrive account has been <strong>${restrict ? 'restricted' : 'reinstated'}</strong> by admin.</p>`,
             `Your eDrive account has been ${restrict ? 'restricted' : 'reinstated'}.`,
+            { from: 'safety@edriveapp.com' },
         );
 
         return { success: true, isRestricted: user.isRestricted };
@@ -386,12 +391,32 @@ export class AdminService {
             );
         }
 
+        // Email the driver with branded eDrive template
+        const driverName = `${saved.firstName || ''} ${saved.lastName || ''}`.trim() || 'Driver';
+        const emailableStatuses: VerificationStatus[] = [VerificationStatus.APPROVED, VerificationStatus.REJECTED, VerificationStatus.PENDING];
+        if (emailableStatuses.includes(status) && saved.email) {
+            const subjectMap: Record<string, string> = {
+                [VerificationStatus.APPROVED]: 'Your eDrive Driver Account Has Been Approved',
+                [VerificationStatus.REJECTED]: 'eDrive Verification Update',
+                [VerificationStatus.PENDING]: 'Your eDrive Documents Are Under Review',
+            };
+            await this.mailerService.sendEmail(
+                [saved.email],
+                subjectMap[status] || `eDrive Verification: ${status}`,
+                generateDriverVerificationEmail({ driverName, status: status as 'approved' | 'rejected' | 'pending' }),
+                `Your eDrive driver verification status has been updated to: ${status}.`,
+                { from: 'support@edriveapp.com' },
+            );
+        }
+
+        // Notify the verification team
         const verificationTeam = await this.getAdminEmailsByScopes([AdminScope.SUPER_ADMIN, AdminScope.VERIFICATION, AdminScope.OPERATIONS]);
         await this.mailerService.sendEmail(
             verificationTeam,
             `Driver verification ${status}: ${saved.email}`,
             `<p>Driver <strong>${saved.email}</strong> verification status changed to <strong>${status}</strong>.</p>`,
             `Driver ${saved.email} verification status changed to ${status}.`,
+            { from: 'support@edriveapp.com' },
         );
 
         return this.toSafeUser(saved);
@@ -456,6 +481,125 @@ export class AdminService {
 
         await this.broadcastCampaign(campaign);
         return { success: true };
+    }
+
+    async getBroadcastAudienceSummary(actorUserId: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        const recipients = await this.usersRepository.find({
+            where: [{ role: UserRole.PASSENGER }, { role: UserRole.DRIVER }],
+            select: {
+                id: true,
+                email: true,
+                role: true,
+                isRestricted: true,
+            },
+        });
+
+        const eligible = recipients.filter((user) => !user.isRestricted && this.isValidEmail(user.email));
+        const users = eligible.filter((user) => user.role === UserRole.PASSENGER);
+        const drivers = eligible.filter((user) => user.role === UserRole.DRIVER);
+
+        return {
+            defaultSenderEmail: this.mailerService.getDefaultFromEmail(),
+            segments: [
+                {
+                    id: 'all',
+                    label: 'All Recipients',
+                    description: 'All passenger and driver emails from the backend',
+                    count: eligible.length,
+                    color: '#16a34a',
+                },
+                {
+                    id: 'passengers',
+                    label: 'Passengers',
+                    description: 'Passenger accounts only',
+                    count: users.length,
+                    color: '#2563eb',
+                },
+                {
+                    id: 'drivers',
+                    label: 'Drivers',
+                    description: 'Driver accounts only',
+                    count: drivers.length,
+                    color: '#7c3aed',
+                },
+            ],
+        };
+    }
+
+    async sendBroadcastEmail(
+        actorUserId: string,
+        payload: {
+            senderEmail?: string;
+            caption: string;
+            subheading?: string;
+            bodyHtml: string;
+            previewText?: string;
+            segments?: string[];
+            manualEmails?: string[];
+        },
+    ) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        if (!payload.caption?.trim()) throw new BadRequestException('Caption is required');
+        if (!payload.bodyHtml?.trim()) throw new BadRequestException('Body is required');
+
+        const senderEmail = (payload.senderEmail?.trim().toLowerCase() || 'info@edriveapp.com').trim();
+        if (!this.isValidEmail(senderEmail)) throw new BadRequestException('Sender email is invalid');
+
+        const requestedSegments = Array.from(new Set((payload.segments || []).map((v) => String(v).trim().toLowerCase()).filter(Boolean)));
+        const manualEmails = Array.from(
+            new Set((payload.manualEmails || []).map((v) => String(v).trim().toLowerCase()).filter((v) => this.isValidEmail(v))),
+        );
+
+        const segmentRecipients = await this.resolveBroadcastRecipients(requestedSegments);
+
+        // Merge segment + manual recipients, deduped by email
+        const recipientMap = new Map<string, { email: string; firstName: string }>();
+        for (const r of segmentRecipients) recipientMap.set(r.email, r);
+        for (const email of manualEmails) {
+            if (!recipientMap.has(email)) recipientMap.set(email, { email, firstName: '' });
+        }
+        const recipients = Array.from(recipientMap.values());
+
+        if (!recipients.length) {
+            throw new BadRequestException('No valid recipients resolved from the selected audience');
+        }
+
+        // Build template once — {{firstname}} placeholder survives sanitization
+        const templateHtml = generateBroadcastEmailHtml({
+            caption: payload.caption.trim(),
+            subheading: payload.subheading?.trim(),
+            bodyHtml: payload.bodyHtml,
+            previewText: payload.previewText?.trim(),
+            supportEmail: 'support@edriveapp.com',
+        });
+        const templateText = this.htmlToText(payload.bodyHtml);
+
+        // Personalize per recipient and build batch messages
+        const messages: BatchEmailMessage[] = recipients.map(({ email, firstName }) => {
+            const name = firstName || 'there';
+            return {
+                to: email,
+                from: senderEmail,
+                subject: payload.caption.trim(),
+                html: templateHtml.replace(/\{\{firstname\}\}/gi, name),
+                text: templateText.replace(/\{\{firstname\}\}/gi, name),
+            };
+        });
+
+        await this.mailerService.sendBatch(messages);
+
+        return {
+            success: true,
+            senderEmail,
+            segmentCount: segmentRecipients.length,
+            manualCount: manualEmails.length,
+            totalRecipients: recipients.length,
+        };
     }
 
     /** Called by the scheduler every minute */
@@ -538,6 +682,52 @@ export class AdminService {
         }
 
         return candidate;
+    }
+
+    private async resolveBroadcastRecipients(segmentIds: string[]): Promise<{ email: string; firstName: string }[]> {
+        if (!segmentIds.length) return [];
+
+        const normalized = new Set(segmentIds);
+        const wantsGeneral = normalized.has('general') || normalized.has('all');
+        const wantsUsers = normalized.has('users') || normalized.has('riders') || normalized.has('passengers');
+        const wantsDrivers = normalized.has('drivers');
+
+        const source = await this.usersRepository.find({
+            where: [{ role: UserRole.PASSENGER }, { role: UserRole.DRIVER }],
+            select: { email: true, firstName: true, role: true, isRestricted: true },
+        });
+
+        const seen = new Set<string>();
+        const results: { email: string; firstName: string }[] = [];
+
+        for (const user of source) {
+            if (user.isRestricted || !this.isValidEmail(user.email)) continue;
+            if (!wantsGeneral) {
+                if (wantsUsers && user.role !== UserRole.PASSENGER) continue;
+                if (wantsDrivers && user.role !== UserRole.DRIVER) continue;
+                if (!wantsUsers && !wantsDrivers) continue;
+            }
+            const email = user.email.trim().toLowerCase();
+            if (seen.has(email)) continue;
+            seen.add(email);
+            results.push({ email, firstName: (user.firstName || '').trim() });
+        }
+
+        return results;
+    }
+
+    private isValidEmail(value?: string | null) {
+        return !!value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+    }
+
+    private htmlToText(html: string) {
+        return html
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
     }
 
     // ─── Users & Rides ─────────────────────────────────────────────────────────
@@ -651,6 +841,7 @@ export class AdminService {
             'Your eDrive admin account is ready',
             `<p>Hello ${saved.firstName || 'Admin'}, your admin account has been created with <strong>${payload.adminScope}</strong> scope.</p>`,
             `Your admin account has been created with ${payload.adminScope} scope.`,
+            { from: 'no-reply@edriveapp.com' },
         );
 
         return this.toSafeUser(saved);
@@ -789,6 +980,7 @@ export class AdminService {
                 'Your eDrive refund has been processed',
                 `<p>Hi ${ride.passenger.firstName || 'there'},</p><p>Your payment of <strong>₦${result.amount.toLocaleString()}</strong> for ride <strong>${(ride.origin as any)?.address || ''} → ${(ride.destination as any)?.address || ''}</strong> has been refunded.</p><p><strong>Reason:</strong> ${reason}</p><p>Funds should appear in your account within 3–5 business days depending on your bank.</p>`,
                 `Your refund of ₦${result.amount.toLocaleString()} has been processed.`,
+                { from: 'support@edriveapp.com' },
             );
         }
 
@@ -988,18 +1180,19 @@ export class AdminService {
             status: ticket.status === SupportTicketStatus.RESOLVED ? SupportTicketStatus.IN_PROGRESS : ticket.status,
         });
 
-        // Notify the ticket creator
+        // Notify the ticket creator with the agent's name
+        const agentName = `${actor.firstName || ''} ${actor.lastName || ''}`.trim() || 'Support Agent';
         const creator = await this.usersRepository.findOne({ where: { id: ticket.createdByUserId } });
         if (creator?.expoPushTokens?.length) {
             await this.pushService.sendToExpoTokens(
                 creator.expoPushTokens,
                 'Support Ticket Update',
-                `Admin replied to your ticket: ${ticket.subject}`,
+                `${agentName} replied to your ticket: ${ticket.subject}`,
                 { type: 'support', ticketId },
             );
         }
 
-        return { success: true };
+        return { success: true, agentName };
     }
 
     async updateSupportTicketStatus(actorUserId: string, ticketId: string, status: SupportTicketStatus) {

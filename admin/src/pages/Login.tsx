@@ -8,13 +8,17 @@ export default function Login() {
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  // CSRF state token: generated fresh per page load, sent with every login attempt
+  const [state] = React.useState<string>(() =>
+    `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`,
+  );
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      await login(email.trim(), password, state);
     } catch (err: any) {
       setError(err?.message || 'Unable to login.');
     } finally {
@@ -30,7 +34,7 @@ export default function Login() {
             <CarFront className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-white">eDrive Admin</h1>
+            <h1 className="text-xl font-semibold text-white">Edrive Admin</h1>
             <p className="text-xs text-slate-400">Secure operations login</p>
           </div>
         </div>

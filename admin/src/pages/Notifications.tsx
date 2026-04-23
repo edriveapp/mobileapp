@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bell, Plus, Send, Trash2, Pause, Play, Calendar,
-  Clock, Repeat, Megaphone, X, Edit2, CheckCircle,
+  Clock, Repeat, Megaphone, X, Edit2, CheckCircle, Mail,
 } from 'lucide-react';
 import { apiRequest } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
+import { BroadcastMailComposer, type AudienceSegment, type BroadcastPayload } from './BroadcastMailComposer';
 
 type RepeatOption = 'once' | 'daily' | 'weekly' | 'weekdays' | 'weekends';
 type CampaignStatus = 'active' | 'paused' | 'expired';
@@ -20,6 +21,11 @@ type Campaign = {
   lastSentAt: string | null;
   nextSendAt: string | null;
   createdAt: string;
+};
+
+type BroadcastAudienceSummary = {
+  defaultSenderEmail: string;
+  segments: AudienceSegment[];
 };
 
 const REPEAT_LABELS: Record<RepeatOption, string> = {
@@ -225,6 +231,13 @@ export default function Notifications() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null);
   const [sending, setSending] = useState<string | null>(null);
+  const [emailComposerOpen, setEmailComposerOpen] = useState(false);
+  const [emailSegments, setEmailSegments] = useState<AudienceSegment[]>([]);
+  const [defaultSenderEmail, setDefaultSenderEmail] = useState('support@edriveapp.com');
+
+  const handleEmailSend = async (payload: BroadcastPayload) => {
+    await apiRequest('/admin/broadcast/send', { method: 'POST', token, body: payload });
+  };
 
   const loadCampaigns = useCallback(async () => {
     try {
@@ -238,6 +251,20 @@ export default function Notifications() {
   }, [token]);
 
   useEffect(() => { loadCampaigns(); }, [loadCampaigns]);
+
+  useEffect(() => {
+    const loadAudienceSummary = async () => {
+      try {
+        const data = await apiRequest<BroadcastAudienceSummary>('/admin/broadcast/audience-summary', { token });
+        setEmailSegments(data.segments || []);
+        setDefaultSenderEmail(data.defaultSenderEmail || 'support@edriveapp.com');
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    loadAudienceSummary();
+  }, [token]);
 
   const handleSaved = (campaign: Campaign) => {
     setCampaigns((prev) => {
@@ -296,6 +323,19 @@ export default function Notifications() {
         />
       )}
 
+      {emailComposerOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-start justify-center z-40 p-6 overflow-y-auto">
+          <div className="w-full max-w-3xl my-8">
+            <BroadcastMailComposer
+              segments={emailSegments}
+              defaultSenderEmail={defaultSenderEmail}
+              onSend={handleEmailSend}
+              onClose={() => setEmailComposerOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-end">
         <div>
@@ -304,13 +344,22 @@ export default function Notifications() {
             Compose and schedule push notifications to all app users.
           </p>
         </div>
-        <button
-          onClick={() => setComposerOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Campaign
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setEmailComposerOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 border border-emerald-500 text-emerald-600 hover:bg-emerald-50 text-sm font-semibold rounded-xl shadow-sm transition-colors"
+          >
+            <Mail className="w-4 h-4" />
+            Email Campaign
+          </button>
+          <button
+            onClick={() => setComposerOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Campaign
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}

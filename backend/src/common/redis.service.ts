@@ -74,4 +74,36 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         ) as string[];
         return results;
     }
+
+    async getJson<T>(key: string): Promise<T | null> {
+        const raw = await this.get(key);
+        if (!raw) return null;
+        try {
+            return JSON.parse(raw) as T;
+        } catch {
+            return null;
+        }
+    }
+
+    async setJson(key: string, value: unknown, ttl?: number) {
+        await this.set(key, JSON.stringify(value), ttl);
+    }
+
+    async del(...keys: string[]) {
+        if (!this.client || keys.length === 0) return;
+        await this.client.del(...keys);
+    }
+
+    // Deletes all keys matching a glob pattern using SCAN (non-blocking).
+    async delPattern(pattern: string) {
+        if (!this.client) return;
+        let cursor = '0';
+        do {
+            const [next, keys] = await this.client.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+            cursor = next;
+            if (keys.length > 0) {
+                await this.client.del(...keys);
+            }
+        } while (cursor !== '0');
+    }
 }

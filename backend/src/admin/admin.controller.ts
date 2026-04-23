@@ -163,6 +163,28 @@ export class AdminController {
         return this.adminService.sendCampaignNow(req.user.userId, id);
     }
 
+    @Get('broadcast/audience-summary')
+    getBroadcastAudienceSummary(@Request() req: any) {
+        return this.adminService.getBroadcastAudienceSummary(req.user.userId);
+    }
+
+    @Post('broadcast/send')
+    sendBroadcastEmail(
+        @Request() req: any,
+        @Body()
+        body: {
+            senderEmail?: string;
+            caption: string;
+            subheading?: string;
+            bodyHtml: string;
+            previewText?: string;
+            segments?: string[];
+            manualEmails?: string[];
+        },
+    ) {
+        return this.adminService.sendBroadcastEmail(req.user.userId, body);
+    }
+
     // ─── Ride Management ──────────────────────────────────────────────────────
 
     @Get('rides/:id')

@@ -13,11 +13,14 @@ export class SupportMessage {
     @JoinColumn({ name: 'ticketId' })
     ticket: SupportTicket;
 
-    @Column()
-    senderId: string;
+    @Column({ nullable: true })
+    senderId: string | null;
 
     @Column()
     senderRole: string;
+
+    @Column({ nullable: true })
+    senderEmail: string | null;
 
     @Column({ type: 'text' })
     text: string;

@@ -69,6 +69,12 @@ export class AuthService {
             role: userData.role || UserRole.PASSENGER,
         });
 
+        await this.emailOtpService.sendWelcomeEmail({
+            email: user.email,
+            firstName: user.firstName,
+            role: user.role,
+        });
+
         return this.login(user);
     }
 

@@ -32,7 +32,7 @@ export default function LocationDeniedScreen({ onOpenSettings, onContinueWithout
 
       <Text style={styles.title}>Location access denied</Text>
       <Text style={styles.subtitle}>
-        Without location access, eDrive can't show nearby drivers or calculate your route. You can enable it in your device settings.
+        Without location access, edrive can't show nearby drivers or calculate your route. You can enable it in your device settings.
       </Text>
 
       {/* Steps card */}
@@ -41,13 +41,13 @@ export default function LocationDeniedScreen({ onOpenSettings, onContinueWithout
         {Platform.OS === 'ios' ? (
           <>
             <StepRow n={1} text="Open Settings on your iPhone" />
-            <StepRow n={2} text='Scroll down and tap "eDrive"' />
+            <StepRow n={2} text='Scroll down and tap "edrive"' />
             <StepRow n={3} text='Tap "Location" → While Using the App' />
           </>
         ) : (
           <>
             <StepRow n={1} text="Open Settings on your phone" />
-            <StepRow n={2} text='Tap "Apps" → eDrive → Permissions' />
+            <StepRow n={2} text='Tap "Apps" → edrive → Permissions' />
             <StepRow n={3} text='Tap "Location" → Allow' />
           </>
         )}

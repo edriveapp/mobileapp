@@ -17,9 +17,14 @@ export class AuthController {
     @Throttle({ default: { ttl: 60000, limit: 5 } })
     @Post('login')
     @HttpCode(HttpStatus.OK)
-    async login(@Body() req: { email?: string; password?: string }) {
+    async login(@Body() req: { email?: string; password?: string; state?: string }) {
         if (!req.email || !req.password) {
             throw new BadRequestException('Email and password are required.');
+        }
+        // Admin dashboard logins must supply a state token (CSRF / replay protection).
+        // Mobile OTP-based flows do not hit this endpoint so the check is safe here.
+        if (!req.state?.trim() || req.state.length < 8) {
+            throw new BadRequestException('Invalid or missing state parameter.');
         }
         const user = await this.authService.validateUser(req.email, req.password);
         if (!user) {

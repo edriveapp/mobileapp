@@ -142,7 +142,13 @@ const detectRouteDistanceKm = (origin: string, destination: string) => {
 };
 
 
-export default function JoinRideView({ onClose }: { onClose: () => void }) {
+export default function JoinRideView({
+  onClose,
+  initialDestination = '',
+}: {
+  onClose: () => void;
+  initialDestination?: string;
+}) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { trendingTrips, fetchAvailableTrips, requestRide, isLoading } = useTripStore();
@@ -205,6 +211,15 @@ export default function JoinRideView({ onClose }: { onClose: () => void }) {
       if (requestTimeout.current) clearTimeout(requestTimeout.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!initialDestination) return;
+    setDestText(initialDestination);
+    setDestCoords(null);
+    setActiveField('dest');
+    setBookingStage('search');
+    setSelectedDriverId(null);
+  }, [initialDestination]);
 
   const handleSearchLogic = useCallback((text: string, type: 'origin' | 'dest') => {
     if (type === 'origin') {

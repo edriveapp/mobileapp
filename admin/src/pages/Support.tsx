@@ -8,8 +8,11 @@ type Ticket = {
   subject: string;
   status: 'open' | 'in_progress' | 'resolved';
   priority?: string;
+  category?: string;
   createdByRole: string;
-  createdByUserId: string;
+  createdByUserId: string | null;
+  createdByEmail?: string | null;
+  creatorName?: string;
   assignedToUserId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -20,6 +23,7 @@ type TicketDetails = Ticket & {
     id: string;
     senderId: string;
     senderRole: string;
+    senderName: string;
     text: string;
     createdAt: string;
   }>;
@@ -110,7 +114,7 @@ export default function Support() {
     <div className="p-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Customer Support</h1>
-        <p className="text-gray-500 mt-1">Real-time support ticketing for riders and drivers.</p>
+        <p className="text-gray-500 mt-1">Real-time support ticketing for riders, drivers, and inbound support emails.</p>
         {error ? <p className="text-sm text-red-600 mt-2">{error}</p> : null}
       </div>
 
@@ -130,10 +134,16 @@ export default function Support() {
                   <span className="font-medium text-sm text-gray-900">{ticket.subject}</span>
                   <span className="text-xs text-gray-400">{new Date(ticket.updatedAt).toLocaleTimeString()}</span>
                 </div>
-                <p className="text-xs text-gray-500 line-clamp-1">Created by {ticket.createdByRole}</p>
+                <p className="text-xs text-gray-500 line-clamp-1">
+                  {ticket.creatorName || ticket.createdByRole}
+                  <span className="ml-1 text-gray-400">· {ticket.createdByRole}</span>
+                </p>
                 <div className="mt-2 flex gap-2">
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">{ticket.status}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{ticket.priority || 'normal'}</span>
+                  {ticket.category === 'inbound_email' && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">email</span>
+                  )}
                 </div>
               </button>
             ))}
@@ -144,7 +154,11 @@ export default function Support() {
           <div className="p-4 border-b border-gray-100 flex justify-between items-center">
             <div>
               <h3 className="font-semibold text-gray-900">{activeTicket ? `Ticket #${activeTicket.id.slice(0, 8)}` : 'Select a ticket'}</h3>
-              <p className="text-xs text-gray-500">{activeTicket ? `From ${activeTicket.createdByRole}` : 'No active ticket selected'}</p>
+              <p className="text-xs text-gray-500">
+                {activeTicket
+                  ? `From ${activeTicket.creatorName || activeTicket.createdByRole} (${activeTicket.createdByRole})`
+                  : 'No active ticket selected'}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={claimTicket} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors">Claim</button>
@@ -156,10 +170,11 @@ export default function Support() {
           <div className="flex-1 p-6 overflow-y-auto space-y-4">
             {activeTicket?.messages?.map((message) => {
               const fromAdmin = message.senderRole === 'admin';
+              const displayName = message.senderName || (fromAdmin ? 'Support Agent' : activeTicket.creatorName || message.senderRole);
               return (
                 <div key={message.id} className={`flex ${fromAdmin ? 'justify-end' : 'justify-start'}`}>
                   <div className={`${fromAdmin ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-800'} p-3 rounded-2xl max-w-[80%]`}>
-                    <p className="text-xs opacity-80 mb-1">{message.senderRole}</p>
+                    <p className="text-xs font-semibold opacity-90 mb-1">{displayName}</p>
                     <p className="text-sm">{message.text}</p>
                     <p className="text-[10px] mt-1 opacity-70">{new Date(message.createdAt).toLocaleString()}</p>
                   </div>

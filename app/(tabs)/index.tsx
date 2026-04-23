@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -21,6 +21,9 @@ import { safeOpenURL } from '@/app/utils/linking';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import AmbulanceIcon from '@/assets/emergency-icons/ambulance.svg';
+import FireIcon from '@/assets/emergency-icons/fire.svg';
+import PoliceCapIcon from '@/assets/emergency-icons/police-cap.svg';
 
 // --- IMPORTS FROM YOUR LOGIC SNIPPET ---
 import { LocationService } from '@/app/services/locationService';
@@ -136,7 +139,9 @@ const detectRouteDistanceKm = (origin: string, destination: string) => {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ openJoinRide?: string; presetDestination?: string }>();
   const mapRef = useRef<MapView>(null);
+  const handledJoinRideRef = useRef<string | null>(null);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
 
@@ -169,6 +174,7 @@ const {
   const [requestIslandExpanded, setRequestIslandExpanded] = useState(false);
   const [showRequestEditor, setShowRequestEditor] = useState(false);
   const [showActiveTripSheet, setShowActiveTripSheet] = useState(true);
+  const [joinRidePresetDestination, setJoinRidePresetDestination] = useState('');
 
   // --- APP STATE ---
   const [menuVisible, setMenuVisible] = useState(false);
@@ -245,6 +251,30 @@ const {
     return () => clearInterval(interval);
   }, [fetchMyTrips, user?.role]);
 
+  // --- ANIMATION HANDLERS ---
+  const expandSheet = useCallback(() => {
+    setIsExpanded(true);
+    setMenuVisible(false);
+    Animated.timing(sheetHeight, {
+      toValue: SHEET_EXPANDED_HEIGHT,
+      duration: 300,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: false,
+    }).start();
+  }, [sheetHeight]);
+
+  useEffect(() => {
+    const shouldOpenJoinRide = params.openJoinRide === '1';
+    const presetDestination = typeof params.presetDestination === 'string' ? params.presetDestination : '';
+    const requestKey = `${params.openJoinRide || ''}:${presetDestination}`;
+
+    if (!shouldOpenJoinRide || handledJoinRideRef.current === requestKey) return;
+
+    handledJoinRideRef.current = requestKey;
+    setJoinRidePresetDestination(presetDestination);
+    expandSheet();
+  }, [expandSheet, params.openJoinRide, params.presetDestination]);
+
   // 2. LISTEN TO RIDE STATUS
   useEffect(() => {
     if (rideStatus === 'ACCEPTED' || rideStatus === 'ARRIVING' || rideStatus === 'IN_PROGRESS') {
@@ -265,18 +295,6 @@ const {
       collapseSheet();
     }
   }, [collapseSheet, rideStatus]);
-
-  // --- ANIMATION HANDLERS ---
-  const expandSheet = () => {
-    setIsExpanded(true);
-    setMenuVisible(false);
-    Animated.timing(sheetHeight, {
-      toValue: SHEET_EXPANDED_HEIGHT,
-      duration: 300,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: false,
-    }).start();
-  };
 
   // --- LOGIC HANDLERS ---
 
@@ -513,15 +531,15 @@ const {
             {emergencyContacts ? (
               <View style={styles.numbersContainer}>
                 <TouchableOpacity style={styles.emergencyItem} onPress={() => callEmergencyLine(emergencyContacts.police)}>
-                  <View style={styles.emergencyIcon}><Text>👮</Text></View>
+                  <View style={styles.emergencyIcon}><PoliceCapIcon width={22} height={22} color="#005124" /></View>
                   <View><Text style={styles.emergencyLabel}>Police</Text><Text style={styles.emergencyValue}>{emergencyContacts.police}</Text></View>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.emergencyItem} onPress={() => callEmergencyLine(emergencyContacts.ambulance)}>
-                  <View style={styles.emergencyIcon}><Text>🚑</Text></View>
+                  <View style={styles.emergencyIcon}><AmbulanceIcon width={22} height={22} color="#005124" /></View>
                   <View><Text style={styles.emergencyLabel}>Ambulance</Text><Text style={styles.emergencyValue}>{emergencyContacts.ambulance}</Text></View>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.emergencyItem} onPress={() => callEmergencyLine(emergencyContacts.fire)}>
-                  <View style={styles.emergencyIcon}><Text>🔥</Text></View>
+                  <View style={styles.emergencyIcon}><FireIcon width={22} height={22} color="#005124" /></View>
                   <View><Text style={styles.emergencyLabel}>Fire</Text><Text style={styles.emergencyValue}>{emergencyContacts.fire}</Text></View>
                 </TouchableOpacity>
               </View>
@@ -543,7 +561,13 @@ const {
         {/* CASE A: IDLE */}
         {step === 'IDLE' && (
           isExpanded ? (
-            <JoinRideView onClose={collapseSheet} />
+            <JoinRideView
+              onClose={() => {
+                setJoinRidePresetDestination('');
+                collapseSheet();
+              }}
+              initialDestination={joinRidePresetDestination}
+            />
           ) : (
             <View style={{ flex: 1 }}>
               <Text style={styles.greetingTitle}>Where are you travelling to?</Text>
@@ -661,7 +685,7 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.s, textTransform: 'uppercase', letterSpacing: 1 },
   numbersContainer: { gap: 12 },
   emergencyItem: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#FAFAFA', borderRadius: 12, borderWidth: 1, borderColor: '#F0F0F0' },
-  emergencyIcon: { width: 40, height: 40, backgroundColor: '#FFF0F0', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  emergencyIcon: { width: 40, height: 40, backgroundColor: '#BDF7DB', borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   emergencyLabel: { fontSize: 12, color: COLORS.textSecondary },
   emergencyValue: { fontSize: 16, fontWeight: 'bold' },
   supportButton: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: '#F5F5F5', borderRadius: 12, marginTop: 'auto', marginBottom: 48 },

@@ -2,9 +2,15 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { OSRMService } from '../common/osrm.service';
+import { RedisService } from '../common/redis.service';
 import { Ride, RideStatus } from './ride.entity';
 import { User } from '../users/user.entity';
 import { buildTrendingAreas } from './trending-areas.util';
+
+// TTLs (seconds)
+const AVAILABLE_RIDES_TTL = 30;
+const TRENDING_AREAS_TTL = 300;
+const RIDE_STATE_TTL = 1800; // 30 min
 
 @Injectable()
 export class RidesService {
@@ -16,7 +22,21 @@ export class RidesService {
         @InjectRepository(User)
         private usersRepository: Repository<User>,
         private osrmService: OSRMService,
+        private redis: RedisService,
     ) { }
+
+    private availableCacheKey(role: string, mode?: string) {
+        return `rides:available:${role}:${mode ?? 'default'}`;
+    }
+
+    // Invalidate all "available rides" cache variants on any ride mutation.
+    private async invalidateAvailableCache() {
+        await this.redis.delPattern('rides:available:*');
+    }
+
+    private async setRideState(rideId: string, status: RideStatus) {
+        await this.redis.setJson(`ride:request:${rideId}`, { status, updatedAt: Date.now() }, RIDE_STATE_TTL);
+    }
 
     private getRiderOfferFloor(estimatedPrivateFare: number, isShared: boolean): number {
         if (!estimatedPrivateFare || estimatedPrivateFare <= 0) {
@@ -145,7 +165,10 @@ export class RidesService {
         } as Partial<Ride>);
 
         const savedRide = await this.ridesRepository.save(ride);
-        return (await this.findRideById(savedRide.id)) as Ride;
+        const result = (await this.findRideById(savedRide.id)) as Ride;
+        await this.setRideState(result.id, result.status);
+        await this.invalidateAvailableCache();
+        return result;
     }
 
     async findRideById(rideId: string): Promise<Ride | null> {
@@ -191,7 +214,10 @@ export class RidesService {
         ride.driverId = driverId;
         ride.status = RideStatus.ACCEPTED;
         await this.ridesRepository.save(ride);
-        return this.sanitizePassengerForDriver((await this.findRideById(ride.id)) as Ride);
+        const result = this.sanitizePassengerForDriver((await this.findRideById(ride.id)) as Ride);
+        await this.setRideState(result.id, RideStatus.ACCEPTED);
+        await this.invalidateAvailableCache();
+        return result;
     }
 
     async updateRideDetails(rideId: string, driverId: string, data: any): Promise<Ride> {
@@ -226,7 +252,9 @@ export class RidesService {
         });
 
         await this.ridesRepository.save(ride);
-        return (await this.findRideById(ride.id)) as Ride;
+        const result = (await this.findRideById(ride.id)) as Ride;
+        await this.invalidateAvailableCache();
+        return result;
     }
 
     async updatePassengerRequestDetails(rideId: string, passengerId: string, data: any): Promise<Ride> {
@@ -256,7 +284,9 @@ export class RidesService {
         });
 
         await this.ridesRepository.save(ride);
-        return (await this.findRideById(ride.id)) as Ride;
+        const result = (await this.findRideById(ride.id)) as Ride;
+        await this.invalidateAvailableCache();
+        return result;
     }
 
     async bookPublishedTrip(rideId: string, passengerId: string, data: any): Promise<Ride> {
@@ -296,7 +326,10 @@ export class RidesService {
         ride.status = RideStatus.ACCEPTED;
 
         await this.ridesRepository.save(ride);
-        return (await this.findRideById(ride.id)) as Ride;
+        const booked = (await this.findRideById(ride.id)) as Ride;
+        await this.setRideState(booked.id, RideStatus.ACCEPTED);
+        await this.invalidateAvailableCache();
+        return booked;
     }
 
     // Valid status transitions per actor
@@ -364,7 +397,12 @@ export class RidesService {
             });
         }
 
-        return (await this.findRideById(rideId)) as Ride;
+        const updated = (await this.findRideById(rideId)) as Ride;
+        await this.setRideState(rideId, status);
+        if ([RideStatus.COMPLETED, RideStatus.CANCELLED].includes(status)) {
+            await this.invalidateAvailableCache();
+        }
+        return updated;
     }
 
     async cancelRideAsActor(rideId: string, userId: string): Promise<Ride> {
@@ -385,7 +423,10 @@ export class RidesService {
 
         ride.status = RideStatus.CANCELLED;
         await this.ridesRepository.save(ride);
-        return (await this.findRideById(rideId)) as Ride;
+        const cancelled = (await this.findRideById(rideId)) as Ride;
+        await this.setRideState(rideId, RideStatus.CANCELLED);
+        await this.invalidateAvailableCache();
+        return cancelled;
     }
 
     async updatePaymentDetails(rideId: string, status: string, driverEarnings?: number, platformCut?: number, paystackReference?: string): Promise<Ride> {
@@ -471,6 +512,10 @@ export class RidesService {
     }
 
     async getAvailableRides(filters: any) {
+        const cacheKey = this.availableCacheKey(filters.role ?? 'all', filters.mode);
+        const cached = await this.redis.getJson<any[]>(cacheKey);
+        if (cached) return cached;
+
         const query = this.ridesRepository.createQueryBuilder('ride')
             .leftJoinAndSelect('ride.passenger', 'passenger') // For passenger requests?
             .leftJoinAndSelect('ride.driver', 'driver')       // For driver posts?
@@ -495,21 +540,29 @@ export class RidesService {
         }
 
         const rides = await query.orderBy('ride.createdAt', 'DESC').getMany();
-        if (filters.role === 'driver') {
-            return this.sanitizePassengerListForDriver(rides);
-        }
-        return rides;
+        const result = filters.role === 'driver'
+            ? this.sanitizePassengerListForDriver(rides)
+            : rides;
+
+        await this.redis.setJson(cacheKey, result, AVAILABLE_RIDES_TTL);
+        return result;
     }
 
     async getTrendingAreas(limit: number = 8) {
         const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(20, Number(limit))) : 8;
+        const cacheKey = `rides:trending:${safeLimit}`;
+        const cached = await this.redis.getJson<any[]>(cacheKey);
+        if (cached) return cached;
+
         const rides = await this.ridesRepository.find({
             where: { updatedAt: MoreThanOrEqual(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)) },
             order: { updatedAt: 'DESC' },
             take: 5000,
         });
 
-        return buildTrendingAreas(rides, safeLimit);
+        const result = buildTrendingAreas(rides, safeLimit);
+        await this.redis.setJson(cacheKey, result, TRENDING_AREAS_TTL);
+        return result;
     }
 
     async getHistory(userId: string, role: string, page: number = 1) {

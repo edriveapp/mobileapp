@@ -12,11 +12,14 @@ export class SupportTicket {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column()
-    createdByUserId: string;
+    @Column({ nullable: true })
+    createdByUserId: string | null;
 
     @Column()
     createdByRole: string;
+
+    @Column({ nullable: true })
+    createdByEmail: string | null;
 
     @Column()
     subject: string;
@@ -39,6 +42,9 @@ export class SupportTicket {
 
     @Column({ nullable: true })
     assignedToUserId: string | null;
+
+    @Column({ nullable: true, unique: true })
+    inboundMessageId: string | null;
 
     @OneToMany(() => SupportMessage, (message) => message.ticket, { cascade: true })
     messages: SupportMessage[];

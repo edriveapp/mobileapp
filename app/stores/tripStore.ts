@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import api from '../services/api';
 import { Trip } from '../types';
 import { useAuthStore } from './authStore';
@@ -141,7 +143,9 @@ let fetchMyTripsInFlight = false;
 
 // --- 2. Store Implementation ---
 
-export const useTripStore = create<TripState>((set, get) => ({
+export const useTripStore = create<TripState>()(
+  persist(
+    (set, get) => ({
     // Initial State
     trips: [],
     availableTrips: [],
@@ -455,4 +459,17 @@ export const useTripStore = create<TripState>((set, get) => ({
             };
         });
     },
-}));
+  }),
+  {
+    name: 'trip-store',
+    storage: createJSONStorage(() => AsyncStorage),
+    // Only persist cached lists — live ride state is always re-derived on app open
+    partialize: (state) => ({
+      trips: state.trips,
+      availableTrips: state.availableTrips,
+      trendingTrips: state.trendingTrips,
+      activeTrips: state.activeTrips,
+      history: state.history,
+    }),
+  }
+));

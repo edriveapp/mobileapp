@@ -14,7 +14,7 @@ type AuthContextType = {
   token: string | null;
   user: AdminUser | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, state: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -36,10 +36,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
   const [isLoading] = React.useState(false);
 
-  const login = React.useCallback(async (email: string, password: string) => {
+  const login = React.useCallback(async (email: string, password: string, state: string) => {
     const data = await apiRequest<{ access_token: string; user: AdminUser }>('/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, state },
     });
 
     if (data.user.role !== 'admin') {
