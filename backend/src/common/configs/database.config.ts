@@ -1,9 +1,22 @@
 import { registerAs } from '@nestjs/config';
 
+function resolveDatabaseUrl() {
+    const internalUrl = process.env.DATABASE_URL;
+    const publicUrl = process.env.DATABASE_PUBLIC_URL;
+    const runningOnRailway = Boolean(process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_PROJECT_ID);
+
+    if (runningOnRailway) {
+        return internalUrl || publicUrl;
+    }
+
+    return publicUrl || internalUrl;
+}
+
 export default registerAs('database', () => ({
-    // Use Railway's internal DATABASE_URL at runtime.
-    // DATABASE_PUBLIC_URL is only for local CLI and local development fallbacks.
-    url: process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL,
+    // Local machine cannot resolve *.railway.internal.
+    // On Railway, prefer the internal DATABASE_URL.
+    // Outside Railway, prefer DATABASE_PUBLIC_URL.
+    url: resolveDatabaseUrl(),
     type: 'postgres' as const,
     // Never auto-sync schema in production — use migrations
     synchronize: false,

@@ -19,6 +19,26 @@ export class MailerService {
         return this.configService.get<string>('EMAIL_FROM') || 'support@edriveapp.com';
     }
 
+    private formatFromAddress(from: string) {
+        const trimmed = from.trim();
+        if (trimmed.includes('<') && trimmed.includes('>')) {
+            return trimmed;
+        }
+
+        const normalized = trimmed.toLowerCase();
+        if (normalized === 'support@edriveapp.com') {
+            return '"edrive support" <support@edriveapp.com>';
+        }
+        if (normalized === 'info@edriveapp.com') {
+            return '"edrive updates" <info@edriveapp.com>';
+        }
+        if (normalized === 'safety@edriveapp.com') {
+            return '"edrive safety" <safety@edriveapp.com>';
+        }
+
+        return `"edrive" <${trimmed}>`;
+    }
+
     async sendEmail(
         to: string[],
         subject: string,
@@ -30,7 +50,7 @@ export class MailerService {
         if (!recipients.length) return { sent: false, reason: 'no_recipients' };
 
         const provider = (this.configService.get<string>('EMAIL_PROVIDER') || 'none').toLowerCase();
-        const from = options?.from?.trim() || this.getDefaultFromEmail();
+        const from = this.formatFromAddress(options?.from?.trim() || this.getDefaultFromEmail());
 
         if (provider === 'resend') {
             return this.sendWithResend(recipients, from, subject, html, text);
@@ -61,7 +81,7 @@ export class MailerService {
         try {
             for (const chunk of this.chunkArray(messages, 100)) {
                 const payload = chunk.map((m) => ({
-                    from: m.from,
+                    from: this.formatFromAddress(m.from),
                     to: [m.to],
                     subject: m.subject,
                     html: m.html,

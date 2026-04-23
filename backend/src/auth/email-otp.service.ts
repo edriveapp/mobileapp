@@ -29,16 +29,32 @@ export class EmailOtpService {
     return String(Math.floor(1000 + Math.random() * 9000));
   }
 
+  private getFormattedFromAddress(rawEmail?: string | null) {
+    const email = (rawEmail || 'support@edriveapp.com').trim().toLowerCase();
+
+    if (email === 'support@edriveapp.com') {
+      return '"edrive" <support@edriveapp.com>';
+    }
+    if (email === 'info@edriveapp.com') {
+      return '"edrive updates" <info@edriveapp.com>';
+    }
+    if (email === 'safety@edriveapp.com') {
+      return '"edrive safety" <safety@edriveapp.com>';
+    }
+
+    return `"edrive" <${email}>`;
+  }
+
   async sendOtp(email: string): Promise<{ success: boolean }> {
     const code = this.generateCode();
     // Use Redis for OTP storage, expires in 600s (10 minutes)
     await this.redisService.set(`otp:${email.toLowerCase()}`, code, 600);
 
-    const from = this.configService.get<string>('SMTP_FROM') || 'no-reply@edriveapp.com';
+    const from = this.getFormattedFromAddress(this.configService.get<string>('SMTP_FROM') || 'support@edriveapp.com');
 
     try {
       await this.transporter.sendMail({
-        from: `"edrive" <${from}>`,
+        from,
         to: email,
         subject: 'Your edrive verification code',
         html: this.buildOtpEmail(code),
@@ -74,7 +90,7 @@ export class EmailOtpService {
 
     const role = payload.role === UserRole.DRIVER ? UserRole.DRIVER : UserRole.PASSENGER;
     const firstName = (payload.firstName || '').trim() || 'there';
-    const from = this.configService.get<string>('SMTP_FROM') || 'no-reply@edriveapp.com';
+    const from = this.getFormattedFromAddress(this.configService.get<string>('SMTP_FROM') || 'support@edriveapp.com');
 
     const subject =
       role === UserRole.DRIVER
@@ -93,7 +109,7 @@ export class EmailOtpService {
 
     try {
       await this.transporter.sendMail({
-        from: `"edrive" <${from}>`,
+        from,
         to: email,
         subject,
         html,

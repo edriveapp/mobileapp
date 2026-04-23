@@ -28,6 +28,30 @@ type BroadcastAudienceSummary = {
   segments: AudienceSegment[];
 };
 
+const FALLBACK_EMAIL_SEGMENTS: AudienceSegment[] = [
+  {
+    id: 'all',
+    label: 'All Recipients',
+    count: 0,
+    description: 'All passenger and driver emails from the backend',
+    color: '#16a34a',
+  },
+  {
+    id: 'passengers',
+    label: 'Passengers',
+    count: 0,
+    description: 'Passenger accounts only',
+    color: '#2563eb',
+  },
+  {
+    id: 'drivers',
+    label: 'Drivers',
+    count: 0,
+    description: 'Driver accounts only',
+    color: '#7c3aed',
+  },
+];
+
 type SupportTicketSummary = {
   id: string;
   subject: string;
@@ -272,10 +296,11 @@ export default function Notifications() {
     const loadAudienceSummary = async () => {
       try {
         const data = await apiRequest<BroadcastAudienceSummary>('/admin/broadcast/audience-summary', { token });
-        setEmailSegments(data.segments || []);
+        setEmailSegments(data.segments?.length ? data.segments : FALLBACK_EMAIL_SEGMENTS);
         setDefaultSenderEmail(data.defaultSenderEmail || 'support@edriveapp.com');
       } catch (e) {
         console.error(e);
+        setEmailSegments(FALLBACK_EMAIL_SEGMENTS);
       }
     };
 
@@ -340,6 +365,7 @@ export default function Notifications() {
   const activeCampaigns = campaigns.filter((c) => c.status === 'active');
   const pausedCampaigns = campaigns.filter((c) => c.status === 'paused');
   const expiredCampaigns = campaigns.filter((c) => c.status === 'expired');
+  const availableEmailSegments = emailSegments.length > 0 ? emailSegments : FALLBACK_EMAIL_SEGMENTS;
 
   return (
     <div className="p-8 space-y-6">
@@ -356,7 +382,7 @@ export default function Notifications() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-start justify-center z-40 p-6 overflow-y-auto">
           <div className="w-full max-w-3xl my-8">
             <BroadcastMailComposer
-              segments={emailSegments}
+              segments={availableEmailSegments}
               defaultSenderEmail={defaultSenderEmail}
               onSend={handleEmailSend}
               onClose={() => setEmailComposerOpen(false)}
