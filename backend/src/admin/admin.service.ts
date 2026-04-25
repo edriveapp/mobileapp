@@ -318,6 +318,7 @@ export class AdminService {
                 driver.expoPushTokens,
                 '⚠️ Account Warning',
                 `You have received a ${level} warning: ${reason}`,
+                { type: 'admin_warning', level }
             );
         }
 
@@ -328,7 +329,7 @@ export class AdminService {
             `edrive Account Warning – ${level.toUpperCase()}`,
             generateDriverWarningEmail({ driverName, level, reason }),
             `You have received a ${level} warning: ${reason}`,
-            { from: 'safety@edriveapp.com' },
+            { from: 'support@edriveapp.com' },
         );
 
         return { success: true, warning };
@@ -352,6 +353,7 @@ export class AdminService {
                 restrict
                     ? 'Your account has been restricted. Please contact support.'
                     : 'Your account has been reinstated. You can now use the app.',
+                { type: 'admin_restriction', restricted: restrict }
             );
         }
 
@@ -361,7 +363,7 @@ export class AdminService {
             `edrive Account ${restrict ? 'Restricted' : 'Reinstated'}`,
             `<p>Hello ${user.firstName || 'User'},</p><p>Your edrive account has been <strong>${restrict ? 'restricted' : 'reinstated'}</strong> by admin.</p>`,
             `Your edrive account has been ${restrict ? 'restricted' : 'reinstated'}.`,
-            { from: 'safety@edriveapp.com' },
+            { from: 'support@edriveapp.com' },
         );
 
         return { success: true, isRestricted: user.isRestricted };
@@ -382,9 +384,33 @@ export class AdminService {
             throw new ForbiddenException('Super admin accounts cannot be deleted');
         }
 
+        // Capture details for notifications before deletion
+        const userEmail = user.email;
+        const pushTokens = user.expoPushTokens || [];
+        const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User';
+
         // Note: For a real production app, you might want to soft-delete
         // or ensure no orphaned records (rides, payments, etc.)
         await this.usersRepository.delete(userId);
+
+        if (pushTokens.length) {
+            await this.pushService.sendToExpoTokens(
+                pushTokens,
+                'Account Deleted',
+                'Your edrive account has been permanently deleted by the administrator.',
+                { type: 'account_deleted' }
+            );
+        }
+
+        if (this.isValidEmail(userEmail)) {
+            await this.mailerService.sendEmail(
+                [userEmail],
+                'Your edrive Account Has Been Deleted',
+                `<p>Hello ${userName},</p><p>Your edrive account has been permanently deleted by an administrator.</p><p>If you believe this was a mistake, please contact support.</p>`,
+                'Your edrive account has been deleted by an admin.',
+                { from: 'support@edriveapp.com' }
+            );
+        }
 
         return { success: true };
     }
@@ -1141,6 +1167,17 @@ export class AdminService {
                 updatedUser.expoPushTokens,
                 type === 'credit' ? 'Wallet Credited' : 'Wallet Debited',
                 `₦${amount.toLocaleString()} has been ${type === 'credit' ? 'added to' : 'removed from'} your wallet. ${reason}`,
+                { type: 'wallet_adjustment', amount, reason }
+            );
+        }
+
+        if (updatedUser?.email && this.isValidEmail(updatedUser.email)) {
+            await this.mailerService.sendEmail(
+                [updatedUser.email],
+                `edrive Wallet ${type === 'credit' ? 'Credited' : 'Debited'}`,
+                `<p>Hello ${updatedUser.firstName || 'User'},</p><p>Your edrive wallet has been <strong>${type === 'credit' ? 'credited' : 'debited'}</strong> by ₦${amount.toLocaleString()}.</p><p><strong>Reason:</strong> ${reason}</p><p>Your new balance is ₦${Number(updatedUser.balance || 0).toLocaleString()}.</p>`,
+                `Your wallet was ${type}ed by ₦${amount}. Reason: ${reason}`,
+                { from: 'support@edriveapp.com' }
             );
         }
 
@@ -1151,7 +1188,7 @@ export class AdminService {
         const actor = await this.getActor(actorUserId);
         this.assertSuperAdmin(actor);
 
-        const { clearedAmount } = await this.usersRepository.manager.transaction(async (em) => {
+        const { clearedAmount, updatedUser } = await this.usersRepository.manager.transaction(async (em) => {
             const user = await em.findOne(User, { 
                 where: { id: userId },
                 lock: { mode: 'pessimistic_write' },
@@ -1170,8 +1207,28 @@ export class AdminService {
                 });
                 await em.save(txn);
             }
-            return { clearedAmount: cleared };
+            return { clearedAmount: cleared, updatedUser: await em.findOne(User, { where: { id: userId } }) };
         });
+        
+        if (clearedAmount > 0 && updatedUser) {
+            if (updatedUser.expoPushTokens?.length) {
+                await this.pushService.sendToExpoTokens(
+                    updatedUser.expoPushTokens,
+                    'Remittance Debt Cleared',
+                    `Your remittance debt of ₦${clearedAmount.toLocaleString()} has been cleared by admin.`,
+                    { type: 'remittance_cleared', amount: clearedAmount }
+                );
+            }
+            if (updatedUser.email && this.isValidEmail(updatedUser.email)) {
+                await this.mailerService.sendEmail(
+                    [updatedUser.email],
+                    'edrive Remittance Cleared',
+                    `<p>Hello ${updatedUser.firstName || 'Driver'},</p><p>Your remittance debt of <strong>₦${clearedAmount.toLocaleString()}</strong> has been cleared by an administrator.</p><p><strong>Reason:</strong> ${reason}</p><p>Your current pending remittance is now ₦0.</p>`,
+                    `Your remittance debt of ₦${clearedAmount} was cleared by admin.`,
+                    { from: 'support@edriveapp.com' }
+                );
+            }
+        }
         
         return { success: true, clearedAmount, reason };
     }
@@ -1183,7 +1240,7 @@ export class AdminService {
         if (!amount || amount <= 0) throw new BadRequestException('Amount must be positive');
         if (!reason?.trim()) throw new BadRequestException('A reason is required to add debt');
 
-        const { newPendingRemittance } = await this.usersRepository.manager.transaction(async (em) => {
+        const { newPendingRemittance, updatedUser } = await this.usersRepository.manager.transaction(async (em) => {
             const user = await em.findOne(User, { 
                 where: { id: userId },
                 lock: { mode: 'pessimistic_write' },
@@ -1202,8 +1259,28 @@ export class AdminService {
             await em.save(txn);
 
             const updated = await em.findOne(User, { where: { id: userId } });
-            return { newPendingRemittance: Number(updated?.pendingRemittance || 0) };
+            return { newPendingRemittance: Number(updated?.pendingRemittance || 0), updatedUser: updated };
         });
+
+        if (updatedUser) {
+            if (updatedUser.expoPushTokens?.length) {
+                await this.pushService.sendToExpoTokens(
+                    updatedUser.expoPushTokens,
+                    'Commission Debt Added',
+                    `A commission debt of ₦${amount.toLocaleString()} has been added to your account.`,
+                    { type: 'debt_added', amount }
+                );
+            }
+            if (updatedUser.email && this.isValidEmail(updatedUser.email)) {
+                await this.mailerService.sendEmail(
+                    [updatedUser.email],
+                    'edrive Commission Debt Update',
+                    `<p>Hello ${updatedUser.firstName || 'Driver'},</p><p>A commission debt of <strong>₦${amount.toLocaleString()}</strong> has been added to your account.</p><p><strong>Reason:</strong> ${reason}</p><p>Your new pending remittance balance is ₦${newPendingRemittance.toLocaleString()}.</p>`,
+                    `A debt of ₦${amount} was added. Reason: ${reason}`,
+                    { from: 'support@edriveapp.com' }
+                );
+            }
+        }
 
         return { success: true, newPendingRemittance, amount, reason };
     }
