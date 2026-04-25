@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nest
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Resend } from 'resend';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { MailerService } from '../common/mailer.service';
 import { User, UserRole, AdminScope } from '../users/user.entity';
 import { SupportMessage } from './support-message.entity';
@@ -34,7 +34,24 @@ export class SupportService {
 
     private canManageSupport(actor: User) {
         if (actor.role !== UserRole.ADMIN) return false;
-        return [AdminScope.SUPER_ADMIN, AdminScope.SUPPORT].includes(actor.adminScope);
+        return [AdminScope.SUPER_ADMIN, AdminScope.SUPPORT, AdminScope.OPERATIONS].includes(actor.adminScope);
+    }
+
+    private sanitizeIncomingHtml(value: string) {
+        if (!value?.trim()) return '';
+        return value
+            .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+            .replace(/\son\w+="[^"]*"/gi, '')
+            .replace(/\son\w+='[^']*'/gi, '')
+            .replace(/javascript:/gi, '')
+            .replace(/<(iframe|object|embed|form|input|button|textarea|select)[^>]*>[\s\S]*?<\/\1>/gi, '')
+            .replace(/<(iframe|object|embed|form|input|button|textarea|select)[^>]*\/?>/gi, '')
+            .trim();
+    }
+
+    private textToSafeHtml(value: string) {
+        return `<div>${this.escapeHtml(value).replace(/\n/g, '<br />')}</div>`;
     }
 
     async createTicket(userId: string, payload: { subject: string; description: string; category?: string; priority?: string }) {
@@ -57,6 +74,9 @@ export class SupportService {
             senderRole: actor.role,
             senderEmail: actor.email,
             text: payload.description,
+            html: this.textToSafeHtml(payload.description),
+            contentType: 'text/plain',
+            isInboundEmail: false,
         });
         await this.messagesRepository.save(firstMessage);
 
@@ -105,13 +125,19 @@ export class SupportService {
         });
     }
 
-    async getAdminTickets(userId: string, status?: SupportTicketStatus) {
+    async getAdminTickets(userId: string, status?: SupportTicketStatus, options?: { category?: string; includeInbound?: boolean }) {
         const actor = await this.getActor(userId);
         if (!this.canManageSupport(actor)) {
             throw new ForbiddenException('You do not have support permissions');
         }
 
-        const where = status ? { status } : {};
+        const where: any = {};
+        if (status) where.status = status;
+        if (options?.category) {
+            where.category = options.category;
+        } else if (!options?.includeInbound) {
+            where.category = Not('inbound_email');
+        }
         const tickets = await this.ticketsRepository.find({
             where,
             order: { updatedAt: 'DESC' },
@@ -180,6 +206,9 @@ export class SupportService {
             senderRole: actor.role,
             senderEmail: actor.email,
             text,
+            html: this.textToSafeHtml(text),
+            contentType: 'text/plain',
+            isInboundEmail: false,
         });
         await this.messagesRepository.save(message);
 
@@ -197,6 +226,16 @@ export class SupportService {
             `Ticket ${ticket.subject} has a new message from ${senderName}.`,
             { from: 'support@edriveapp.com' },
         );
+
+        if (ticket.category === 'inbound_email' && actor.role === UserRole.ADMIN && ticket.createdByEmail) {
+            await this.mailerService.sendEmail(
+                [ticket.createdByEmail],
+                `Re: ${ticket.subject}`,
+                this.textToSafeHtml(text),
+                text,
+                { from: 'support@edriveapp.com' },
+            );
+        }
 
         return this.getTicketById(ticketId, userId);
     }
@@ -242,7 +281,8 @@ export class SupportService {
             ? await this.usersRepository.findOne({ where: { email: parsed.email.toLowerCase() } })
             : null;
 
-        const textBody = this.normalizeIncomingText(email.text || this.stripHtml(email.html || ''));
+        const sanitizedHtml = this.sanitizeIncomingHtml(email.html || '');
+        const textBody = this.normalizeIncomingText(email.text || this.stripHtml(sanitizedHtml));
         const subject = (email.subject || 'Incoming email').trim();
         const displayEmail = parsed.email || email.from || 'unknown@sender';
         const toLine = Array.isArray(email.to) ? email.to.join(', ') : '';
@@ -274,6 +314,9 @@ export class SupportService {
             senderRole: knownUser?.role || 'email',
             senderEmail: parsed.email || email.from || null,
             text: textBody || 'No message body was provided.',
+            html: sanitizedHtml || this.textToSafeHtml(textBody || 'No message body was provided.'),
+            contentType: sanitizedHtml ? 'text/html' : 'text/plain',
+            isInboundEmail: true,
         });
         await this.messagesRepository.save(firstMessage);
 

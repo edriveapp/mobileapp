@@ -67,6 +67,19 @@ type SupportTicketSummary = {
   status: 'open' | 'in_progress' | 'resolved';
 };
 
+type SupportTicketDetail = SupportTicketSummary & {
+  messages: Array<{
+    id: string;
+    senderRole: string;
+    senderEmail?: string | null;
+    senderName?: string;
+    text: string;
+    html?: string | null;
+    contentType?: string | null;
+    createdAt: string;
+  }>;
+};
+
 const REPEAT_LABELS: Record<RepeatOption, string> = {
   once: 'Send Once',
   daily: 'Every Day',
@@ -88,6 +101,128 @@ const STATUS_ICONS: Record<CampaignStatus, React.ReactNode> = {
   paused: <Pause className="w-3 h-3" />,
   expired: <CheckCircle className="w-3 h-3" />,
 };
+
+function InboundEmailModal({
+  token,
+  ticketId,
+  onClose,
+  onUpdated,
+}: {
+  token: string | null;
+  ticketId: string;
+  onClose: () => void;
+  onUpdated: () => Promise<void> | void;
+}) {
+  const [detail, setDetail] = useState<SupportTicketDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [reply, setReply] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const loadDetail = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiRequest<SupportTicketDetail>(`/support/tickets/${ticketId}`, { token });
+      setDetail(data);
+    } finally {
+      setLoading(false);
+    }
+  }, [ticketId, token]);
+
+  useEffect(() => {
+    loadDetail();
+  }, [loadDetail]);
+
+  const updateStatus = async (status: 'open' | 'in_progress' | 'resolved') => {
+    await apiRequest(`/support/tickets/${ticketId}/status`, { method: 'PATCH', token, body: { status } });
+    await loadDetail();
+    await onUpdated();
+  };
+
+  const sendReply = async () => {
+    if (!reply.trim()) return;
+    setSending(true);
+    try {
+      await apiRequest(`/support/tickets/${ticketId}/messages`, {
+        method: 'POST',
+        token,
+        body: { text: reply.trim() },
+      });
+      setReply('');
+      await loadDetail();
+      await onUpdated();
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-start justify-center z-50 p-6 overflow-y-auto">
+      <div className="w-full max-w-4xl my-8 bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-gray-900">{detail?.subject || 'Inbound Email'}</h2>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium uppercase tracking-wide">inbound</span>
+              {detail ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium uppercase tracking-wide">{detail.status}</span> : null}
+            </div>
+            <p className="text-sm text-gray-500 mt-1">From {detail?.createdByEmail || detail?.creatorName || 'Unknown sender'}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 border-b border-gray-100 flex items-center gap-2">
+          <button onClick={() => updateStatus('open')} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium">Open</button>
+          <button onClick={() => updateStatus('in_progress')} className="px-3 py-2 bg-amber-100 hover:bg-amber-200 rounded-xl text-sm font-medium">In Progress</button>
+          <button onClick={() => updateStatus('resolved')} className="px-3 py-2 bg-emerald-100 hover:bg-emerald-200 rounded-xl text-sm font-medium">Resolve</button>
+        </div>
+
+        <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+          {loading ? (
+            <p className="text-sm text-gray-400">Loading email…</p>
+          ) : (
+            detail?.messages?.map((message) => {
+              const isAdmin = message.senderRole === 'admin';
+              return (
+                <div key={message.id} className={`rounded-2xl p-4 ${isAdmin ? 'bg-emerald-50' : 'bg-gray-50 border border-gray-100'}`}>
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-xs font-semibold text-gray-700">{message.senderName || message.senderEmail || message.senderRole}</p>
+                    <p className="text-[11px] text-gray-400">{new Date(message.createdAt).toLocaleString()}</p>
+                  </div>
+                  {message.html ? (
+                    <div className="prose prose-sm max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: message.html }} />
+                  ) : (
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.text}</p>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="p-5 border-t border-gray-100 bg-gray-50">
+          <div className="flex gap-3">
+            <textarea
+              value={reply}
+              onChange={(event) => setReply(event.target.value)}
+              rows={4}
+              placeholder="Reply to this inbound email..."
+              className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white resize-none"
+            />
+            <button
+              onClick={sendReply}
+              disabled={sending || !reply.trim()}
+              className="self-end px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+            >
+              {sending ? 'Sending…' : 'Send Reply'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Campaign Composer ───────────────────────────────────────────────────────
 
@@ -274,6 +409,7 @@ export default function Notifications() {
   const [emailSegments, setEmailSegments] = useState<AudienceSegment[]>([]);
   const [defaultSenderEmail, setDefaultSenderEmail] = useState('support@edriveapp.com');
   const [inboundEmails, setInboundEmails] = useState<SupportTicketSummary[]>([]);
+  const [activeInboundEmailId, setActiveInboundEmailId] = useState<string | null>(null);
 
   const handleEmailSend = async (payload: BroadcastPayload) => {
     await apiRequest('/admin/broadcast/send', { method: 'POST', token, body: payload });
@@ -309,8 +445,8 @@ export default function Notifications() {
 
   const loadInboundEmails = useCallback(async () => {
     try {
-      const tickets = await apiRequest<SupportTicketSummary[]>('/support/tickets/admin', { token });
-      setInboundEmails((tickets || []).filter((ticket) => ticket.category === 'inbound_email').slice(0, 8));
+      const tickets = await apiRequest<SupportTicketSummary[]>('/support/tickets/admin?category=inbound_email&includeInbound=true', { token });
+      setInboundEmails((tickets || []).slice(0, 8));
     } catch (e) {
       console.error(e);
     }
@@ -391,6 +527,15 @@ export default function Notifications() {
         </div>
       )}
 
+      {activeInboundEmailId && (
+        <InboundEmailModal
+          token={token}
+          ticketId={activeInboundEmailId}
+          onClose={() => setActiveInboundEmailId(null)}
+          onUpdated={loadInboundEmails}
+        />
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-end">
         <div>
@@ -463,7 +608,7 @@ export default function Notifications() {
         ) : (
           <div className="divide-y divide-gray-100">
             {inboundEmails.map((email) => (
-              <div key={email.id} className="p-5 flex items-start gap-4">
+              <button key={email.id} onClick={() => setActiveInboundEmailId(email.id)} className="p-5 flex items-start gap-4 w-full text-left hover:bg-gray-50 transition-colors">
                 <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
                   <Mail className="w-4 h-4 text-gray-500" />
                 </div>
@@ -487,7 +632,7 @@ export default function Notifications() {
                 <div className="text-xs text-gray-400 shrink-0">
                   {new Date(email.updatedAt).toLocaleString()}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}

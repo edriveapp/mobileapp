@@ -13,11 +13,12 @@ import { AdminService } from './admin.service';
 import { DriverWarning } from './driver-warning.entity';
 import { NotificationCampaign } from './notification-campaign.entity';
 import { NotificationSchedulerService } from './notification-scheduler.service';
+import { WalletTransaction } from '../users/wallet-transaction.entity';
 
 @Module({
     imports: [
         ScheduleModule.forRoot(),
-        TypeOrmModule.forFeature([User, Ride, Rating, DriverWarning, NotificationCampaign, SupportTicket, SupportMessage]),
+        TypeOrmModule.forFeature([User, Ride, Rating, DriverWarning, NotificationCampaign, SupportTicket, SupportMessage, WalletTransaction]),
         CommonModule,
         PaymentsModule,
     ],

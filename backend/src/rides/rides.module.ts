@@ -10,10 +10,11 @@ import { RidesGateway } from './rides.gateway';
 import { RidesService } from './rides.service';
 import { UsersModule } from '../users/users.module';
 import { User } from '../users/user.entity';
+import { WalletTransaction } from '../users/wallet-transaction.entity';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Ride, User, Booking]),
+        TypeOrmModule.forFeature([Ride, User, Booking, WalletTransaction]),
         CommonModule,
         UsersModule,
         JwtModule.registerAsync({

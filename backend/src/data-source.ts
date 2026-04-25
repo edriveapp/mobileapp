@@ -10,6 +10,7 @@ import { SupportTicket } from './support/support-ticket.entity';
 import { DriverProfile } from './users/driver-profile.entity';
 import { SavedPlace } from './users/saved-place.entity';
 import { User } from './users/user.entity';
+import { WalletTransaction } from './users/wallet-transaction.entity';
 import { DriverWarning } from './admin/driver-warning.entity';
 import { NotificationCampaign } from './admin/notification-campaign.entity';
 
@@ -21,6 +22,7 @@ export const AppDataSource = new DataSource({
     // Source (ts-node) — used when generating migrations locally
     entities: [
         User,
+        WalletTransaction,
         DriverProfile,
         Ride,
         Booking,

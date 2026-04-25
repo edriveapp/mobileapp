@@ -16,15 +16,12 @@ export default function RemittanceScreen() {
   }, [fetchWallet]);
 
   const remittanceTransactions = useMemo(
-    () => transactions.filter((txn) => txn.type === 'commission_deduction' || txn.type === 'debit'),
+    () => transactions.filter((txn) => ['remittance_due', 'remittance_payment', 'insurance_reserve', 'wallet_adjustment_debit'].includes(txn.type)),
     [transactions]
   );
 
   const totalPaid = useMemo(
-    () =>
-      remittanceTransactions
-        .filter((txn) => txn.type === 'commission_deduction')
-        .reduce((sum, txn) => sum + Number(txn.amount || 0), 0),
+    () => remittanceTransactions.filter((txn) => txn.type === 'remittance_payment').reduce((sum, txn) => sum + Number(txn.amount || 0), 0),
     [remittanceTransactions]
   );
 
@@ -43,19 +40,22 @@ export default function RemittanceScreen() {
   };
 
   const renderItem = ({ item }: { item: Transaction }) => {
-    const isCommission = item.type === 'commission_deduction';
+    const isPayment = item.type === 'remittance_payment';
+    const grossFare = Number(item.metadata?.grossFare || 0);
+
     return (
       <View style={styles.itemCard}>
-        <View style={[styles.itemIcon, isCommission ? styles.itemIconDanger : styles.itemIconNeutral]}>
-          <Ionicons name={isCommission ? 'receipt-outline' : 'arrow-up'} size={18} color={isCommission ? '#B42318' : '#5F6D7A'} />
+        <View style={[styles.itemIcon, isPayment ? styles.itemIconPaid : styles.itemIconDue]}>
+          <Ionicons name={isPayment ? 'checkmark-done-outline' : 'receipt-outline'} size={18} color={isPayment ? '#027A48' : '#B42318'} />
         </View>
         <View style={styles.itemBody}>
           <Text style={styles.itemTitle}>{item.description || 'Remittance activity'}</Text>
-          <Text style={styles.itemDate}>
-            {new Date(item.date).toLocaleDateString()} • {new Date(item.date).toLocaleTimeString()}
-          </Text>
+          <Text style={styles.itemDate}>{new Date(item.date).toLocaleDateString()} • {new Date(item.date).toLocaleTimeString()}</Text>
+          {item.rideId ? <Text style={styles.metaText}>Trip ID: {item.rideId.slice(0, 8)}</Text> : null}
+          {item.paymentReference ? <Text style={styles.metaText}>Payment Ref: {item.paymentReference}</Text> : null}
+          {grossFare > 0 ? <Text style={styles.metaText}>Gross Fare: ₦{grossFare.toLocaleString()}</Text> : null}
         </View>
-        <Text style={styles.itemAmount}>-₦{Number(item.amount || 0).toLocaleString()}</Text>
+        <Text style={[styles.itemAmount, isPayment ? styles.itemAmountPaid : styles.itemAmountDue]}>{isPayment ? '-' : '-'}₦{Number(item.amount || 0).toLocaleString()}</Text>
       </View>
     );
   };
@@ -90,7 +90,7 @@ export default function RemittanceScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No remittance records yet</Text>
-            <Text style={styles.emptyText}>Commission deductions and payouts will show here.</Text>
+            <Text style={styles.emptyText}>Platform remittance and insurance reserve deductions will show here.</Text>
           </View>
         }
       />
@@ -110,15 +110,8 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   backButton: { width: 24 },
-  headerTitle: {
-    fontSize: 18,
-    fontFamily: Fonts.bold,
-    color: COLORS.text,
-  },
-  listContent: {
-    padding: SPACING.l,
-    paddingBottom: SPACING.xl,
-  },
+  headerTitle: { fontSize: 18, fontFamily: Fonts.bold, color: COLORS.text },
+  listContent: { padding: SPACING.l, paddingBottom: SPACING.xl },
   summaryCard: {
     backgroundColor: '#FFF5F5',
     borderRadius: 14,
@@ -127,37 +120,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FFD8D8',
   },
-  summaryLabel: {
-    fontSize: 13,
-    fontFamily: Fonts.rounded,
-    color: COLORS.textSecondary,
-    marginBottom: 6,
-  },
-  summaryValue: {
-    fontSize: 32,
-    fontFamily: Fonts.bold,
-    color: '#B42318',
-    marginBottom: 4,
-  },
-  summaryMeta: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.m,
-  },
-  payButton: {
-    backgroundColor: '#B42318',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  payButtonText: {
-    color: '#fff',
-    fontFamily: Fonts.semibold,
-    fontSize: 14,
-  },
+  summaryLabel: { fontSize: 13, fontFamily: Fonts.rounded, color: COLORS.textSecondary, marginBottom: 6 },
+  summaryValue: { fontSize: 32, fontFamily: Fonts.bold, color: '#B42318', marginBottom: 4 },
+  summaryMeta: { fontSize: 13, color: COLORS.textSecondary, marginBottom: SPACING.m },
+  payButton: { backgroundColor: '#B42318', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  payButtonText: { color: '#fff', fontFamily: Fonts.semibold, fontSize: 14 },
   itemCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: SPACING.m,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -173,40 +143,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: SPACING.m,
   },
-  itemIconDanger: {
-    backgroundColor: '#FEE4E2',
-  },
-  itemIconNeutral: {
-    backgroundColor: '#F2F4F7',
-  },
+  itemIconPaid: { backgroundColor: '#E8F5E9' },
+  itemIconDue: { backgroundColor: '#FEE4E2' },
   itemBody: { flex: 1 },
-  itemTitle: {
-    fontSize: 14,
-    fontFamily: Fonts.semibold,
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  itemDate: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  itemAmount: {
-    fontSize: 14,
-    fontFamily: Fonts.bold,
-    color: '#B42318',
-  },
-  emptyState: {
-    alignItems: 'center',
-    marginTop: 64,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontFamily: Fonts.semibold,
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
+  itemTitle: { fontSize: 14, fontFamily: Fonts.semibold, color: COLORS.text, marginBottom: 2 },
+  itemDate: { fontSize: 11, color: COLORS.textSecondary, marginBottom: 6 },
+  metaText: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  itemAmount: { fontSize: 14, fontFamily: Fonts.bold },
+  itemAmountPaid: { color: '#027A48' },
+  itemAmountDue: { color: '#B42318' },
+  emptyState: { alignItems: 'center', marginTop: 64 },
+  emptyTitle: { fontSize: 16, fontFamily: Fonts.semibold, color: COLORS.text, marginBottom: 4 },
+  emptyText: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center' },
 });

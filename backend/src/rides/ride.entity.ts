@@ -121,6 +121,30 @@ export class Ride {
     paystackReference: string;
 
     @Column({ nullable: true })
+    paymentReference: string;
+
+    @Column('decimal', { precision: 5, scale: 2, nullable: true })
+    platformCutPercent: number;
+
+    @Column('decimal', { precision: 10, scale: 2, nullable: true })
+    platformCutAmount: number;
+
+    @Column('decimal', { precision: 5, scale: 2, nullable: true })
+    insuranceReservePercent: number;
+
+    @Column('decimal', { precision: 10, scale: 2, nullable: true })
+    insuranceReserveAmount: number;
+
+    @Column('decimal', { precision: 10, scale: 2, nullable: true })
+    driverNetEarnings: number;
+
+    @Column({ type: 'int', nullable: true })
+    estimatedDurationMinutes: number;
+
+    @Column({ nullable: true })
+    payoutStatus: string;
+
+    @Column({ nullable: true })
     refundReference: string;
 
     @Column({ nullable: true })

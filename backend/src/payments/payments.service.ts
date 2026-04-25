@@ -43,29 +43,41 @@ export class PaymentsService {
 
         const amount = (data?.amount ?? 0) / 100;
         const distance = Number(metadata?.distanceInKm ?? customMap?.distance_km ?? 0);
-        const split = this.calculatePaymentSplit(amount, distance);
+        const estimatedDurationMinutes = Number(metadata?.estimatedDurationMinutes ?? customMap?.estimated_duration_minutes ?? 0);
+        const split = this.calculatePaymentSplit(amount, estimatedDurationMinutes);
 
-        await this.ridesService.updatePaymentDetails(rideId, 'paid', split.driverAmount, split.platformFee, data?.reference);
+        await this.ridesService.updatePaymentDetails(rideId, 'paid', {
+            driverNetEarnings: split.driverNetEarnings,
+            platformCut: split.platformCutAmount,
+            platformCutPercent: split.platformCutPercent,
+            insuranceReserveAmount: split.insuranceReserveAmount,
+            insuranceReservePercent: split.insuranceReservePercent,
+            paystackReference: data?.reference,
+            paymentReference: data?.reference,
+            estimatedDurationMinutes,
+        });
         this.logger.log(`Webhook payment confirmed: rideId=${rideId} amount=₦${amount}`);
     }
 
-    calculatePaymentSplit(amount: number, distanceInKm: number) {
-        let driverPercentage = 85; // Up to 200 km
-        if (distanceInKm > 500) {
-            driverPercentage = 65; // Platform max 35%
-        } else if (distanceInKm > 200) {
-            driverPercentage = 75; // Platform 25%
-        }
+    calculatePaymentSplit(amount: number, estimatedDurationMinutes: number) {
+        const platformCutPercent = estimatedDurationMinutes > 60 ? 15 : 12;
+        const insuranceReservePercent = 2;
+        const platformCutAmount = Number(((amount * platformCutPercent) / 100).toFixed(2));
+        const insuranceReserveAmount = Number(((amount * insuranceReservePercent) / 100).toFixed(2));
+        const driverNetEarnings = Number((amount - platformCutAmount - insuranceReserveAmount).toFixed(2));
 
-        const platformPercentage = 100 - driverPercentage;
-        const driverAmount = (amount * driverPercentage) / 100;
-        const platformFee = (amount * platformPercentage) / 100;
-
-        return { driverAmount, platformFee, driverPercentage, platformPercentage };
+        return {
+            grossAmount: Number(amount.toFixed(2)),
+            platformCutPercent,
+            insuranceReservePercent,
+            platformCutAmount,
+            insuranceReserveAmount,
+            driverNetEarnings,
+        };
     }
 
-    async initializePayment(email: string, amount: number, distanceInKm: number, rideId: string) {
-        const split = this.calculatePaymentSplit(amount, distanceInKm);
+    async initializePayment(email: string, amount: number, distanceInKm: number, estimatedDurationMinutes: number, rideId: string) {
+        const split = this.calculatePaymentSplit(amount, estimatedDurationMinutes);
         const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
 
         if (!secretKey) {
@@ -84,11 +96,14 @@ export class PaymentsService {
             metadata: {
                 rideId,
                 distanceInKm,
+                estimatedDurationMinutes,
                 custom_fields: [
                     { display_name: "Ride ID", variable_name: "ride_id", value: rideId },
                     { display_name: "Distance (km)", variable_name: "distance_km", value: distanceInKm },
-                    { display_name: "Driver Cut", variable_name: "driver_amount", value: split.driverAmount },
-                    { display_name: "Platform Fee", variable_name: "platform_fee", value: split.platformFee }
+                    { display_name: "Estimated Duration (minutes)", variable_name: "estimated_duration_minutes", value: estimatedDurationMinutes },
+                    { display_name: "Driver Net Earnings", variable_name: "driver_net_earnings", value: split.driverNetEarnings },
+                    { display_name: "Platform Fee", variable_name: "platform_fee", value: split.platformCutAmount },
+                    { display_name: "Insurance Reserve", variable_name: "insurance_reserve", value: split.insuranceReserveAmount }
                 ]
             }
         };
@@ -127,17 +142,20 @@ export class PaymentsService {
 
                 const rideId = metadata?.rideId || customMap?.ride_id;
                 const amount = data.data.amount / 100; // Convert back from kobo
-                const distance = Number(metadata?.distanceInKm ?? customMap?.distance_km ?? 0);
+                const estimatedDurationMinutes = Number(metadata?.estimatedDurationMinutes ?? customMap?.estimated_duration_minutes ?? 0);
 
                 if (rideId) {
-                    const split = this.calculatePaymentSplit(amount, distance);
-                    await this.ridesService.updatePaymentDetails(
-                        rideId,
-                        'paid',
-                        split.driverAmount,
-                        split.platformFee,
-                        data.data.reference,
-                    );
+                    const split = this.calculatePaymentSplit(amount, estimatedDurationMinutes);
+                    await this.ridesService.updatePaymentDetails(rideId, 'paid', {
+                        driverNetEarnings: split.driverNetEarnings,
+                        platformCut: split.platformCutAmount,
+                        platformCutPercent: split.platformCutPercent,
+                        insuranceReserveAmount: split.insuranceReserveAmount,
+                        insuranceReservePercent: split.insuranceReservePercent,
+                        paystackReference: data.data.reference,
+                        paymentReference: data.data.reference,
+                        estimatedDurationMinutes,
+                    });
                 }
             }
 
@@ -178,6 +196,60 @@ export class PaymentsService {
             const msg = error.response?.data?.message || error.message;
             this.logger.error(`Paystack refund failed for ride ${rideId}: ${msg}`);
             throw new InternalServerErrorException(`Refund failed: ${msg}`);
+        }
+    }
+
+    async getBanks() {
+        const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
+        if (!secretKey) {
+            throw new InternalServerErrorException('PAYSTACK_SECRET_KEY is not configured');
+        }
+
+        try {
+            const response = await lastValueFrom(this.httpService.get('https://api.paystack.co/bank?country=nigeria&perPage=200', {
+                headers: { Authorization: `Bearer ${secretKey}` },
+            }));
+            const banks = Array.isArray(response.data?.data) ? response.data.data : [];
+            return banks.map((bank: any) => ({
+                id: String(bank.id),
+                name: String(bank.name || ''),
+                code: String(bank.code || ''),
+            }));
+        } catch (error) {
+            this.logger.error(`Bank list fetch failed: ${error.response?.data?.message || error.message}`);
+            throw new InternalServerErrorException('Could not load bank list');
+        }
+    }
+
+    async resolveAccountNumber(accountNumber: string, bankCode: string) {
+        const normalizedAccountNumber = String(accountNumber || '').replace(/\D/g, '');
+        const normalizedBankCode = String(bankCode || '').trim();
+        if (normalizedAccountNumber.length !== 10) {
+            throw new BadRequestException('Account number must be 10 digits');
+        }
+        if (!normalizedBankCode) {
+            throw new BadRequestException('Bank code is required');
+        }
+
+        const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
+        if (!secretKey) {
+            throw new InternalServerErrorException('PAYSTACK_SECRET_KEY is not configured');
+        }
+
+        try {
+            const response = await lastValueFrom(this.httpService.get('https://api.paystack.co/bank/resolve', {
+                headers: { Authorization: `Bearer ${secretKey}` },
+                params: { account_number: normalizedAccountNumber, bank_code: normalizedBankCode },
+            }));
+            const data = response.data?.data;
+            return {
+                accountName: data?.account_name || '',
+                accountNumber: data?.account_number || normalizedAccountNumber,
+                bankCode: normalizedBankCode,
+            };
+        } catch (error) {
+            const message = error.response?.data?.message || 'Could not resolve account number';
+            throw new BadRequestException(message);
         }
     }
 }

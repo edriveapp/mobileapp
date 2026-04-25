@@ -60,6 +60,10 @@ export const validateDriverInfoStep = (driverInfo: {
     guarantorPhone: string;
     nextOfKinName: string;
     nextOfKinPhone: string;
+    bankName: string;
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
 }, selfieUri?: string | null): boolean => {
     return (
         !!selfieUri &&
@@ -73,7 +77,11 @@ export const validateDriverInfoStep = (driverInfo: {
         validateRequired(driverInfo.guarantorName) &&
         validatePhoneNumber(driverInfo.guarantorPhone) &&
         validateRequired(driverInfo.nextOfKinName) &&
-        validatePhoneNumber(driverInfo.nextOfKinPhone)
+        validatePhoneNumber(driverInfo.nextOfKinPhone) &&
+        validateRequired(driverInfo.bankName) &&
+        validateRequired(driverInfo.bankCode) &&
+        /^\d{10}$/.test(driverInfo.accountNumber.trim()) &&
+        validateRequired(driverInfo.accountName)
     );
 };
 
@@ -87,7 +95,6 @@ export const validateVehicleStep = (vehicleInfo: {
 }, documents: {
     licenseImageUri: string | null;
     insuranceImageUri: string | null;
-    worthinessImageUri: string | null;
     vehiclePhotos: string[];
 }): boolean => {
     const isBus = ['Van', 'Minibus', 'Coaster Bus'].includes(vehicleInfo.type);
@@ -100,7 +107,6 @@ export const validateVehicleStep = (vehicleInfo: {
         (!isBus || validateRequired(vehicleInfo.capacity || '')) &&
         documents.licenseImageUri !== null &&
         documents.insuranceImageUri !== null &&
-        documents.worthinessImageUri !== null &&
-        documents.vehiclePhotos.length > 0
+        documents.vehiclePhotos.length >= 4
     );
 };

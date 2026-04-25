@@ -7,6 +7,7 @@ import { BatchEmailMessage, MailerService } from '../common/mailer.service';
 import { PushNotificationsService } from '../common/push-notifications.service';
 import { PaymentsService } from '../payments/payments.service';
 import { AdminScope, User, UserRole, VerificationStatus } from '../users/user.entity';
+import { WalletTransaction, WalletTransactionType } from '../users/wallet-transaction.entity';
 import { Ride, RideStatus } from '../rides/ride.entity';
 import { Rating } from '../ratings/rating.entity';
 import { buildTrendingAreas, extractAreaName } from '../rides/trending-areas.util';
@@ -33,6 +34,8 @@ export class AdminService {
         private ticketsRepository: Repository<SupportTicket>,
         @InjectRepository(SupportMessage)
         private supportMessagesRepository: Repository<SupportMessage>,
+        @InjectRepository(WalletTransaction)
+        private walletTransactionsRepository: Repository<WalletTransaction>,
         private readonly mailerService: MailerService,
         private readonly pushService: PushNotificationsService,
         private readonly paymentsService: PaymentsService,
@@ -78,6 +81,29 @@ export class AdminService {
         if (![AdminScope.SUPER_ADMIN, AdminScope.OPERATIONS].includes(actor.adminScope)) {
             throw new ForbiddenException('Operations admin access required');
         }
+    }
+
+    private async recordWalletTransaction(payload: {
+        userId: string;
+        type: WalletTransactionType;
+        amount: number;
+        description: string;
+        direction?: 'credit' | 'debit' | null;
+        rideId?: string | null;
+        paymentReference?: string | null;
+        metadata?: Record<string, any> | null;
+    }) {
+        const transaction = this.walletTransactionsRepository.create({
+            userId: payload.userId,
+            type: payload.type,
+            amount: payload.amount,
+            description: payload.description,
+            direction: payload.direction ?? null,
+            rideId: payload.rideId ?? null,
+            paymentReference: payload.paymentReference ?? null,
+            metadata: payload.metadata ?? null,
+        });
+        await this.walletTransactionsRepository.save(transaction);
     }
 
     // ─── Stats & Analytics ─────────────────────────────────────────────────────
@@ -236,7 +262,7 @@ export class AdminService {
 
         const totalEarnings = rides
             .filter((r) => r.status === RideStatus.COMPLETED)
-            .reduce((sum, r) => sum + Number(r.tripFare || 0) - Number(r.platformCut || 0), 0);
+            .reduce((sum, r) => sum + Number(r.driverNetEarnings || r.driverEarnings || 0), 0);
 
         return {
             driver: this.toSafeUser(driver),
@@ -867,11 +893,17 @@ export class AdminService {
             paymentStatus: ride.paymentStatus,
             paymentMethod: ride.paymentMethod,
             paystackReference: ride.paystackReference,
+            paymentReference: ride.paymentReference,
             refundReference: ride.refundReference,
             refundReason: ride.refundReason,
             fare: Number(ride.tripFare || 0),
-            driverEarnings: Number(ride.driverEarnings || 0),
-            platformCut: Number(ride.platformCut || 0),
+            driverEarnings: Number(ride.driverNetEarnings || ride.driverEarnings || 0),
+            platformCut: Number(ride.platformCutAmount || ride.platformCut || 0),
+            platformCutPercent: Number(ride.platformCutPercent || 0),
+            insuranceReserveAmount: Number(ride.insuranceReserveAmount || 0),
+            insuranceReservePercent: Number(ride.insuranceReservePercent || 0),
+            payoutStatus: ride.payoutStatus,
+            estimatedDurationMinutes: ride.estimatedDurationMinutes,
             distanceKm: ride.distanceKm,
             origin: ride.origin,
             destination: ride.destination,
@@ -944,9 +976,14 @@ export class AdminService {
                 paymentStatus: r.paymentStatus,
                 paymentMethod: r.paymentMethod,
                 amount: Number(r.tripFare || 0),
-                driverEarnings: Number(r.driverEarnings || 0),
-                platformCut: Number(r.platformCut || 0),
+                driverEarnings: Number(r.driverNetEarnings || r.driverEarnings || 0),
+                platformCut: Number(r.platformCutAmount || r.platformCut || 0),
+                platformCutPercent: Number(r.platformCutPercent || 0),
+                insuranceReserveAmount: Number(r.insuranceReserveAmount || 0),
+                insuranceReservePercent: Number(r.insuranceReservePercent || 0),
                 paystackReference: r.paystackReference || null,
+                paymentReference: r.paymentReference || null,
+                payoutStatus: r.payoutStatus || null,
                 refundReference: r.refundReference || null,
                 refundReason: r.refundReason || null,
                 driver: r.driver ? `${r.driver.firstName || ''} ${r.driver.lastName || ''}`.trim() || r.driver.email : null,
@@ -1067,9 +1104,23 @@ export class AdminService {
 
         if (type === 'credit') {
             await this.usersRepository.increment({ id: userId }, 'balance', amount);
+            await this.recordWalletTransaction({
+                userId,
+                type: 'wallet_adjustment_credit',
+                amount,
+                direction: 'credit',
+                description: reason,
+            });
         } else {
             if (Number(user.balance || 0) < amount) throw new BadRequestException('Insufficient wallet balance');
             await this.usersRepository.decrement({ id: userId }, 'balance', amount);
+            await this.recordWalletTransaction({
+                userId,
+                type: 'wallet_adjustment_debit',
+                amount,
+                direction: 'debit',
+                description: reason,
+            });
         }
 
         const updated = await this.usersRepository.findOne({ where: { id: userId } });
@@ -1094,6 +1145,15 @@ export class AdminService {
 
         const cleared = Number(user.pendingRemittance || 0);
         await this.usersRepository.update(userId, { pendingRemittance: 0 });
+        if (cleared > 0) {
+            await this.recordWalletTransaction({
+                userId,
+                type: 'remittance_payment',
+                amount: cleared,
+                direction: 'credit',
+                description: `Admin cleared outstanding remittance. ${reason}`,
+            });
+        }
 
         if (user.expoPushTokens?.length) {
             await this.pushService.sendToExpoTokens(

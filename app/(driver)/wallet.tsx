@@ -86,7 +86,7 @@ export default function WalletScreen() {
     };
 
     const renderTransactionItem = ({ item }: { item: Transaction }) => {
-        const isCredit = item.type === 'credit';
+        const isCredit = item.direction === 'credit' || ['wallet_funding', 'driver_earning', 'passenger_payment', 'wallet_adjustment_credit'].includes(item.type);
         
         return (
             <View style={styles.transactionItem}>

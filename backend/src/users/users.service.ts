@@ -7,6 +7,7 @@ import { RedisService } from '../common/redis.service';
 import { DriverProfile } from './driver-profile.entity';
 import { SavedPlace } from './saved-place.entity';
 import { AdminScope, User, UserRole, VerificationStatus } from './user.entity';
+import { WalletTransaction, WalletTransactionType } from './wallet-transaction.entity';
 
 @Injectable()
 export class UsersService {
@@ -17,9 +18,34 @@ export class UsersService {
         private driverProfileRepository: Repository<DriverProfile>,
         @InjectRepository(SavedPlace)
         private savedPlaceRepository: Repository<SavedPlace>,
+        @InjectRepository(WalletTransaction)
+        private walletTransactionsRepository: Repository<WalletTransaction>,
         private readonly mailerService: MailerService,
         private readonly redisService: RedisService,
     ) { }
+
+    private async recordWalletTransaction(payload: {
+        userId: string;
+        type: WalletTransactionType;
+        amount: number;
+        description: string;
+        direction?: 'credit' | 'debit' | null;
+        rideId?: string | null;
+        paymentReference?: string | null;
+        metadata?: Record<string, any> | null;
+    }) {
+        const transaction = this.walletTransactionsRepository.create({
+            userId: payload.userId,
+            type: payload.type,
+            amount: payload.amount,
+            description: payload.description,
+            direction: payload.direction ?? null,
+            rideId: payload.rideId ?? null,
+            paymentReference: payload.paymentReference ?? null,
+            metadata: payload.metadata ?? null,
+        });
+        return this.walletTransactionsRepository.save(transaction);
+    }
 
     async findOneByEmail(email: string): Promise<User | null> {
         return this.usersRepository.findOne({ where: { email } });
@@ -53,15 +79,28 @@ export class UsersService {
     async getWallet(userId: string) {
         const user = await this.usersRepository.findOne({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
-
-        // We could fetch actual transactions from a Transaction entity if we had one.
-        // For now, let's derive some "credits" from completed rides.
+        const transactions = await this.walletTransactionsRepository.find({
+            where: { userId },
+            order: { createdAt: 'DESC' },
+            take: 200,
+        });
+        const lastCommissionPayment = transactions.find((txn) => txn.type === 'remittance_payment');
         return {
             balance: Number(user.balance || 0),
             pendingRemittance: Number(user.pendingRemittance || 0),
-            commissionDue: Number(user.pendingRemittance || 0), // Same thing in this context
-            lastCommissionPaymentDate: null,
-            transactions: [], // To be populated if needed
+            commissionDue: Number(user.pendingRemittance || 0),
+            lastCommissionPaymentDate: lastCommissionPayment?.createdAt || null,
+            transactions: transactions.map((txn) => ({
+                id: txn.id,
+                type: txn.type,
+                direction: txn.direction,
+                amount: Number(txn.amount || 0),
+                date: txn.createdAt,
+                description: txn.description,
+                rideId: txn.rideId,
+                paymentReference: txn.paymentReference,
+                metadata: txn.metadata || null,
+            })),
         };
     }
 
@@ -70,6 +109,13 @@ export class UsersService {
             throw new BadRequestException('Invalid amount');
         }
         await this.usersRepository.increment({ id: userId }, 'balance', amount);
+        await this.recordWalletTransaction({
+            userId,
+            type: 'wallet_funding',
+            amount,
+            direction: 'credit',
+            description: `Wallet funded with ₦${amount.toLocaleString()}`,
+        });
         return this.getWallet(userId);
     }
 
@@ -87,6 +133,13 @@ export class UsersService {
 
         await this.usersRepository.decrement({ id: userId }, 'balance', payAmount);
         await this.usersRepository.decrement({ id: userId }, 'pendingRemittance', payAmount);
+        await this.recordWalletTransaction({
+            userId,
+            type: 'remittance_payment',
+            amount: payAmount,
+            direction: 'debit',
+            description: `Platform remittance payment of ₦${payAmount.toLocaleString()}`,
+        });
         return this.getWallet(userId);
     }
 
@@ -95,6 +148,13 @@ export class UsersService {
             throw new BadRequestException('Invalid amount');
         }
         await this.usersRepository.increment({ id: userId }, 'pendingRemittance', amount);
+        await this.recordWalletTransaction({
+            userId,
+            type: 'remittance_due',
+            amount,
+            direction: 'debit',
+            description: `Platform remittance due increased by ₦${amount.toLocaleString()}`,
+        });
         return this.getWallet(userId);
     }
 

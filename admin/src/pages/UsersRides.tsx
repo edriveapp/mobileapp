@@ -19,6 +19,7 @@ type RideFilterStatus = 'all' | 'requested' | 'pending' | 'completed' | 'arrived
 type UserItem = {
   id: string;
   email: string;
+  phone?: string;
   firstName?: string;
   lastName?: string;
   role: 'passenger' | 'driver' | 'admin';
@@ -349,6 +350,7 @@ export default function UsersRides() {
               <tr className="bg-gray-50 text-gray-500 border-b border-gray-100">
                 <th className="p-4 font-medium">Name</th>
                 <th className="p-4 font-medium">Email</th>
+                <th className="p-4 font-medium">Phone</th>
                 <th className="p-4 font-medium">Current Role</th>
                 <th className="p-4 font-medium">Verification</th>
                 <th className="p-4 font-medium text-right">Assign Role</th>
@@ -361,6 +363,7 @@ export default function UsersRides() {
                 <tr key={user.id} className="hover:bg-gray-50/50">
                   <td className="p-4 text-gray-900">{`${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Unnamed user'}</td>
                   <td className="p-4 text-gray-600">{user.email}</td>
+                  <td className="p-4 text-gray-600">{user.phone || '—'}</td>
                   <td className="p-4">
                     <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-700">
                       {user.role}

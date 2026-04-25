@@ -122,7 +122,6 @@ export default function VehicleDocsScreen() {
 
                     <Section title="Documents">
                         <DocRow label="Insurance" url={vehicle.insuranceDocumentUrl} />
-                        <DocRow label="Worthiness Certificate" url={vehicle.worthinessCertificateUrl} />
                     </Section>
 
                     {photos.length > 0 && (

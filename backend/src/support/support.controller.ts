@@ -25,8 +25,13 @@ export class SupportController {
     getAdminTickets(
         @Request() req: any,
         @Query('status') status?: SupportTicketStatus,
+        @Query('category') category?: string,
+        @Query('includeInbound') includeInbound?: string,
     ) {
-        return this.supportService.getAdminTickets(req.user.userId, status);
+        return this.supportService.getAdminTickets(req.user.userId, status, {
+            category,
+            includeInbound: includeInbound === 'true',
+        });
     }
 
     @Get('tickets/:id')

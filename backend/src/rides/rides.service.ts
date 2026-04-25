@@ -5,6 +5,7 @@ import { OSRMService } from '../common/osrm.service';
 import { RedisService } from '../common/redis.service';
 import { Ride, RideStatus } from './ride.entity';
 import { User } from '../users/user.entity';
+import { WalletTransaction, WalletTransactionType } from '../users/wallet-transaction.entity';
 import { buildTrendingAreas } from './trending-areas.util';
 
 // TTLs (seconds)
@@ -21,9 +22,34 @@ export class RidesService {
         private ridesRepository: Repository<Ride>,
         @InjectRepository(User)
         private usersRepository: Repository<User>,
+        @InjectRepository(WalletTransaction)
+        private walletTransactionsRepository: Repository<WalletTransaction>,
         private osrmService: OSRMService,
         private redis: RedisService,
     ) { }
+
+    private async recordWalletTransaction(payload: {
+        userId: string;
+        type: WalletTransactionType;
+        amount: number;
+        description: string;
+        direction?: 'credit' | 'debit' | null;
+        rideId?: string | null;
+        paymentReference?: string | null;
+        metadata?: Record<string, any> | null;
+    }) {
+        const transaction = this.walletTransactionsRepository.create({
+            userId: payload.userId,
+            type: payload.type,
+            amount: payload.amount,
+            description: payload.description,
+            direction: payload.direction ?? null,
+            rideId: payload.rideId ?? null,
+            paymentReference: payload.paymentReference ?? null,
+            metadata: payload.metadata ?? null,
+        });
+        await this.walletTransactionsRepository.save(transaction);
+    }
 
     private availableCacheKey(role: string, mode?: string) {
         return `rides:available:${role}:${mode ?? 'default'}`;
@@ -140,6 +166,7 @@ export class RidesService {
         const fare = Number(data.fare ?? data.price ?? 0) || 0;
         const tripFare = Number(data.tripFare ?? fare) || fare;
         const distanceKm = Number(data.distanceKm ?? 0) || 0;
+        const estimatedDurationMinutes = Number(data.estimatedDurationMinutes ?? data.duration ?? 0) || 0;
 
         const ride = this.ridesRepository.create({
             driverId: data.driverId,
@@ -161,6 +188,7 @@ export class RidesService {
             paymentStatus: data.paymentStatus ?? null,
             pricingScenario: data.pricingScenario ?? null,
             pricingBreakdown: data.pricingBreakdown ?? null,
+            estimatedDurationMinutes,
             status: data.status ?? RideStatus.SEARCHING,
         } as Partial<Ride>);
 
@@ -249,6 +277,7 @@ export class RidesService {
             paymentStatus: data.paymentStatus ?? ride.paymentStatus,
             pricingScenario: data.pricingScenario ?? ride.pricingScenario,
             pricingBreakdown: data.pricingBreakdown ?? ride.pricingBreakdown,
+            estimatedDurationMinutes: data.estimatedDurationMinutes ?? data.duration ?? ride.estimatedDurationMinutes,
         });
 
         await this.ridesRepository.save(ride);
@@ -281,6 +310,7 @@ export class RidesService {
             departureTime: data.departureTime ?? ride.departureTime,
             origin: data.origin ?? ride.origin,
             destination: data.destination ?? ride.destination,
+            estimatedDurationMinutes: data.estimatedDurationMinutes ?? data.duration ?? ride.estimatedDurationMinutes,
         });
 
         await this.ridesRepository.save(ride);
@@ -323,6 +353,7 @@ export class RidesService {
         ride.pickupLocation = data.pickupLocation ?? ride.pickupLocation ?? ride.origin;
         ride.paymentMethod = data.paymentMethod ?? ride.paymentMethod ?? 'cash';
         ride.paymentStatus = data.paymentStatus ?? 'pending';
+        ride.estimatedDurationMinutes = data.estimatedDurationMinutes ?? data.duration ?? ride.estimatedDurationMinutes ?? null;
         ride.status = RideStatus.ACCEPTED;
 
         await this.ridesRepository.save(ride);
@@ -429,7 +460,20 @@ export class RidesService {
         return cancelled;
     }
 
-    async updatePaymentDetails(rideId: string, status: string, driverEarnings?: number, platformCut?: number, paystackReference?: string): Promise<Ride> {
+    async updatePaymentDetails(
+        rideId: string,
+        status: string,
+        details?: {
+            driverNetEarnings?: number;
+            platformCut?: number;
+            platformCutPercent?: number;
+            insuranceReserveAmount?: number;
+            insuranceReservePercent?: number;
+            paystackReference?: string;
+            paymentReference?: string;
+            estimatedDurationMinutes?: number;
+        },
+    ): Promise<Ride> {
         const ride = await this.ridesRepository.findOne({ where: { id: rideId }, relations: ['driver'] });
         if (!ride) throw new NotFoundException('Ride not found');
 
@@ -440,7 +484,7 @@ export class RidesService {
 
         // Validate the total paid amount is within 1% of the recorded fare
         if (status === 'paid' && ride.tripFare) {
-            const totalPaid = (driverEarnings || 0) + (platformCut || 0);
+            const totalPaid = Number(details?.driverNetEarnings || 0) + Number(details?.platformCut || 0) + Number(details?.insuranceReserveAmount || 0);
             const recordedFare = Number(ride.tripFare);
             const tolerance = recordedFare * 0.01;
             if (Math.abs(totalPaid - recordedFare) > tolerance) {
@@ -449,26 +493,112 @@ export class RidesService {
         }
 
         ride.paymentStatus = status;
-        if (driverEarnings !== undefined) ride.driverEarnings = driverEarnings;
-        if (platformCut !== undefined) ride.platformCut = platformCut;
-        if (paystackReference) ride.paystackReference = paystackReference;
+        if (details?.driverNetEarnings !== undefined) {
+            ride.driverEarnings = details.driverNetEarnings;
+            ride.driverNetEarnings = details.driverNetEarnings;
+        }
+        if (details?.platformCut !== undefined) {
+            ride.platformCut = details.platformCut;
+            ride.platformCutAmount = details.platformCut;
+        }
+        if (details?.platformCutPercent !== undefined) ride.platformCutPercent = details.platformCutPercent;
+        if (details?.insuranceReserveAmount !== undefined) ride.insuranceReserveAmount = details.insuranceReserveAmount;
+        if (details?.insuranceReservePercent !== undefined) ride.insuranceReservePercent = details.insuranceReservePercent;
+        if (details?.paystackReference) ride.paystackReference = details.paystackReference;
+        if (details?.paymentReference) ride.paymentReference = details.paymentReference;
+        if (details?.estimatedDurationMinutes !== undefined) ride.estimatedDurationMinutes = details.estimatedDurationMinutes;
+        if (!ride.paymentReference && ride.paystackReference) ride.paymentReference = ride.paystackReference;
+        ride.payoutStatus = ride.paymentMethod === 'cash' ? 'cash_collected' : status === 'paid' ? 'earnings_allocated' : ride.payoutStatus;
 
         const savedRide = await this.ridesRepository.save(ride);
 
         if (status === 'paid' && ride.driver) {
             const isCash = ride.paymentMethod === 'cash';
+            const grossFare = Number(ride.tripFare || 0);
+            const platformCut = Number(ride.platformCutAmount ?? ride.platformCut ?? 0);
+            const insuranceReserveAmount = Number(ride.insuranceReserveAmount || 0);
+            const driverNetEarnings = Number(ride.driverNetEarnings ?? ride.driverEarnings ?? 0);
+            const paymentReference = ride.paymentReference || ride.paystackReference || `trip-${ride.id}`;
             if (isCash) {
                 // Cash rides: driver collected the full fare from the passenger.
-                // Platform cut is owed back to the platform — track as debt on the driver.
-                if ((platformCut || 0) > 0) {
-                    await this.usersRepository.increment({ id: ride.driverId }, 'pendingRemittance', platformCut || 0);
+                // Platform cut and insurance reserve are owed back to the platform.
+                const totalDue = platformCut + insuranceReserveAmount;
+                if (totalDue > 0) {
+                    await this.usersRepository.increment({ id: ride.driverId }, 'pendingRemittance', totalDue);
+                    await this.recordWalletTransaction({
+                        userId: ride.driverId,
+                        type: 'remittance_due',
+                        amount: totalDue,
+                        direction: 'debit',
+                        description: `Cash trip remittance due for trip ${ride.id.slice(0, 8)}`,
+                        rideId: ride.id,
+                        paymentReference,
+                        metadata: {
+                            grossFare,
+                            platformCut,
+                            insuranceReserveAmount,
+                            tripId: ride.id,
+                        },
+                    });
                 }
             } else {
-                // Online payment (Paystack): platform already received the full amount.
-                // Credit the driver their earnings — platform keeps the rest as pure revenue.
-                if ((driverEarnings || 0) > 0) {
-                    await this.usersRepository.increment({ id: ride.driverId }, 'balance', driverEarnings || 0);
+                if (driverNetEarnings > 0) {
+                    await this.usersRepository.increment({ id: ride.driverId }, 'balance', driverNetEarnings);
                 }
+            }
+
+            await this.recordWalletTransaction({
+                userId: ride.driverId,
+                type: 'passenger_payment',
+                amount: grossFare,
+                direction: 'credit',
+                description: `Passenger paid for trip ${ride.id.slice(0, 8)}`,
+                rideId: ride.id,
+                paymentReference,
+                metadata: {
+                    grossFare,
+                    platformCut,
+                    insuranceReserveAmount,
+                    driverNetEarnings,
+                    payoutStatus: ride.payoutStatus,
+                    tripId: ride.id,
+                },
+            });
+
+            if (driverNetEarnings > 0) {
+                await this.recordWalletTransaction({
+                    userId: ride.driverId,
+                    type: 'driver_earning',
+                    amount: driverNetEarnings,
+                    direction: 'credit',
+                    description: `Driver earnings allocated for trip ${ride.id.slice(0, 8)}`,
+                    rideId: ride.id,
+                    paymentReference,
+                    metadata: {
+                        grossFare,
+                        platformCut,
+                        insuranceReserveAmount,
+                        tripId: ride.id,
+                    },
+                });
+            }
+
+            if (insuranceReserveAmount > 0) {
+                await this.recordWalletTransaction({
+                    userId: ride.driverId,
+                    type: 'insurance_reserve',
+                    amount: insuranceReserveAmount,
+                    direction: 'debit',
+                    description: `Insurance reserve held for trip ${ride.id.slice(0, 8)}`,
+                    rideId: ride.id,
+                    paymentReference,
+                    metadata: {
+                        grossFare,
+                        platformCut,
+                        driverNetEarnings,
+                        tripId: ride.id,
+                    },
+                });
             }
         }
 

@@ -14,16 +14,29 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import api from '@/app/services/api';
-import { COLORS, Fonts, SPACING } from '@/constants/theme';
+import { Fonts, SPACING } from '@/constants/theme';
+import { safeOpenURL } from '@/app/utils/linking';
 
 const QUICK_TOPICS = [
-  'Payment issue',
-  'Trip cancellation',
-  'Driver behavior',
-  'Lost item',
-  'Verification help',
-  'Account issue',
+  'Driver behaviour',
+  'Rider behaviour',
+  'Delayed trip acceptance',
+  'Assault',
+  'Long waiting hours',
+  'Bad vehicle',
+  'Pricing Issues',
 ];
+
+const MINT = '#A8E6C3';
+const MINT_BG = '#C8F0D8';
+const MINT_TEXT = '#1A6640';
+const BG = '#EFEFEF';
+const TEXT = '#1A1A1A';
+const TEXT_SEC = '#888888';
+const BORDER = '#DEDEDE';
+const WHITE = '#FFFFFF';
+const PRIMARY = '#005124';
+const SUPPORT_NUMBER = '09160500033';
 
 type SupportTicket = {
   id: string;
@@ -83,7 +96,6 @@ export default function SupportScreen() {
         loadTicketDetails(activeTicketId).catch(() => undefined);
       }
     }, 5000);
-
     return () => clearInterval(interval);
   }, [activeTicketId]);
 
@@ -92,7 +104,6 @@ export default function SupportScreen() {
       Alert.alert('Incomplete', 'Please select a topic and enter your message.');
       return;
     }
-
     try {
       setIsSubmitting(true);
       const response = await api.post('/support/tickets', {
@@ -130,73 +141,99 @@ export default function SupportScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+      <StatusBar barStyle="dark-content" backgroundColor={BG} />
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+          <Ionicons name="chevron-back" size={24} color={TEXT} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Help & Support</Text>
-        <View style={{ width: 24 }} />
+        <Text style={styles.headerTitle}>Support Ticket</Text>
+        <View style={{ width: 32 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Create Ticket</Text>
-          <Text style={styles.cardSubtitle}>
-            Share your issue and support/admin will respond in this thread.
-          </Text>
-
-          <Text style={styles.label}>Quick topic</Text>
-          <View style={styles.topicsWrap}>
-            {QUICK_TOPICS.map((item) => {
-              const selected = topic === item;
-              return (
-                <TouchableOpacity
-                  key={item}
-                  style={[styles.topicChip, selected && styles.topicChipActive]}
-                  onPress={() => setTopic(item)}
-                >
-                  <Text style={[styles.topicChipText, selected && styles.topicChipTextActive]}>{item}</Text>
-                </TouchableOpacity>
-              );
-            })}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.tabRow}>
+          <View style={styles.tabActive}>
+            <Text style={styles.tabActiveText}>Make Report</Text>
           </View>
+        </View>
 
-          <Text style={styles.label}>Message</Text>
+        <View style={styles.supportCard}>
+          <View>
+            <Text style={styles.supportCardTitle}>Customer Support</Text>
+            <Text style={styles.supportCardMeta}>Call {SUPPORT_NUMBER}</Text>
+          </View>
+          <TouchableOpacity style={styles.callButton} onPress={() => safeOpenURL(`tel:${SUPPORT_NUMBER}`)} activeOpacity={0.8}>
+            <Ionicons name="call-outline" size={16} color={WHITE} />
+            <Text style={styles.callButtonText}>Call now</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.categoryGrid}>
+          {QUICK_TOPICS.map((item) => {
+            const selected = topic === item;
+            return (
+              <TouchableOpacity
+                key={item}
+                style={[styles.categoryChip, selected && styles.categoryChipActive]}
+                onPress={() => setTopic(item)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.categoryChipText, selected && styles.categoryChipTextActive]}>
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={styles.messageContainer}>
           <TextInput
             style={styles.messageInput}
             value={message}
             onChangeText={setMessage}
-            placeholder="Describe what happened, where and when."
-            placeholderTextColor={COLORS.textSecondary}
+            placeholder=""
             multiline
             textAlignVertical="top"
           />
-
-          <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={isSubmitting}>
-            <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit Ticket'}</Text>
+          <TouchableOpacity
+            style={[styles.sendButton, isSubmitting && { opacity: 0.6 }]}
+            onPress={handleSubmit}
+            disabled={isSubmitting}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="send" size={15} color={WHITE} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>My Tickets ({tickets.length})</Text>
-          {tickets.map((ticket) => (
-            <TouchableOpacity key={ticket.id} style={styles.ticketRow} onPress={() => setActiveTicketId(ticket.id)}>
-              <View>
-                <Text style={styles.ticketSubject}>{ticket.subject}</Text>
-                <Text style={styles.ticketMeta}>{new Date(ticket.updatedAt).toLocaleString()}</Text>
-              </View>
-              <Text style={styles.ticketStatus}>{ticket.status}</Text>
-            </TouchableOpacity>
-          ))}
-          {tickets.length === 0 ? <Text style={styles.emptyText}>No tickets yet.</Text> : null}
-        </View>
+        {tickets.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>My Tickets ({tickets.length})</Text>
+            {tickets.map((ticket) => (
+              <TouchableOpacity
+                key={ticket.id}
+                style={styles.ticketRow}
+                onPress={() => setActiveTicketId(ticket.id)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ticketSubject}>{ticket.subject}</Text>
+                  <Text style={styles.ticketMeta}>{new Date(ticket.updatedAt).toLocaleString()}</Text>
+                </View>
+                <Text style={styles.ticketStatus}>{ticket.status}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
-        {activeTicket ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Ticket Conversation</Text>
-            <Text style={styles.cardSubtitle}>Status: {activeTicketStatus}</Text>
+        {activeTicket && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Conversation</Text>
+            <Text style={styles.sectionSubtitle}>Status: {activeTicketStatus}</Text>
             <View style={styles.messagesWrap}>
               {activeTicket.messages.map((item) => (
                 <View
@@ -224,145 +261,202 @@ export default function SupportScreen() {
                 value={reply}
                 onChangeText={setReply}
                 placeholder="Reply to support..."
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={TEXT_SEC}
               />
-              <TouchableOpacity style={styles.replyButton} onPress={sendReply}>
-                <Ionicons name="send" size={16} color={COLORS.white} />
+              <TouchableOpacity style={styles.replyButton} onPress={sendReply} activeOpacity={0.8}>
+                <Ionicons name="send" size={15} color={WHITE} />
               </TouchableOpacity>
             </View>
           </View>
-        ) : null}
+        )}
       </ScrollView>
+      <TouchableOpacity style={styles.floatingSupportButton} onPress={() => safeOpenURL(`tel:${SUPPORT_NUMBER}`)} activeOpacity={0.85}>
+        <Ionicons name="headset-outline" size={22} color={WHITE} />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: {
+    flex: 1,
+    backgroundColor: BG,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.l,
-    paddingVertical: SPACING.m,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingTop: SPACING.s,
+    paddingBottom: SPACING.m,
+    backgroundColor: BG,
   },
-  backButton: { padding: 4 },
+  backButton: {
+    width: 32,
+    alignItems: 'flex-start',
+  },
   headerTitle: {
-    fontSize: 18,
-    color: COLORS.text,
-    fontFamily: Fonts.bold,
+    fontSize: 22,
+    color: TEXT,
+    fontFamily: Fonts!.bold,
   },
   content: {
-    padding: SPACING.l,
+    paddingHorizontal: SPACING.l,
+    paddingBottom: SPACING.xl,
     gap: SPACING.m,
   },
-  card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  tabRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  tabActive: {
+    backgroundColor: MINT_BG,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+  },
+  tabActiveText: {
+    fontSize: 14,
+    fontFamily: Fonts!.semibold,
+    color: MINT_TEXT,
+  },
+  supportCard: {
+    backgroundColor: WHITE,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: BORDER,
     padding: SPACING.m,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  cardTitle: {
-    fontSize: 17,
-    color: COLORS.text,
-    fontFamily: Fonts.semibold,
-    marginBottom: 6,
+  supportCardTitle: {
+    fontSize: 15,
+    color: TEXT,
+    fontFamily: Fonts!.semibold,
   },
-  cardSubtitle: {
+  supportCardMeta: {
+    marginTop: 4,
+    color: TEXT_SEC,
+    fontSize: 12,
+    fontFamily: Fonts!.rounded,
+  },
+  callButton: {
+    backgroundColor: PRIMARY,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  callButtonText: {
+    color: WHITE,
     fontSize: 13,
-    color: COLORS.textSecondary,
-    fontFamily: Fonts.rounded,
-    lineHeight: 19,
-    marginBottom: SPACING.m,
+    fontFamily: Fonts!.semibold,
   },
-  label: {
-    fontSize: 13,
-    color: COLORS.text,
-    fontFamily: Fonts.semibold,
-    marginBottom: 8,
-  },
-  topicsWrap: {
+  categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: SPACING.m,
+    gap: 10,
   },
-  topicChip: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: '#fff',
-  },
-  topicChipActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#EAF7EF',
-  },
-  topicChipText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontFamily: Fonts.semibold,
-  },
-  topicChipTextActive: {
-    color: COLORS.primary,
-  },
-  messageInput: {
-    minHeight: 100,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: SPACING.m,
-    fontSize: 14,
-    color: COLORS.text,
-    fontFamily: Fonts.rounded,
-    backgroundColor: '#fff',
-    marginBottom: SPACING.m,
-  },
-  primaryButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
+  categoryChip: {
+    width: '47.5%',
+    backgroundColor: WHITE,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 13,
   },
-  primaryButtonText: {
-    color: COLORS.white,
+  categoryChipActive: {
+    borderColor: MINT,
+    backgroundColor: MINT_BG,
+  },
+  categoryChipText: {
+    fontSize: 13,
+    fontFamily: Fonts!.semibold,
+    color: TEXT,
+    textAlign: 'center',
+  },
+  categoryChipTextActive: {
+    color: MINT_TEXT,
+  },
+  messageContainer: {
+    backgroundColor: WHITE,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    minHeight: 260,
+    padding: SPACING.m,
+  },
+  messageInput: {
+    flex: 1,
+    minHeight: 220,
     fontSize: 15,
-    fontFamily: Fonts.semibold,
+    color: TEXT,
+    fontFamily: Fonts!.rounded,
+    textAlignVertical: 'top',
+  },
+  sendButton: {
+    position: 'absolute',
+    bottom: 14,
+    right: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: MINT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  section: {
+    backgroundColor: WHITE,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    padding: SPACING.m,
+    gap: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: Fonts!.semibold,
+    color: TEXT,
+    marginBottom: 2,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    fontFamily: Fonts!.rounded,
+    color: TEXT_SEC,
+    textTransform: 'capitalize',
+    marginBottom: SPACING.s,
   },
   ticketRow: {
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: BORDER,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   ticketSubject: {
     fontSize: 14,
-    color: COLORS.text,
-    fontFamily: Fonts.semibold,
+    color: TEXT,
+    fontFamily: Fonts!.semibold,
   },
   ticketMeta: {
     fontSize: 11,
-    color: COLORS.textSecondary,
+    color: TEXT_SEC,
     marginTop: 2,
+    fontFamily: Fonts!.rounded,
   },
   ticketStatus: {
     fontSize: 12,
-    color: COLORS.primary,
-    fontFamily: Fonts.semibold,
+    color: PRIMARY,
+    fontFamily: Fonts!.semibold,
     textTransform: 'capitalize',
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontFamily: Fonts.rounded,
+    marginLeft: 8,
   },
   messagesWrap: {
     gap: 8,
@@ -375,25 +469,27 @@ const styles = StyleSheet.create({
   messageBubbleUser: {
     backgroundColor: '#F2F4F7',
     alignSelf: 'flex-start',
+    maxWidth: '85%',
   },
   messageBubbleAdmin: {
-    backgroundColor: '#E7F6EC',
+    backgroundColor: MINT_BG,
     alignSelf: 'flex-end',
+    maxWidth: '85%',
   },
   messageText: {
     fontSize: 13,
-    fontFamily: Fonts.rounded,
+    fontFamily: Fonts!.rounded,
   },
   messageTextUser: {
-    color: COLORS.text,
+    color: TEXT,
   },
   messageTextAdmin: {
-    color: '#0A7A3E',
+    color: MINT_TEXT,
   },
   messageTime: {
     marginTop: 3,
     fontSize: 10,
-    color: COLORS.textSecondary,
+    color: TEXT_SEC,
   },
   replyRow: {
     flexDirection: 'row',
@@ -402,20 +498,38 @@ const styles = StyleSheet.create({
   },
   replyInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
-    paddingHorizontal: 10,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    borderRadius: 12,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
-    color: COLORS.text,
+    color: TEXT,
+    fontFamily: Fonts!.rounded,
+    backgroundColor: WHITE,
   },
   replyButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: COLORS.primary,
+    backgroundColor: MINT,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  floatingSupportButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 28,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
 });

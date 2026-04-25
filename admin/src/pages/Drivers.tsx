@@ -18,10 +18,16 @@ type PendingDriver = {
   rating?: number;
   verificationStatus?: string;
   driverProfile?: {
-    onboardingMeta?: { nin?: string; guarantorName?: string; guarantorPhone?: string };
+    onboardingMeta?: {
+      nin?: string;
+      guarantorName?: string;
+      guarantorPhone?: string;
+      bankName?: string;
+      accountNumber?: string;
+      accountName?: string;
+    };
     vehicleDetails?: {
       insuranceDocumentUrl?: string;
-      worthinessCertificateUrl?: string;
       vehiclePhotoUrls?: string[];
     };
     licenseDetails?: { number?: string; documentUrl?: string };
@@ -205,14 +211,6 @@ function DriverDetailModal({
                     </a>
                   )
                 )}
-                {driver.driverProfile?.vehicleDetails?.worthinessCertificateUrl && (
-                  driver.driverProfile.vehicleDetails.worthinessCertificateUrl.startsWith('file://') ? null : (
-                    <a href={driver.driverProfile.vehicleDetails.worthinessCertificateUrl} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                      <FileText className="w-4 h-4" /> Worthiness Certificate
-                    </a>
-                  )
-                )}
                 {(driver.driverProfile?.vehicleDetails?.vehiclePhotoUrls || []).map((url, i) => (
                   url.startsWith('file://') ? null : (
                     <a key={url} href={url} target="_blank" rel="noreferrer"
@@ -226,6 +224,9 @@ function DriverDetailModal({
                 <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-2">NIN & Guarantor</h3>
                 <p className="text-sm text-gray-600">NIN: {driver.driverProfile?.onboardingMeta?.nin || 'N/A'}</p>
                 <p className="text-sm text-gray-600">Guarantor: {driver.driverProfile?.onboardingMeta?.guarantorName || 'N/A'}</p>
+                <p className="text-sm text-gray-600 mt-2">Bank: {driver.driverProfile?.onboardingMeta?.bankName || 'N/A'}</p>
+                <p className="text-sm text-gray-600">Account Number: {driver.driverProfile?.onboardingMeta?.accountNumber || 'N/A'}</p>
+                <p className="text-sm text-gray-600">Account Name: {driver.driverProfile?.onboardingMeta?.accountName || 'N/A'}</p>
               </div>
             </div>
           )}

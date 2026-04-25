@@ -8,9 +8,15 @@ export class PaymentsController {
 
     @UseGuards(AuthGuard('jwt'))
     @Post('initialize')
-    async initialize(@Request() req, @Body() body: { amount: number; distance: number; rideId: string }) {
+    async initialize(@Request() req, @Body() body: { amount: number; distance?: number; estimatedDurationMinutes?: number; rideId: string }) {
         // Use user email from JWT
-        return this.paymentsService.initializePayment(req.user.email, body.amount, body.distance || 0, body.rideId);
+        return this.paymentsService.initializePayment(
+            req.user.email,
+            body.amount,
+            body.distance || 0,
+            body.estimatedDurationMinutes || 0,
+            body.rideId,
+        );
     }
 
     @UseGuards(AuthGuard('jwt'))
@@ -23,6 +29,18 @@ export class PaymentsController {
     @Get('verify/:reference')
     async verifyByPath(@Param('reference') reference: string) {
         return this.paymentsService.verifyPayment(reference);
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Get('banks')
+    async getBanks() {
+        return this.paymentsService.getBanks();
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Post('resolve-account')
+    async resolveAccount(@Body() body: { accountNumber: string; bankCode: string }) {
+        return this.paymentsService.resolveAccountNumber(body.accountNumber, body.bankCode);
     }
 
     @Post('webhook')

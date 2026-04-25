@@ -16,29 +16,39 @@ export default function EarningsScreen() {
   }, [fetchWallet]);
 
   const earnings = useMemo(
-    () => transactions.filter((txn) => txn.type === 'credit'),
+    () => transactions.filter((txn) => ['driver_earning', 'passenger_payment', 'wallet_adjustment_credit'].includes(txn.type)),
     [transactions]
   );
 
   const totalEarnings = useMemo(
-    () => earnings.reduce((sum, txn) => sum + Number(txn.amount || 0), 0),
+    () => earnings.filter((txn) => txn.type === 'driver_earning').reduce((sum, txn) => sum + Number(txn.amount || 0), 0),
     [earnings]
   );
 
-  const renderItem = ({ item }: { item: Transaction }) => (
-    <View style={styles.itemCard}>
-      <View style={styles.itemIcon}>
-        <Ionicons name="arrow-down" size={18} color="#00695C" />
+  const renderItem = ({ item }: { item: Transaction }) => {
+    const isDriverEarning = item.type === 'driver_earning';
+    const grossFare = Number(item.metadata?.grossFare || 0);
+    const platformCut = Number(item.metadata?.platformCut || 0);
+    const insuranceReserve = Number(item.metadata?.insuranceReserveAmount || 0);
+
+    return (
+      <View style={styles.itemCard}>
+        <View style={[styles.itemIcon, isDriverEarning ? styles.itemIconSuccess : styles.itemIconInfo]}>
+          <Ionicons name={isDriverEarning ? 'cash-outline' : 'card-outline'} size={18} color={isDriverEarning ? '#00695C' : '#2457C5'} />
+        </View>
+        <View style={styles.itemBody}>
+          <Text style={styles.itemTitle}>{item.description || 'Trip transaction'}</Text>
+          <Text style={styles.itemDate}>{new Date(item.date).toLocaleDateString()} • {new Date(item.date).toLocaleTimeString()}</Text>
+          {item.rideId ? <Text style={styles.metaText}>Trip ID: {item.rideId.slice(0, 8)}</Text> : null}
+          {item.paymentReference ? <Text style={styles.metaText}>Payment Ref: {item.paymentReference}</Text> : null}
+          {grossFare > 0 ? <Text style={styles.metaText}>Gross Fare: ₦{grossFare.toLocaleString()}</Text> : null}
+          {platformCut > 0 ? <Text style={styles.metaText}>Platform Cut: ₦{platformCut.toLocaleString()}</Text> : null}
+          {insuranceReserve > 0 ? <Text style={styles.metaText}>Insurance Reserve: ₦{insuranceReserve.toLocaleString()}</Text> : null}
+        </View>
+        <Text style={styles.itemAmount}>{item.direction === 'debit' ? '-' : '+'}₦{Number(item.amount || 0).toLocaleString()}</Text>
       </View>
-      <View style={styles.itemBody}>
-        <Text style={styles.itemTitle}>{item.description || 'Trip earning'}</Text>
-        <Text style={styles.itemDate}>
-          {new Date(item.date).toLocaleDateString()} • {new Date(item.date).toLocaleTimeString()}
-        </Text>
-      </View>
-      <Text style={styles.itemAmount}>+₦{Number(item.amount || 0).toLocaleString()}</Text>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -58,7 +68,7 @@ export default function EarningsScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Total Earned</Text>
+            <Text style={styles.summaryLabel}>Total Driver Earnings</Text>
             <Text style={styles.summaryValue}>₦{totalEarnings.toLocaleString()}</Text>
             <Text style={styles.summaryMeta}>{earnings.length} earning transaction{earnings.length === 1 ? '' : 's'}</Text>
           </View>
@@ -67,7 +77,7 @@ export default function EarningsScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No earnings yet</Text>
-            <Text style={styles.emptyText}>Completed trip earnings will appear here.</Text>
+            <Text style={styles.emptyText}>Completed trip earnings and passenger payments will appear here.</Text>
           </View>
         }
       />
@@ -87,15 +97,8 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   backButton: { width: 24 },
-  headerTitle: {
-    fontSize: 18,
-    fontFamily: Fonts.bold,
-    color: COLORS.text,
-  },
-  listContent: {
-    padding: SPACING.l,
-    paddingBottom: SPACING.xl,
-  },
+  headerTitle: { fontSize: 18, fontFamily: Fonts.bold, color: COLORS.text },
+  listContent: { padding: SPACING.l, paddingBottom: SPACING.xl },
   summaryCard: {
     backgroundColor: '#E9F7EF',
     borderRadius: 14,
@@ -104,25 +107,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CBEAD8',
   },
-  summaryLabel: {
-    fontSize: 13,
-    fontFamily: Fonts.rounded,
-    color: COLORS.textSecondary,
-    marginBottom: 6,
-  },
-  summaryValue: {
-    fontSize: 32,
-    fontFamily: Fonts.bold,
-    color: '#005124',
-    marginBottom: 6,
-  },
-  summaryMeta: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
+  summaryLabel: { fontSize: 13, fontFamily: Fonts.rounded, color: COLORS.textSecondary, marginBottom: 6 },
+  summaryValue: { fontSize: 32, fontFamily: Fonts.bold, color: '#005124', marginBottom: 6 },
+  summaryMeta: { fontSize: 13, color: COLORS.textSecondary },
   itemCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: SPACING.m,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -134,39 +124,18 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#E0F2F1',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.m,
   },
+  itemIconSuccess: { backgroundColor: '#E0F2F1' },
+  itemIconInfo: { backgroundColor: '#E8EEFF' },
   itemBody: { flex: 1 },
-  itemTitle: {
-    fontSize: 14,
-    fontFamily: Fonts.semibold,
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  itemDate: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  itemAmount: {
-    fontSize: 14,
-    fontFamily: Fonts.bold,
-    color: '#00695C',
-  },
-  emptyState: {
-    alignItems: 'center',
-    marginTop: 64,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontFamily: Fonts.semibold,
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
+  itemTitle: { fontSize: 14, fontFamily: Fonts.semibold, color: COLORS.text, marginBottom: 2 },
+  itemDate: { fontSize: 11, color: COLORS.textSecondary, marginBottom: 6 },
+  metaText: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  itemAmount: { fontSize: 14, fontFamily: Fonts.bold, color: '#00695C' },
+  emptyState: { alignItems: 'center', marginTop: 64 },
+  emptyTitle: { fontSize: 16, fontFamily: Fonts.semibold, color: COLORS.text, marginBottom: 4 },
+  emptyText: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center' },
 });

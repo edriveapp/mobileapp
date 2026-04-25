@@ -5,7 +5,7 @@ interface PaymentState {
     amount: number;
     isProcessing: boolean;
     paymentStatus: 'idle' | 'success' | 'failed';
-    processPayment: (amount: number, options?: { rideId?: string; distance?: number }) => Promise<{ authorization_url: string; reference: string }>;
+    processPayment: (amount: number, options?: { rideId?: string; distance?: number; estimatedDurationMinutes?: number }) => Promise<{ authorization_url: string; reference: string }>;
     verifyPayment: (reference: string) => Promise<boolean>;
     resetStatus: () => void;
 }
@@ -22,6 +22,7 @@ export const usePaymentStore = create<PaymentState>((set) => ({
                 amount,
                 rideId: options?.rideId,
                 distance: options?.distance || 0,
+                estimatedDurationMinutes: options?.estimatedDurationMinutes || 0,
             });
             const { authorization_url, reference } = response.data.data;
             set({ isProcessing: false, paymentStatus: 'idle' });

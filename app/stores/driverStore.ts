@@ -43,6 +43,10 @@ export const useDriverStore = create<DriverState>((set) => ({
     guarantorPhone: '',
     nextOfKinName: '',
     nextOfKinPhone: '',
+    bankName: '',
+    bankCode: '',
+    accountNumber: '',
+    accountName: '',
   },
 
   vehicleInfo: {
@@ -58,7 +62,6 @@ export const useDriverStore = create<DriverState>((set) => ({
     selfieUri: null,
     licenseImageUri: null,
     insuranceImageUri: null,
-    worthinessImageUri: null,
     vehiclePhotos: [],
   },
 
@@ -90,12 +93,6 @@ export const useDriverStore = create<DriverState>((set) => ({
       if (documents.insuranceImageUri && !documents.insuranceImageUri.startsWith('http')) {
         console.log("[DriverStore] Uploading insurance document...");
         uploadedInsuranceUrl = await uploadFile(documents.insuranceImageUri);
-      }
-
-      let uploadedWorthinessUrl = documents.worthinessImageUri;
-      if (documents.worthinessImageUri && !documents.worthinessImageUri.startsWith('http')) {
-        console.log("[DriverStore] Uploading worthiness certificate...");
-        uploadedWorthinessUrl = await uploadFile(documents.worthinessImageUri);
       }
 
       let uploadedLicenseUrl = documents.licenseImageUri;
@@ -131,7 +128,6 @@ export const useDriverStore = create<DriverState>((set) => ({
           plateNumber: vehicleInfo.plateNumber,
           capacity: vehicleInfo.capacity || '',
           insuranceDocumentUrl: uploadedInsuranceUrl || '',
-          worthinessCertificateUrl: uploadedWorthinessUrl || '',
           vehiclePhotoUrls: uploadedVehiclePhotos || [],
         },
         licenseDetails: {
@@ -149,6 +145,10 @@ export const useDriverStore = create<DriverState>((set) => ({
           guarantorPhone: driverInfo.guarantorPhone,
           nextOfKinName: driverInfo.nextOfKinName,
           nextOfKinPhone: driverInfo.nextOfKinPhone,
+          bankName: driverInfo.bankName,
+          bankCode: driverInfo.bankCode,
+          accountNumber: driverInfo.accountNumber,
+          accountName: driverInfo.accountName,
         },
       };
 

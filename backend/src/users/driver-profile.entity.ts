@@ -20,7 +20,6 @@ export class DriverProfile {
         plateNumber: string;
         capacity?: string;
         insuranceDocumentUrl?: string;
-        worthinessCertificateUrl?: string;
         vehiclePhotoUrls?: string[];
     };
 
@@ -42,6 +41,10 @@ export class DriverProfile {
         guarantorPhone?: string;
         nextOfKinName?: string;
         nextOfKinPhone?: string;
+        bankName?: string;
+        bankCode?: string;
+        accountNumber?: string;
+        accountName?: string;
     };
 
     @Column({ default: false })

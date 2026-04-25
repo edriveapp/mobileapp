@@ -67,6 +67,10 @@ export interface DriverOnboardingData {
   guarantorPhone: string;
   nextOfKinName: string;
   nextOfKinPhone: string;
+  bankName: string;
+  bankCode: string;
+  accountNumber: string;
+  accountName: string;
 }
 
 export interface VehicleData {
@@ -82,6 +86,5 @@ export interface OnboardingDocuments {
   selfieUri: string | null;       // driver face photo for KYC
   licenseImageUri: string | null;
   insuranceImageUri: string | null;
-  worthinessImageUri: string | null;
   vehiclePhotos: string[]; // array of image URIs
 }

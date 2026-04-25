@@ -41,6 +41,12 @@ export class UsersController {
     }
 
     @UseGuards(AuthGuard('jwt'))
+    @Post('wallet/add-debt')
+    addCommissionDebt(@Request() req: any, @Body() body: { amount: number }) {
+        return this.usersService.addCommissionDebt(req.user.userId, Number(body.amount));
+    }
+
+    @UseGuards(AuthGuard('jwt'))
     @Post('push-token')
     registerPushToken(@Request() req, @Body() body: { token?: string }) {
         if (!body?.token) {

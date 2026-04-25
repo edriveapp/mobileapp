@@ -73,6 +73,9 @@ export default function PersonalInfoScreen() {
         guarantorPhone: rawMeta.guarantorPhone,
         nextOfKinName: rawMeta.nextOfKinName,
         nextOfKinPhone: rawMeta.nextOfKinPhone,
+        bankName: rawMeta.bankName,
+        accountNumber: rawMeta.accountNumber,
+        accountName: rawMeta.accountName,
     };
     const license = profile?.licenseDetails ?? {};
 
@@ -133,6 +136,12 @@ export default function PersonalInfoScreen() {
                         <Row label="Guarantor Phone" value={meta.guarantorPhone} />
                         <Row label="Next of Kin" value={meta.nextOfKinName} />
                         <Row label="Next of Kin Phone" value={meta.nextOfKinPhone} />
+                    </Section>
+
+                    <Section title="Payout Details">
+                        <Row label="Bank Name" value={meta.bankName} />
+                        <Row label="Account Number" value={meta.accountNumber} />
+                        <Row label="Account Name" value={meta.accountName} />
                     </Section>
 
                     <TouchableOpacity style={styles.editRequestBtn} onPress={handleRequestEdit}>

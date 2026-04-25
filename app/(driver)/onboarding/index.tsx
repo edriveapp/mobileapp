@@ -195,6 +195,9 @@ export default function DriverOnboardingScreen() {
               <Text style={styles.itemText}>License Expiry: {driverInfo.licenseExpiry || '-'}</Text>
               <Text style={styles.itemText}>Guarantor: {driverInfo.guarantorName || '-'} ({driverInfo.guarantorPhone || '-'})</Text>
               <Text style={styles.itemText}>Next of Kin: {driverInfo.nextOfKinName || '-'} ({driverInfo.nextOfKinPhone || '-'})</Text>
+              <Text style={styles.itemText}>Bank: {driverInfo.bankName || '-'}</Text>
+              <Text style={styles.itemText}>Account Number: {driverInfo.accountNumber || '-'}</Text>
+              <Text style={styles.itemText}>Resolved Account Name: {driverInfo.accountName || '-'}</Text>
 
               <Text style={styles.sectionTitle}>Vehicle Information</Text>
               <Text style={styles.itemText}>Type: {vehicleInfo.type || '-'}</Text>
@@ -207,7 +210,6 @@ export default function DriverOnboardingScreen() {
               <Text style={styles.sectionTitle}>Documents</Text>
               <Text style={styles.itemText}>License: {documents.licenseImageUri ? 'Uploaded' : 'Missing'}</Text>
               <Text style={styles.itemText}>Insurance: {documents.insuranceImageUri ? 'Uploaded' : 'Missing'}</Text>
-              <Text style={styles.itemText}>Worthiness Certificate: {documents.worthinessImageUri ? 'Uploaded' : 'Missing'}</Text>
               <Text style={styles.itemText}>Vehicle Photos: {documents.vehiclePhotos.length} uploaded</Text>
             </ScrollView>
 

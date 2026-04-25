@@ -25,6 +25,15 @@ export class SupportMessage {
     @Column({ type: 'text' })
     text: string;
 
+    @Column({ type: 'text', nullable: true })
+    html: string | null;
+
+    @Column({ nullable: true })
+    contentType: string | null;
+
+    @Column({ default: false })
+    isInboundEmail: boolean;
+
     @CreateDateColumn()
     createdAt: Date;
 }

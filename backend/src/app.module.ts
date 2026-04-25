@@ -23,6 +23,7 @@ import { SupportModule } from './support/support.module';
 import { DriverProfile } from './users/driver-profile.entity';
 import { SavedPlace } from './users/saved-place.entity';
 import { User } from './users/user.entity';
+import { WalletTransaction } from './users/wallet-transaction.entity';
 import { UsersModule } from './users/users.module';
 import { DriverWarning } from './admin/driver-warning.entity';
 import { NotificationCampaign } from './admin/notification-campaign.entity';
@@ -41,7 +42,7 @@ import { MediaModule } from './common/media/media.module';
             imports: [ConfigModule],
             useFactory: (configService: ConfigService) => ({
                 ...configService.get('database'),
-                entities: [User, DriverProfile, Ride, Booking, Message, Rating, SavedPlace, SupportTicket, SupportMessage, DriverWarning, NotificationCampaign],
+                entities: [User, DriverProfile, Ride, Booking, Message, Rating, SavedPlace, SupportTicket, SupportMessage, DriverWarning, NotificationCampaign, WalletTransaction],
             }),
             inject: [ConfigService],
         }),

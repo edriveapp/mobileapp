@@ -3,10 +3,22 @@ import api from '../services/api';
 
 export interface Transaction {
     id: string;
-    type: 'credit' | 'debit' | 'commission_deduction';
+    type:
+        | 'wallet_funding'
+        | 'driver_earning'
+        | 'insurance_reserve'
+        | 'passenger_payment'
+        | 'remittance_due'
+        | 'remittance_payment'
+        | 'wallet_adjustment_credit'
+        | 'wallet_adjustment_debit';
+    direction?: 'credit' | 'debit' | null;
     amount: number;
     date: string; // ISO String
     description: string;
+    rideId?: string | null;
+    paymentReference?: string | null;
+    metadata?: Record<string, any> | null;
 }
 
 interface WalletState {
