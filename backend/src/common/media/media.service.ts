@@ -1,15 +1,30 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class MediaService {
+    private readonly logger = new Logger(MediaService.name);
     private readonly uploadPath: string;
+    private readonly useCloudinary: boolean;
 
     constructor(private configService: ConfigService) {
-        this.uploadPath = join(process.cwd(), 'public', 'uploads');
-        this.ensureUploadPathExists();
+        const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
+        const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
+        const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+
+        this.useCloudinary = !!(cloudName && apiKey && apiSecret);
+
+        if (this.useCloudinary) {
+            cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+            this.logger.log('Media storage: Cloudinary');
+        } else {
+            this.uploadPath = join(process.cwd(), 'public', 'uploads');
+            this.ensureUploadPathExists();
+            this.logger.warn('Media storage: local disk (set CLOUDINARY_* env vars for production)');
+        }
     }
 
     private ensureUploadPathExists() {
@@ -18,16 +33,36 @@ export class MediaService {
         }
     }
 
-    async saveFile(file: Express.Multer.File): Promise<string> {
-        // In a production environment, you would upload to Cloudinary/S3 here.
-        // For now, we use local storage.
+    async saveFile(file: Express.Multer.File, folder = 'edrive'): Promise<string> {
+        if (this.useCloudinary) {
+            return this.uploadToCloudinary(file, folder);
+        }
+        return this.saveLocally(file);
+    }
+
+    private async uploadToCloudinary(file: Express.Multer.File, folder: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder,
+                    resource_type: 'auto',
+                    // Auto-detect PDF/image, keep original format
+                    use_filename: false,
+                    unique_filename: true,
+                },
+                (error, result) => {
+                    if (error) return reject(error);
+                    resolve(result.secure_url);
+                },
+            );
+            uploadStream.end(file.buffer);
+        });
+    }
+
+    private saveLocally(file: Express.Multer.File): string {
         const fileName = `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
         const filePath = join(this.uploadPath, fileName);
-        
-        // Multer handles the buffer. We just need to return the URL.
-        const fs = require('fs');
-        fs.writeFileSync(filePath, file.buffer);
-
+        writeFileSync(filePath, file.buffer);
         const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
         return `${appUrl}/public/uploads/${fileName}`;
     }

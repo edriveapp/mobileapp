@@ -55,6 +55,53 @@ const WARNING_COLORS: Record<string, string> = {
   final: 'bg-red-50 text-red-700',
 };
 
+// ─── Document Preview ────────────────────────────────────────────────────────
+
+function DocPreview({ url, label }: { url: string; label: string }) {
+  const isPdf = url.toLowerCase().endsWith('.pdf');
+  const isLocal = url.startsWith('file://');
+  const [imgErr, setImgErr] = useState(false);
+
+  if (isLocal) {
+    return (
+      <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+        <AlertTriangle className="w-4 h-4 shrink-0" />
+        <span><strong>{label}:</strong> Corrupted local URI — driver must re-upload</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-100">
+        <span className="text-xs font-semibold text-gray-700">{label}</span>
+        <a href={url} target="_blank" rel="noreferrer"
+          className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+          <Eye className="w-3.5 h-3.5" /> Open full
+        </a>
+      </div>
+      {isPdf ? (
+        <div className="flex items-center justify-center p-6 bg-gray-50 gap-3 text-gray-500">
+          <FileText className="w-8 h-8 text-red-500" />
+          <div>
+            <p className="text-sm font-medium text-gray-700">PDF Document</p>
+            <a href={url} target="_blank" rel="noreferrer" className="text-xs text-emerald-600 hover:underline">Click to open</a>
+          </div>
+        </div>
+      ) : imgErr ? (
+        <div className="flex items-center justify-center p-4 bg-gray-100 text-gray-400 text-xs gap-2">
+          <FileText className="w-5 h-5" /> Could not load preview
+        </div>
+      ) : (
+        <a href={url} target="_blank" rel="noreferrer">
+          <img src={url} alt={label} onError={() => setImgErr(true)}
+            className="w-full max-h-64 object-contain bg-gray-100 hover:opacity-90 transition-opacity cursor-zoom-in" />
+        </a>
+      )}
+    </div>
+  );
+}
+
 // ─── Driver Detail Modal ─────────────────────────────────────────────────────
 
 function DriverDetailModal({
@@ -70,7 +117,7 @@ function DriverDetailModal({
 }) {
   const [detail, setDetail] = useState<DriverDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'rides' | 'reviews' | 'warnings'>('overview');
+  const [tab, setTab] = useState<'overview' | 'documents' | 'rides' | 'reviews' | 'warnings'>('overview');
   const [warnOpen, setWarnOpen] = useState(false);
   const [warnLevel, setWarnLevel] = useState('minor');
   const [warnReason, setWarnReason] = useState('');
@@ -172,7 +219,7 @@ function DriverDetailModal({
 
         {/* Tabs */}
         <div className="flex border-b border-gray-100 px-6">
-          {(['overview', 'rides', 'reviews', 'warnings'] as const).map((t) => (
+          {(['overview', 'documents', 'rides', 'reviews', 'warnings'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -187,49 +234,54 @@ function DriverDetailModal({
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {tab === 'overview' && (
-            <div className="space-y-4">
-              <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Driver Documents</h3>
-              <div className="flex flex-col gap-2">
-                {driver.driverProfile?.licenseDetails?.documentUrl && (
-                  driver.driverProfile.licenseDetails.documentUrl.startsWith('file://') ? (
-                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100 italic">
-                      ⚠️ Data corrupted: Local URI (re-onboarding required)
-                    </span>
-                  ) : (
-                    <a href={driver.driverProfile.licenseDetails.documentUrl} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                      <FileText className="w-4 h-4" /> View License
-                    </a>
-                  )
-                )}
-                {driver.driverProfile?.vehicleDetails?.insuranceDocumentUrl && (
-                   driver.driverProfile.vehicleDetails.insuranceDocumentUrl.startsWith('file://') ? null : (
-                    <a href={driver.driverProfile.vehicleDetails.insuranceDocumentUrl} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                      <FileText className="w-4 h-4" /> View Insurance
-                    </a>
-                  )
-                )}
-                {(driver.driverProfile?.vehicleDetails?.vehiclePhotoUrls || []).map((url, i) => (
-                  url.startsWith('file://') ? null : (
-                    <a key={url} href={url} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                      <FileText className="w-4 h-4" /> Vehicle Photo {i + 1}
-                    </a>
-                  )
-                ))}
+          {tab === 'overview' && (() => {
+            const p = driver.driverProfile;
+            return (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Personal Info</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {[['NIN', p?.onboardingMeta?.nin], ['Guarantor', p?.onboardingMeta?.guarantorName],
+                    ['Guarantor Phone', p?.onboardingMeta?.guarantorPhone], ['License No.', p?.licenseDetails?.number],
+                  ].map(([lbl, val]) => (
+                    <div key={lbl} className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-xs text-gray-400 mb-0.5">{lbl}</p>
+                      <p className="font-medium text-gray-800">{val || 'N/A'}</p>
+                    </div>
+                  ))}
+                </div>
+                <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mt-4">Bank Details</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {[['Bank', p?.onboardingMeta?.bankName], ['Account No.', p?.onboardingMeta?.accountNumber],
+                  ].map(([lbl, val]) => (
+                    <div key={lbl} className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-xs text-gray-400 mb-0.5">{lbl}</p>
+                      <p className="font-medium text-gray-800">{val || 'N/A'}</p>
+                    </div>
+                  ))}
+                  <div className="p-3 bg-gray-50 rounded-lg col-span-2">
+                    <p className="text-xs text-gray-400 mb-0.5">Account Name</p>
+                    <p className="font-medium text-gray-800">{p?.onboardingMeta?.accountName || 'N/A'}</p>
+                  </div>
+                </div>
               </div>
-              <div className="mt-4">
-                <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-2">NIN & Guarantor</h3>
-                <p className="text-sm text-gray-600">NIN: {driver.driverProfile?.onboardingMeta?.nin || 'N/A'}</p>
-                <p className="text-sm text-gray-600">Guarantor: {driver.driverProfile?.onboardingMeta?.guarantorName || 'N/A'}</p>
-                <p className="text-sm text-gray-600 mt-2">Bank: {driver.driverProfile?.onboardingMeta?.bankName || 'N/A'}</p>
-                <p className="text-sm text-gray-600">Account Number: {driver.driverProfile?.onboardingMeta?.accountNumber || 'N/A'}</p>
-                <p className="text-sm text-gray-600">Account Name: {driver.driverProfile?.onboardingMeta?.accountName || 'N/A'}</p>
+            );
+          })()}
+
+          {tab === 'documents' && (() => {
+            const p = driver.driverProfile;
+            const licUrl = p?.licenseDetails?.documentUrl;
+            const insUrl = p?.vehicleDetails?.insuranceDocumentUrl;
+            const photos = p?.vehicleDetails?.vehiclePhotoUrls || [];
+            const hasAny = !!(licUrl || insUrl || photos.length);
+            return (
+              <div className="space-y-4">
+                {!hasAny && <p className="text-gray-400 text-sm">No documents uploaded yet.</p>}
+                {licUrl && <DocPreview url={licUrl} label="Driver's License" />}
+                {insUrl && <DocPreview url={insUrl} label="Insurance Document" />}
+                {photos.map((url, i) => <DocPreview key={url} url={url} label={`Vehicle Photo ${i + 1}`} />)}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {tab === 'rides' && (
             <div className="space-y-2">

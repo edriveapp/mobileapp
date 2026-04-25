@@ -50,6 +50,7 @@ import { MediaModule } from './common/media/media.module';
         ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', 'public'),
             serveRoot: '/public',
+            serveStaticOptions: { index: false },
         }),
         UsersModule,
         AuthModule,
