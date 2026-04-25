@@ -26,9 +26,10 @@ export class AuthService {
 
     async login(user: User) {
         const payload = { email: user.email, sub: user.id, role: user.role, adminScope: user.adminScope };
+        const { passwordHash, ...safeUser } = user as any;
         return {
             access_token: this.jwtService.sign(payload),
-            user,
+            user: safeUser,
         };
     }
 
@@ -60,13 +61,15 @@ export class AuthService {
 
         const rawPassword = userData.password || userData.passwordHash || '';
         const hashedPassword = rawPassword ? await bcrypt.hash(rawPassword, 12) : '';
+        // [VULN FIX: C1] Only allow PASSENGER or DRIVER roles at registration. Never accept adminScope.
+        const allowedRole = userData.role === UserRole.DRIVER ? UserRole.DRIVER : UserRole.PASSENGER;
         user = await this.usersService.create({
             email: userData.email,
             phone: userData.phone,
             passwordHash: hashedPassword,
             firstName: userData.firstName,
             lastName: userData.lastName,
-            role: userData.role || UserRole.PASSENGER,
+            role: allowedRole,
         });
 
         await this.emailOtpService.sendWelcomeEmail({

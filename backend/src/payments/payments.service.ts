@@ -6,6 +6,10 @@ import { lastValueFrom } from 'rxjs';
 
 import { RidesService } from '../rides/rides.service';
 
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../users/user.entity';
+
 @Injectable()
 export class PaymentsService {
     private readonly logger = new Logger(PaymentsService.name);
@@ -14,6 +18,7 @@ export class PaymentsService {
         private httpService: HttpService,
         private configService: ConfigService,
         private ridesService: RidesService,
+        @InjectRepository(User) private usersRepository: Repository<User>,
     ) { }
 
     verifyWebhookSignature(rawBody: Buffer, paystackSignature: string): void {
@@ -44,7 +49,7 @@ export class PaymentsService {
         const amount = (data?.amount ?? 0) / 100;
         const distance = Number(metadata?.distanceInKm ?? customMap?.distance_km ?? 0);
         const estimatedDurationMinutes = Number(metadata?.estimatedDurationMinutes ?? customMap?.estimated_duration_minutes ?? 0);
-        const split = this.calculatePaymentSplit(amount, estimatedDurationMinutes);
+        const split = await this.calculatePaymentSplit(amount, estimatedDurationMinutes);
 
         await this.ridesService.updatePaymentDetails(rideId, 'paid', {
             driverNetEarnings: split.driverNetEarnings,
@@ -59,8 +64,18 @@ export class PaymentsService {
         this.logger.log(`Webhook payment confirmed: rideId=${rideId} amount=₦${amount}`);
     }
 
-    calculatePaymentSplit(amount: number, estimatedDurationMinutes: number) {
-        const platformCutPercent = estimatedDurationMinutes > 60 ? 15 : 12;
+    async calculatePaymentSplit(amount: number, estimatedDurationMinutes: number) {
+        let platformCutPercent = estimatedDurationMinutes > 60 ? 15 : 12; // default fallback
+        
+        try {
+            const settingsUser = await this.usersRepository.findOne({ where: { email: '__settings__' } });
+            const prefs = (settingsUser?.preferences as any) || {};
+            if (typeof prefs.platformCutPercent === 'number') {
+                platformCutPercent = prefs.platformCutPercent;
+            }
+        } catch (e) {
+            this.logger.warn('Failed to fetch platform settings, using defaults', e);
+        }
         const insuranceReservePercent = 2;
         const platformCutAmount = Number(((amount * platformCutPercent) / 100).toFixed(2));
         const insuranceReserveAmount = Number(((amount * insuranceReservePercent) / 100).toFixed(2));
@@ -77,7 +92,7 @@ export class PaymentsService {
     }
 
     async initializePayment(email: string, amount: number, distanceInKm: number, estimatedDurationMinutes: number, rideId: string) {
-        const split = this.calculatePaymentSplit(amount, estimatedDurationMinutes);
+        const split = await this.calculatePaymentSplit(amount, estimatedDurationMinutes);
         const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
 
         if (!secretKey) {
@@ -123,6 +138,10 @@ export class PaymentsService {
             throw new InternalServerErrorException('PAYSTACK_SECRET_KEY is not configured');
         }
 
+        if (!/^[a-zA-Z0-9_-]+$/.test(reference)) {
+            throw new BadRequestException('Invalid reference format');
+        }
+
         const url = `https://api.paystack.co/transaction/verify/${reference}`;
         const headers = {
             Authorization: `Bearer ${secretKey}`,
@@ -145,7 +164,7 @@ export class PaymentsService {
                 const estimatedDurationMinutes = Number(metadata?.estimatedDurationMinutes ?? customMap?.estimated_duration_minutes ?? 0);
 
                 if (rideId) {
-                    const split = this.calculatePaymentSplit(amount, estimatedDurationMinutes);
+                    const split = await this.calculatePaymentSplit(amount, estimatedDurationMinutes);
                     await this.ridesService.updatePaymentDetails(rideId, 'paid', {
                         driverNetEarnings: split.driverNetEarnings,
                         platformCut: split.platformCutAmount,

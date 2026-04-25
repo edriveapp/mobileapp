@@ -60,7 +60,8 @@ export class MediaService {
     }
 
     private saveLocally(file: Express.Multer.File): string {
-        const fileName = `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const fileName = `${Date.now()}-${safeName}`;
         const filePath = join(this.uploadPath, fileName);
         writeFileSync(filePath, file.buffer);
         const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';

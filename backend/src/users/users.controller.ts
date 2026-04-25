@@ -28,11 +28,7 @@ export class UsersController {
         return this.usersService.getWallet(req.user.userId);
     }
 
-    @UseGuards(AuthGuard('jwt'))
-    @Post('wallet/fund')
-    fundWallet(@Request() req: any, @Body() body: { amount: number }) {
-        return this.usersService.fundWallet(req.user.userId, Number(body.amount));
-    }
+    // [VULN FIX: C2] wallet/fund removed — wallet credits only via Paystack webhook or admin adjustWallet
 
     @UseGuards(AuthGuard('jwt'))
     @Post('wallet/pay-commission')
@@ -40,11 +36,7 @@ export class UsersController {
         return this.usersService.payCommission(req.user.userId, body?.amount ? Number(body.amount) : undefined);
     }
 
-    @UseGuards(AuthGuard('jwt'))
-    @Post('wallet/add-debt')
-    addCommissionDebt(@Request() req: any, @Body() body: { amount: number }) {
-        return this.usersService.addCommissionDebt(req.user.userId, Number(body.amount));
-    }
+    // [VULN FIX: C3] wallet/add-debt removed — moved to admin-only POST /admin/users/:id/wallet/add-debt
 
     @UseGuards(AuthGuard('jwt'))
     @Post('push-token')

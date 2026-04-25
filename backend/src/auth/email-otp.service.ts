@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { randomInt } from 'crypto';
 import { RedisService } from '../common/redis.service';
 import { UserRole } from '../users/user.entity';
 
@@ -26,7 +27,7 @@ export class EmailOtpService {
   }
 
   private generateCode(): string {
-    return String(Math.floor(1000 + Math.random() * 9000));
+    return String(randomInt(100000, 999999));
   }
 
   private getFormattedFromAddress(rawEmail?: string | null) {
@@ -49,6 +50,8 @@ export class EmailOtpService {
     const code = this.generateCode();
     // Use Redis for OTP storage, expires in 600s (10 minutes)
     await this.redisService.set(`otp:${email.toLowerCase()}`, code, 600);
+    // Reset attempts counter
+    await this.redisService.set(`otp_attempts:${email.toLowerCase()}`, '0', 600);
 
     const from = this.getFormattedFromAddress(this.configService.get<string>('SMTP_FROM') || 'support@edriveapp.com');
 
@@ -70,13 +73,30 @@ export class EmailOtpService {
   }
 
   async verifyOtp(email: string, code: string): Promise<boolean> {
-    const storedCode = await this.redisService.get(`otp:${email.toLowerCase()}`);
+    const key = `otp:${email.toLowerCase()}`;
+    const attemptsKey = `otp_attempts:${email.toLowerCase()}`;
+
+    const storedCode = await this.redisService.get(key);
     if (!storedCode) return false;
+
+    // Check attempts
+    const attemptsStr = await this.redisService.get(attemptsKey);
+    const attempts = attemptsStr ? parseInt(attemptsStr, 10) : 0;
     
-    if (storedCode.trim() !== code.trim()) return false;
+    if (attempts >= 5) {
+      // Invalidate OTP after 5 failed attempts
+      await this.redisService.set(key, '', 1);
+      return false;
+    }
     
-    // Clear correctly on success (We cheat here by setting TTL to 1s or overwriting since RedisService doesn't expose DELETE directly)
-    await this.redisService.set(`otp:${email.toLowerCase()}`, '', 1); 
+    if (storedCode.trim() !== code.trim()) {
+      await this.redisService.set(attemptsKey, String(attempts + 1), 600);
+      return false;
+    }
+    
+    // Clear correctly on success
+    await this.redisService.set(key, '', 1); 
+    await this.redisService.set(attemptsKey, '', 1);
     return true;
   }
 

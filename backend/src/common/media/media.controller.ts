@@ -17,7 +17,15 @@ export class MediaController {
 
     @Post('upload')
     @UseGuards(AuthGuard('jwt'))
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(FileInterceptor('file', {
+        limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+        fileFilter: (req, file, cb) => {
+            if (!file.mimetype.match(/^(image\/(jpeg|png|webp)|application\/pdf)$/)) {
+                return cb(new BadRequestException('Only images and PDFs allowed'), false);
+            }
+            cb(null, true);
+        },
+    }))
     async uploadFile(@UploadedFile() file: Express.Multer.File) {
         if (!file) {
             throw new BadRequestException('No file uploaded');
@@ -28,7 +36,15 @@ export class MediaController {
 
     @Post('upload-multiple')
     @UseGuards(AuthGuard('jwt'))
-    @UseInterceptors(FilesInterceptor('files'))
+    @UseInterceptors(FilesInterceptor('files', 10, {
+        limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+        fileFilter: (req, file, cb) => {
+            if (!file.mimetype.match(/^(image\/(jpeg|png|webp)|application\/pdf)$/)) {
+                return cb(new BadRequestException('Only images and PDFs allowed'), false);
+            }
+            cb(null, true);
+        },
+    }))
     async uploadFiles(@UploadedFiles() files: Express.Multer.File[]) {
         if (!files || files.length === 0) {
             throw new BadRequestException('No files uploaded');

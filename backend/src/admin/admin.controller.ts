@@ -237,6 +237,15 @@ export class AdminController {
         return this.adminService.adjustWallet(req.user.userId, id, body.amount, body.type, body.reason);
     }
 
+    @Post('users/:id/wallet/add-debt')
+    addCommissionDebt(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body() body: { amount: number; reason: string },
+    ) {
+        return this.adminService.addCommissionDebt(req.user.userId, id, body.amount, body.reason);
+    }
+
     @Post('users/:id/wallet/clear-remittance')
     clearRemittance(
         @Request() req: any,

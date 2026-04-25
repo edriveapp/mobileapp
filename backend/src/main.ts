@@ -1,15 +1,17 @@
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.useGlobalPipes(new ValidationPipe({ transform: true }));
 
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
     : [];
   
   app.enableCors({
-    origin: true, // Allow all origins for development and cross-environment testing
+    origin: allowedOrigins.length ? allowedOrigins : false,
     credentials: true,
   });
 

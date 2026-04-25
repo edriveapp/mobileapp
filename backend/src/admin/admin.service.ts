@@ -1099,72 +1099,115 @@ export class AdminService {
         if (!amount || amount <= 0) throw new BadRequestException('Amount must be positive');
         if (amount > 1_000_000) throw new BadRequestException('Single adjustment cannot exceed ₦1,000,000');
         if (!reason?.trim()) throw new BadRequestException('A reason is required for wallet adjustments');
-        const user = await this.usersRepository.findOne({ where: { id: userId } });
-        if (!user) throw new NotFoundException('User not found');
 
-        if (type === 'credit') {
-            await this.usersRepository.increment({ id: userId }, 'balance', amount);
-            await this.recordWalletTransaction({
-                userId,
-                type: 'wallet_adjustment_credit',
-                amount,
-                direction: 'credit',
-                description: reason,
+        const { updatedUser, balanceChange } = await this.usersRepository.manager.transaction(async (em) => {
+            const user = await em.findOne(User, { 
+                where: { id: userId },
+                lock: { mode: 'pessimistic_write' },
             });
-        } else {
-            if (Number(user.balance || 0) < amount) throw new BadRequestException('Insufficient wallet balance');
-            await this.usersRepository.decrement({ id: userId }, 'balance', amount);
-            await this.recordWalletTransaction({
-                userId,
-                type: 'wallet_adjustment_debit',
-                amount,
-                direction: 'debit',
-                description: reason,
-            });
-        }
+            if (!user) throw new NotFoundException('User not found');
 
-        const updated = await this.usersRepository.findOne({ where: { id: userId } });
+            if (type === 'credit') {
+                await em.increment(User, { id: userId }, 'balance', amount);
+                const txn = em.create(WalletTransaction, {
+                    userId,
+                    type: 'wallet_adjustment_credit',
+                    amount,
+                    direction: 'credit',
+                    description: reason,
+                });
+                await em.save(txn);
+            } else {
+                if (Number(user.balance || 0) < amount) throw new BadRequestException('Insufficient wallet balance');
+                await em.decrement(User, { id: userId }, 'balance', amount);
+                const txn = em.create(WalletTransaction, {
+                    userId,
+                    type: 'wallet_adjustment_debit',
+                    amount,
+                    direction: 'debit',
+                    description: reason,
+                });
+                await em.save(txn);
+            }
 
-        if (user.expoPushTokens?.length) {
+            return {
+                updatedUser: await em.findOne(User, { where: { id: userId } }),
+                balanceChange: amount,
+            };
+        });
+
+        if (updatedUser?.expoPushTokens?.length) {
             await this.pushService.sendToExpoTokens(
-                user.expoPushTokens,
+                updatedUser.expoPushTokens,
                 type === 'credit' ? 'Wallet Credited' : 'Wallet Debited',
                 `₦${amount.toLocaleString()} has been ${type === 'credit' ? 'added to' : 'removed from'} your wallet. ${reason}`,
             );
         }
 
-        return { success: true, newBalance: Number(updated?.balance || 0), type, amount, reason };
+        return { success: true, newBalance: Number(updatedUser?.balance || 0), type, amount, reason };
     }
 
     async clearDriverRemittance(actorUserId: string, userId: string, reason: string) {
         const actor = await this.getActor(actorUserId);
         this.assertSuperAdmin(actor);
 
-        const user = await this.usersRepository.findOne({ where: { id: userId } });
-        if (!user) throw new NotFoundException('User not found');
-
-        const cleared = Number(user.pendingRemittance || 0);
-        await this.usersRepository.update(userId, { pendingRemittance: 0 });
-        if (cleared > 0) {
-            await this.recordWalletTransaction({
-                userId,
-                type: 'remittance_payment',
-                amount: cleared,
-                direction: 'credit',
-                description: `Admin cleared outstanding remittance. ${reason}`,
+        const { clearedAmount } = await this.usersRepository.manager.transaction(async (em) => {
+            const user = await em.findOne(User, { 
+                where: { id: userId },
+                lock: { mode: 'pessimistic_write' },
             });
-        }
+            if (!user) throw new NotFoundException('User not found');
 
-        if (user.expoPushTokens?.length) {
-            await this.pushService.sendToExpoTokens(
-                user.expoPushTokens,
-                'Commission Cleared',
-                `Your outstanding commission of ₦${cleared.toLocaleString()} has been cleared. ${reason}`,
-            );
-        }
-
-        return { success: true, cleared, reason };
+            const cleared = Number(user.pendingRemittance || 0);
+            if (cleared > 0) {
+                await em.update(User, userId, { pendingRemittance: 0 });
+                const txn = em.create(WalletTransaction, {
+                    userId,
+                    type: 'remittance_payment',
+                    amount: cleared,
+                    direction: 'credit',
+                    description: `Remittance cleared by admin: ${reason}`,
+                });
+                await em.save(txn);
+            }
+            return { clearedAmount: cleared };
+        });
+        
+        return { success: true, clearedAmount, reason };
     }
+
+    async addCommissionDebt(actorUserId: string, userId: string, amount: number, reason: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertSuperAdmin(actor);
+
+        if (!amount || amount <= 0) throw new BadRequestException('Amount must be positive');
+        if (!reason?.trim()) throw new BadRequestException('A reason is required to add debt');
+
+        const { newPendingRemittance } = await this.usersRepository.manager.transaction(async (em) => {
+            const user = await em.findOne(User, { 
+                where: { id: userId },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!user) throw new NotFoundException('User not found');
+
+            await em.increment(User, { id: userId }, 'pendingRemittance', amount);
+            
+            const txn = em.create(WalletTransaction, {
+                userId,
+                type: 'remittance_due',
+                amount,
+                direction: 'debit',
+                description: `Debt added by admin: ${reason}`,
+            });
+            await em.save(txn);
+
+            const updated = await em.findOne(User, { where: { id: userId } });
+            return { newPendingRemittance: Number(updated?.pendingRemittance || 0) };
+        });
+
+        return { success: true, newPendingRemittance, amount, reason };
+    }
+
 
     // ─── Support Ticket Management ────────────────────────────────────────────
 

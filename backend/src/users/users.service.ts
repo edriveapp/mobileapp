@@ -120,27 +120,40 @@ export class UsersService {
     }
 
     async payCommission(userId: string, amount?: number) {
-        const user = await this.findOneById(userId);
-        if (!user) throw new NotFoundException('User not found');
+        return await this.usersRepository.manager.transaction(async (em) => {
+            const user = await em.findOne(User, {
+                where: { id: userId },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!user) throw new NotFoundException('User not found');
 
-        const due = Number(user.pendingRemittance || 0);
-        const payAmount = amount && amount > 0 ? Math.min(amount, due) : due;
+            const due = Number(user.pendingRemittance || 0);
+            const payAmount = amount && amount > 0 ? Math.min(amount, due) : due;
 
-        if (payAmount <= 0) return this.getWallet(userId);
-        if (Number(user.balance || 0) < payAmount) {
-            throw new BadRequestException('Insufficient wallet balance');
-        }
+            if (payAmount <= 0) return { balance: Number(user.balance || 0), pendingRemittance: due, transactions: [] };
+            if (Number(user.balance || 0) < payAmount) {
+                throw new BadRequestException('Insufficient wallet balance');
+            }
 
-        await this.usersRepository.decrement({ id: userId }, 'balance', payAmount);
-        await this.usersRepository.decrement({ id: userId }, 'pendingRemittance', payAmount);
-        await this.recordWalletTransaction({
-            userId,
-            type: 'remittance_payment',
-            amount: payAmount,
-            direction: 'debit',
-            description: `Platform remittance payment of ₦${payAmount.toLocaleString()}`,
+            await em.decrement(User, { id: userId }, 'balance', payAmount);
+            await em.decrement(User, { id: userId }, 'pendingRemittance', payAmount);
+            
+            const txn = em.create(WalletTransaction, {
+                userId,
+                type: 'remittance_payment',
+                amount: payAmount,
+                direction: 'debit',
+                description: `Platform remittance payment of ₦${payAmount.toLocaleString()}`,
+            });
+            await em.save(txn);
+            
+            const updated = await em.findOne(User, { where: { id: userId } });
+            return {
+                balance: Number(updated?.balance || 0),
+                pendingRemittance: Number(updated?.pendingRemittance || 0),
+                transactions: [], // Return empty for legacy compatibility, typically handled by getWallet
+            };
         });
-        return this.getWallet(userId);
     }
 
     async addCommissionDebt(userId: string, amount: number) {

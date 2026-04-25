@@ -117,10 +117,12 @@ function DriverDetailModal({
 }) {
   const [detail, setDetail] = useState<DriverDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'documents' | 'rides' | 'reviews' | 'warnings'>('overview');
+  const [tab, setTab] = useState<'overview' | 'documents' | 'rides' | 'reviews' | 'warnings' | 'wallet'>('overview');
   const [warnOpen, setWarnOpen] = useState(false);
   const [warnLevel, setWarnLevel] = useState('minor');
   const [warnReason, setWarnReason] = useState('');
+  const [debtAmount, setDebtAmount] = useState('');
+  const [debtReason, setDebtReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -142,6 +144,23 @@ function DriverDetailModal({
       // Re-fetch
       const updated = await apiRequest<DriverDetail>(`/admin/drivers/${driverId}`, { token });
       setDetail(updated);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAddDebt = async () => {
+    if (!debtAmount || !debtReason.trim()) return;
+    setSubmitting(true);
+    try {
+      await apiRequest(`/admin/users/${driverId}/wallet/add-debt`, {
+        method: 'POST', token, body: { amount: Number(debtAmount), reason: debtReason },
+      });
+      setDebtAmount('');
+      setDebtReason('');
+      alert('Commission debt added successfully.');
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -218,8 +237,8 @@ function DriverDetailModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-100 px-6">
-          {(['overview', 'documents', 'rides', 'reviews', 'warnings'] as const).map((t) => (
+        <div className="flex border-b border-gray-100 px-6 overflow-x-auto">
+          {(['overview', 'wallet', 'documents', 'rides', 'reviews', 'warnings'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -332,6 +351,38 @@ function DriverDetailModal({
                 </div>
               ))}
               {warnings.length === 0 && <p className="text-gray-400 text-sm">No warnings issued.</p>}
+            </div>
+          )}
+
+          {tab === 'wallet' && (
+            <div className="space-y-6">
+              <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                <h3 className="text-sm font-semibold text-amber-800 mb-2">Add Commission Debt</h3>
+                <p className="text-xs text-amber-700 mb-4">Manually increase the driver's pending remittance balance.</p>
+                <div className="space-y-3">
+                  <input
+                    type="number"
+                    value={debtAmount}
+                    onChange={(e) => setDebtAmount(e.target.value)}
+                    placeholder="Amount (₦)"
+                    className="w-full border border-amber-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                  />
+                  <input
+                    type="text"
+                    value={debtReason}
+                    onChange={(e) => setDebtReason(e.target.value)}
+                    placeholder="Reason for debt..."
+                    className="w-full border border-amber-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                  />
+                  <button
+                    disabled={submitting || !debtAmount || !debtReason.trim()}
+                    onClick={handleAddDebt}
+                    className="w-full py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                  >
+                    {submitting ? 'Processing...' : 'Add Debt'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
