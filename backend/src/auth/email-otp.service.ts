@@ -27,7 +27,7 @@ export class EmailOtpService {
   }
 
   private generateCode(): string {
-    return String(randomInt(100000, 999999));
+    return String(randomInt(1000, 10000));
   }
 
   private getFormattedFromAddress(rawEmail?: string | null) {

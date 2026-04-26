@@ -34,7 +34,7 @@ export default function DriverHome() {
     const stats = {
         activeTrips: activeTrips.length,
         totalTrips: activeTrips.length + history.length,
-        rating: Number((user as any)?.rating || 4.8).toFixed(1),
+        rating: (user as any)?.rating ? Number((user as any).rating).toFixed(1) : '0.0',
         earnings: (user as any)?.totalEarnings ? `₦${Number((user as any).totalEarnings).toLocaleString()}` : '₦0',
         remittance: (user as any)?.pendingRemittance ? `₦${Number((user as any).pendingRemittance).toLocaleString()}` : '₦0',
     };
@@ -540,7 +540,7 @@ export default function DriverHome() {
                 request={latestRideRequest ? {
                     id: latestRideRequest.id,
                     passengerName: getPassengerName(latestRideRequest),
-                    passengerRating: latestRideRequest.passenger?.rating || 5,
+                    passengerRating: latestRideRequest.passenger?.rating ?? 0,
                     pickup: latestRideRequest.origin?.address || 'Unknown pickup',
                     dropoff: latestRideRequest.destination?.address || 'Unknown destination',
                     distance: 'Live request',

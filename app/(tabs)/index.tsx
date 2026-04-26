@@ -601,7 +601,7 @@ const {
                 status={mapRideStatusForSheet(currentRide.status)}
                 driver={{
                   name: getDriverName(currentRide.driver),
-                  rating: Number(currentRide.driver.rating) || 5.0,
+                  rating: Number(currentRide.driver.rating) || 0.0,
                   vehicle: getDriverVehicle(currentRide.driver),
                   plate: getDriverPlate(currentRide.driver),
                   image: currentRide.driver.image || currentRide.driver.avatarUrl || '',

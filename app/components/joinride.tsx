@@ -320,7 +320,7 @@ export default function JoinRideView({
         return {
           id: `match-${trip.id}`,
           driverName,
-          rating: Number(trip.driver?.rating || 4.8),
+          rating: Number(trip.driver?.rating || 0),
           etaMinutes,
           seatsLeft: availableSeats,
           directionScore,

@@ -329,7 +329,7 @@ export class AdminService {
             `edrive Account Warning – ${level.toUpperCase()}`,
             generateDriverWarningEmail({ driverName, level, reason }),
             `You have received a ${level} warning: ${reason}`,
-            { from: 'support@edriveapp.com' },
+            { from: 'safety@edriveapp.com' },
         );
 
         return { success: true, warning };
@@ -363,7 +363,7 @@ export class AdminService {
             `edrive Account ${restrict ? 'Restricted' : 'Reinstated'}`,
             `<p>Hello ${user.firstName || 'User'},</p><p>Your edrive account has been <strong>${restrict ? 'restricted' : 'reinstated'}</strong> by admin.</p>`,
             `Your edrive account has been ${restrict ? 'restricted' : 'reinstated'}.`,
-            { from: 'support@edriveapp.com' },
+            { from: 'safety@edriveapp.com' },
         );
 
         return { success: true, isRestricted: user.isRestricted };
@@ -408,7 +408,7 @@ export class AdminService {
                 'Your edrive Account Has Been Deleted',
                 `<p>Hello ${userName},</p><p>Your edrive account has been permanently deleted by an administrator.</p><p>If you believe this was a mistake, please contact support.</p>`,
                 'Your edrive account has been deleted by an admin.',
-                { from: 'support@edriveapp.com' }
+                { from: 'safety@edriveapp.com' }
             );
         }
 

@@ -144,7 +144,7 @@ export default function TripDetailsScreen() {
   const driverName = getDriverName(driver);
   const driverPhone = driver?.phone || driver?.phoneNumber || null;
   const driverVehicle = trip?.tier || driver?.vehicleType || 'Vehicle details pending';
-  const driverRating = Number(driver?.rating || 4.8).toFixed(1);
+  const driverRating = Number(driver?.rating || 0).toFixed(1);
   const driverTrips = Number(driver?.tripsCompleted || 0);
 
   const isUnacceptedRide = !driver?.id || ['searching', 'pending_driver'].includes(String(trip?.status).toLowerCase());
