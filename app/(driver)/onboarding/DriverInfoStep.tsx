@@ -18,6 +18,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type BankOption = {
     id: string;
@@ -26,6 +27,7 @@ type BankOption = {
 };
 
 export default function DriverInfoStep() {
+    const insets = useSafeAreaInsets();
     const user = useAuthStore((s) => s.user);
     const { driverInfo, documents, setDriverInfo, setDocuments } = useDriverStore();
     const [banks, setBanks] = React.useState<BankOption[]>([]);
@@ -322,7 +324,7 @@ export default function DriverInfoStep() {
             </ScrollView>
 
             <Modal visible={bankPickerOpen} animationType="slide" onRequestClose={() => setBankPickerOpen(false)}>
-                <View style={styles.modalContainer}>
+                <View style={[styles.modalContainer, { paddingTop: insets.top + 10 }]}>
                     <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Select Bank</Text>
                         <TouchableOpacity onPress={() => setBankPickerOpen(false)}>
@@ -362,7 +364,7 @@ export default function DriverInfoStep() {
 }
 
 const styles = StyleSheet.create({
-    scrollContent: { paddingBottom: 120 },
+    scrollContent: { paddingHorizontal: SPACING.l, paddingBottom: 120, paddingTop: SPACING.m },
     title: { fontSize: 24, fontFamily: Fonts.bold, color: COLORS.text, marginBottom: 6 },
     subtitle: { fontSize: 14, color: COLORS.textSecondary, fontFamily: Fonts.rounded, marginBottom: SPACING.l },
     form: { gap: SPACING.m },

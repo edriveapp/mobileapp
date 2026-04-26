@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    Keyboard,
     KeyboardAvoidingView,
     Platform,
     StatusBar,
@@ -71,6 +72,7 @@ export default function OtpScreen() {
     if (value && index < 3) {
       inputs.current[index + 1]?.focus();
     } else if (value && index === 3) {
+      Keyboard.dismiss();
       const fullOtp = newOtp.join("");
       if (fullOtp.length === 4) {
         handleVerify(fullOtp);

@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -22,7 +23,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-const VEHICLE_TYPES = ['Toyota Sienna', 'Toyota Corolla', '18-Seater Bus'];
+// Route suggestions for quick selection
 const POPULAR_ROUTES = [
   { origin: 'Lagos (Jibowu)', destination: 'Abuja (Utako)' },
   { origin: 'Port Harcourt (Aba Road)', destination: 'Lagos (Yaba)' },
@@ -30,10 +31,10 @@ const POPULAR_ROUTES = [
 ];
 // Removed DRIVER_VERIFICATION_ON_HOLD bypass
 
-const COST_PER_KM = 140;
-const TRIP_SETUP_COST = 1000;
-const EMPTY_RETURN_BUFFER_PER_KM = 35;
-const PROFIT_MARGIN = 0.1;
+const COST_PER_KM = 165;
+const TRIP_SETUP_COST = 1500;
+const EMPTY_RETURN_BUFFER_PER_KM = 45;
+const PROFIT_MARGIN = 0.35;
 
 type RouteLookupStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -127,7 +128,6 @@ export default function CreateTripScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [price, setPrice] = useState('');
   const [seats, setSeats] = useState('4');
-  const [selectedVehicle, setSelectedVehicle] = useState(VEHICLE_TYPES[0]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [didHydrateTrip, setDidHydrateTrip] = useState(false);
@@ -172,7 +172,6 @@ export default function CreateTripScreen() {
     setSelectedDate(departure);
     setPrice(String(existingTrip.fare || existingTrip.price || ''));
     setSeats(String(existingTrip.seats || existingTrip.availableSeats || '4'));
-    setSelectedVehicle(existingTrip.tier || VEHICLE_TYPES[0]);
     setHasManualPrice(true);
     setDidHydrateTrip(true);
   }, [didHydrateTrip, existingTrip]);
@@ -227,6 +226,7 @@ export default function CreateTripScreen() {
     date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const onDateChange = (event: any, date?: Date) => {
+    Keyboard.dismiss();
     if (Platform.OS === 'android') setShowDatePicker(false);
     if (event.type === 'dismissed') return;
     if (date) {
@@ -239,6 +239,7 @@ export default function CreateTripScreen() {
   };
 
   const onTimeChange = (event: any, date?: Date) => {
+    Keyboard.dismiss();
     if (Platform.OS === 'android') setShowTimePicker(false);
     if (event.type === 'dismissed') return;
     if (date) {
@@ -325,7 +326,7 @@ export default function CreateTripScreen() {
       fare: seatFare,
       tripFare: priceModel.totalTripFare,
       distanceKm: routeDistanceKm,
-      tier: selectedVehicle,
+      tier: user?.carModel || user?.vehicleType || 'Standard',
       seats: seatCount,
       availableSeats: Math.max(seatCount - alreadyBookedSeats, 0),
       notes: tripNotes,
@@ -347,6 +348,7 @@ export default function CreateTripScreen() {
   };
 
   const openPreview = () => {
+    Keyboard.dismiss();
     if (!validateTripForm()) return;
     setShowPreview(true);
   };
@@ -400,6 +402,7 @@ export default function CreateTripScreen() {
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 120 }]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           <View style={styles.heroCard}>
             <Text style={styles.heroTitle}>Post your route fast</Text>
@@ -413,6 +416,7 @@ export default function CreateTripScreen() {
             <TextInput
               style={[styles.input, errors.origin && styles.inputError]}
               placeholder="Leaving from"
+              placeholderTextColor={COLORS.textSecondary}
               value={origin}
               onChangeText={(text) => {
                 setOrigin(text);
@@ -423,6 +427,7 @@ export default function CreateTripScreen() {
             <TextInput
               style={[styles.input, errors.destination && styles.inputError]}
               placeholder="Going to"
+              placeholderTextColor={COLORS.textSecondary}
               value={destination}
               onChangeText={(text) => {
                 setDestination(text);
@@ -500,6 +505,7 @@ export default function CreateTripScreen() {
                 display={Platform.OS === 'ios' ? 'inline' : 'default'}
                 onChange={onDateChange}
                 minimumDate={new Date()}
+                themeVariant="light"
               />
             )}
             {showTimePicker && DateTimePickerNative && (
@@ -508,29 +514,18 @@ export default function CreateTripScreen() {
                 mode="time"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={onTimeChange}
+                themeVariant="light"
               />
             )}
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Seats and price</Text>
-            <View style={styles.vehicleRow}>
-              {VEHICLE_TYPES.map((vehicle) => (
-                <TouchableOpacity
-                  key={vehicle}
-                  style={[styles.vehicleChip, selectedVehicle === vehicle && styles.vehicleChipActive]}
-                  onPress={() => setSelectedVehicle(vehicle)}
-                >
-                  <Text style={[styles.vehicleChipText, selectedVehicle === vehicle && styles.vehicleChipTextActive]}>
-                    {vehicle}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <Text style={styles.cardTitle}>Number of seats</Text>
 
             <TextInput
               style={[styles.input, errors.seats && styles.inputError]}
               placeholder="Available seats"
+              placeholderTextColor={COLORS.textSecondary}
               value={seats}
               onChangeText={(text) => {
                 setSeats(text);
@@ -542,6 +537,7 @@ export default function CreateTripScreen() {
             <TextInput
               style={[styles.input, errors.price && styles.inputError]}
               placeholder="Seat price"
+              placeholderTextColor={COLORS.textSecondary}
               value={price}
               onChangeText={(text) => {
                 setHasManualPrice(true);
@@ -601,6 +597,7 @@ export default function CreateTripScreen() {
             <TextInput
               style={[styles.input, styles.noteInput]}
               placeholder="Optional note for riders"
+              placeholderTextColor={COLORS.textSecondary}
               value={tripNotes}
               onChangeText={setTripNotes}
               multiline
@@ -655,7 +652,7 @@ export default function CreateTripScreen() {
                 </View>
                 <View style={styles.previewChip}>
                   <Text style={styles.previewChipLabel}>Vehicle</Text>
-                  <Text style={styles.previewChipValue}>{selectedVehicle}</Text>
+                  <Text style={styles.previewChipValue}>{user?.carModel || 'Registered Vehicle'}</Text>
                 </View>
                 <View style={styles.previewChip}>
                   <Text style={styles.previewChipLabel}>Seats</Text>
@@ -767,8 +764,8 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E4E7EC',
-    backgroundColor: '#FAFAFA',
+    borderColor: '#D0D5DD',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 14,
     color: '#101828',
     fontFamily: Fonts.rounded,
@@ -851,7 +848,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   scheduleLabel: {
-    color: '#667085',
+    color: '#344054',
     fontSize: 12,
     fontFamily: Fonts.rounded,
     marginBottom: 4,

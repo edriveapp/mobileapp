@@ -168,7 +168,7 @@ export default function VehicleDocumentsStep() {
 }
 
 const styles = StyleSheet.create({
-    scrollContent: { paddingBottom: 120 },
+    scrollContent: { paddingHorizontal: SPACING.l, paddingBottom: 120, paddingTop: SPACING.m },
     title: { fontSize: 24, fontFamily: Fonts.bold, color: COLORS.text, marginBottom: 6 },
     subtitle: { fontSize: 14, color: COLORS.textSecondary, fontFamily: Fonts.rounded, marginBottom: SPACING.l },
     form: { gap: SPACING.m },

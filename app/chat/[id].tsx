@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { safeOpenURL } from '@/app/utils/linking';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../services/api';
 
 import { Message, useChatStore } from '@/app/stores/chatStore';
@@ -57,6 +57,7 @@ const normalizeFetchedMessage = (message: any): Message => ({
 });
 
 export default function ChatScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuthStore();
     const { trips, availableTrips, activeTrips, history } = useTripStore();
@@ -137,13 +138,16 @@ export default function ChatScreen() {
     }, [messages]);
 
     const handleSend = () => {
-        if (!inputText.trim()) return;
-        sendMessage(tripId, inputText.trim());
+        const text = inputText.trim();
+        if (!text) return;
+        
+        sendMessage(tripId, text);
         setInputText('');
+        
         // Scroll after optimistic append
         setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
-        }, 50);
+        }, 100);
     };
 
     const renderItem = ({ item }: { item: Message }) => {
@@ -172,86 +176,88 @@ export default function ChatScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-                </TouchableOpacity>
+        <View style={styles.container}>
+            <View style={{ paddingTop: insets.top, backgroundColor: COLORS.white }}>
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                        <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+                    </TouchableOpacity>
 
-                <View style={styles.headerInfo}>
-                    {recipientImage ? (
-                        <Image source={{ uri: recipientImage }} style={styles.avatar} />
-                    ) : (
-                        <View style={styles.avatarPlaceholder}>
-                            <Text style={styles.avatarInitials}>{recipientName.charAt(0).toUpperCase()}</Text>
-                        </View>
-                    )}
-                    <View>
-                        <Text style={styles.name}>{recipientName}</Text>
-                        <View style={styles.onlineRow}>
-                            <View style={[styles.onlineDot, { backgroundColor: isConnected ? COLORS.success : '#A0AEC0' }]} />
-                            <Text style={styles.status}>{isConnected ? 'Connected' : 'Connecting...'}</Text>
+                    <View style={styles.headerInfo}>
+                        {recipientImage ? (
+                            <Image source={{ uri: recipientImage }} style={styles.avatar} />
+                        ) : (
+                            <View style={styles.avatarPlaceholder}>
+                                <Text style={styles.avatarInitials}>{recipientName.charAt(0).toUpperCase()}</Text>
+                            </View>
+                        )}
+                        <View>
+                            <Text style={styles.name}>{recipientName}</Text>
+                            <View style={styles.onlineRow}>
+                                <View style={[styles.onlineDot, { backgroundColor: isConnected ? COLORS.success : '#A0AEC0' }]} />
+                                <Text style={styles.status}>{isConnected ? 'Connected' : 'Connecting...'}</Text>
+                            </View>
                         </View>
                     </View>
-                </View>
 
-                <TouchableOpacity style={styles.callButton} onPress={handleCall}>
-                    <Ionicons name="call-outline" size={20} color={COLORS.primary} />
-                </TouchableOpacity>
+                    <TouchableOpacity style={styles.callButton} onPress={handleCall}>
+                        <Ionicons name="call-outline" size={20} color={COLORS.primary} />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
-                {loading ? (
-                    <View style={{ flex: 1, justifyContent: 'center' }}>
-                        <ActivityIndicator size="large" color={COLORS.primary} />
-                    </View>
-                ) : (
-                    <>
-                        {messages.length === 0 && (
-                            <View style={styles.emptyChat}>
-                                <Ionicons name="chatbubbles-outline" size={48} color="#C8D5CC" />
-                                <Text style={styles.emptyChatText}>No messages yet</Text>
-                                <Text style={styles.emptyChatSub}>Say hello to start the conversation</Text>
-                            </View>
-                        )}
-                        <FlatList
-                            ref={flatListRef}
-                            data={messages}
-                            renderItem={renderItem}
-                            keyExtractor={(item) => item._id}
-                            contentContainerStyle={styles.listContent}
-                            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-                            onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
-                        />
-                    </>
-                )}
+                <View style={{ flex: 1 }}>
+                    {loading ? (
+                        <View style={{ flex: 1, justifyContent: 'center' }}>
+                            <ActivityIndicator size="large" color={COLORS.primary} />
+                        </View>
+                    ) : (
+                        <>
+                            {messages.length === 0 && (
+                                <View style={styles.emptyChat}>
+                                    <Ionicons name="chatbubbles-outline" size={48} color="#C8D5CC" />
+                                    <Text style={styles.emptyChatText}>No messages yet</Text>
+                                    <Text style={styles.emptyChatSub}>Say hello to start the conversation</Text>
+                                </View>
+                            )}
+                            <FlatList
+                                ref={flatListRef}
+                                data={messages}
+                                renderItem={renderItem}
+                                keyExtractor={(item) => item._id}
+                                contentContainerStyle={styles.listContent}
+                                onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                                onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                            />
+                        </>
+                    )}
 
-                <View style={styles.inputContainer}>
-                    <TextInput
-                        style={styles.input}
-                        value={inputText}
-                        onChangeText={setInputText}
-                        placeholder="Type a message..."
-                        placeholderTextColor={COLORS.textSecondary}
-                        multiline
-                        returnKeyType="send"
-                        onSubmitEditing={handleSend}
-                        blurOnSubmit={false}
-                    />
-                    <TouchableOpacity
-                        style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
-                        onPress={handleSend}
-                        disabled={!inputText.trim()}
-                    >
-                        <Ionicons name="send" size={20} color={COLORS.white} />
-                    </TouchableOpacity>
+                    <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+                        <TextInput
+                            style={styles.input}
+                            value={inputText}
+                            onChangeText={setInputText}
+                            placeholder="Type a message..."
+                            placeholderTextColor={COLORS.textSecondary}
+                            multiline
+                            blurOnSubmit={false}
+                        />
+                        <TouchableOpacity
+                            style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
+                            onPress={handleSend}
+                            disabled={!inputText.trim()}
+                        >
+                            <Ionicons name="send" size={20} color={COLORS.white} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -408,7 +414,6 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.white,
         borderTopWidth: 1,
         borderTopColor: COLORS.border || '#E5E7EB',
-        marginBottom: Platform.OS === 'ios' ? 10 : 0,
         gap: 10,
     },
     input: {

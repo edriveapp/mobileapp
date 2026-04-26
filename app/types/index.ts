@@ -12,6 +12,9 @@ export interface User {
   isEmailVerified?: boolean;
   verificationStatus?: 'unverified' | 'pending' | 'approved' | 'rejected';
   token?: string;
+  carModel?: string;
+  vehicleType?: string;
+  plateNumber?: string;
 }
 
 export interface Trip {

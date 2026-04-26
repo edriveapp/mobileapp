@@ -2,7 +2,7 @@ import { COLORS, Fonts } from '@/constants/theme';
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '@/app/services/api';
 
@@ -46,7 +46,11 @@ export default function ForgotOtpScreen() {
         const newOtp = [...otp];
         newOtp[index] = value;
         setOtp(newOtp);
-        if (value && index < 3) inputs.current[index + 1]?.focus();
+        if (value && index < 3) {
+            inputs.current[index + 1]?.focus();
+        } else if (value && index === 3) {
+            Keyboard.dismiss();
+        }
     };
 
     const handleBackspace = (key: string, index: number) => {

@@ -19,6 +19,9 @@ const normalizeUser = (rawUser: any): User => ({
     isEmailVerified: Boolean(rawUser?.isEmailVerified ?? false),
     verificationStatus: rawUser?.verificationStatus,
     token: rawUser?.token,
+    carModel: rawUser?.carModel || rawUser?.vehicleModel,
+    vehicleType: rawUser?.vehicleType || rawUser?.carType,
+    plateNumber: rawUser?.plateNumber,
 });
 
 import AsyncStorage from '@react-native-async-storage/async-storage';

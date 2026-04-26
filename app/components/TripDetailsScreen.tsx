@@ -143,11 +143,11 @@ export default function TripDetailsScreen() {
   const driver = trip?.driver || {};
   const driverName = getDriverName(driver);
   const driverPhone = driver?.phone || driver?.phoneNumber || null;
-  const driverVehicle = trip?.tier || driver?.vehicleType || 'Vehicle details pending';
+  const driverVehicle = trip?.tier || driver?.carModel || driver?.vehicleType || 'Vehicle details pending';
   const driverRating = Number(driver?.rating || 0).toFixed(1);
   const driverTrips = Number(driver?.tripsCompleted || 0);
 
-  const isUnacceptedRide = !driver?.id || ['searching', 'pending_driver'].includes(String(trip?.status).toLowerCase());
+  const isUnacceptedRide = !trip?.driverId && !driver?.id;
 
   const openPaymentFlow = () => {
     setPaymentStep('method');
@@ -328,19 +328,21 @@ export default function TripDetailsScreen() {
           </View>
         </View>
 
-        {!isUnacceptedRide && (
+        {(!!driver?.id || !!trip?.driverId) && (
           <>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Driver</Text>
               <TouchableOpacity style={styles.driverCard} onPress={() => setShowDriverModal(true)}>
-                <Image
-                  source={{ uri: driver?.image || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=200' }}
-                  style={styles.driverImage}
-                />
+                {driver?.image ? (
+                  <Image source={{ uri: driver.image }} style={styles.driverImage} />
+                ) : (
+                  <View style={[styles.driverImage, { backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center' }]}>
+                    <Ionicons name="person" size={24} color="#94A3B8" />
+                  </View>
+                )}
                 <View style={styles.driverInfo}>
                   <View style={styles.driverNameRow}>
                     <Text style={styles.driverName}>{driverName}</Text>
-                    <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
                   </View>
                   <View style={styles.ratingRow}>
                     <Ionicons name="star" size={14} color="#FFD700" />
@@ -349,14 +351,7 @@ export default function TripDetailsScreen() {
                   <Text style={styles.driverMetaText}>{driverVehicle}</Text>
                 </View>
 
-                <View style={styles.contactActions}>
-                  <TouchableOpacity style={styles.iconButton} onPress={handleChatDriver}>
-                    <Ionicons name="chatbubble-ellipses-outline" size={22} color={COLORS.primary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.iconButton} onPress={handleCallDriver}>
-                    <Ionicons name="call-outline" size={22} color={COLORS.primary} />
-                  </TouchableOpacity>
-                </View>
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -398,11 +393,20 @@ export default function TripDetailsScreen() {
           const isPaid = (trip.paymentStatus || '').toLowerCase() === 'paid';
           const noSeats = (trip.availableSeats === 0 || trip.seats === 0);
 
+          if (String(trip?.status).toLowerCase() === 'pending_driver') {
+            return (
+              <View style={[styles.bookButton, { backgroundColor: '#F59E0B', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+                <Ionicons name="time-outline" size={20} color="white" />
+                <Text style={styles.bookButtonText}>Waiting for driver to accept...</Text>
+              </View>
+            );
+          }
+
           if (isUnacceptedRide) {
             return (
               <View style={[styles.bookButton, { backgroundColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
                 <ActivityIndicator size="small" color="#64748B" />
-                <Text style={[styles.bookButtonText, { color: '#64748B' }]}>Waiting for driver to accept...</Text>
+                <Text style={[styles.bookButtonText, { color: '#64748B' }]}>Searching for driver...</Text>
               </View>
             );
           }
@@ -444,10 +448,13 @@ export default function TripDetailsScreen() {
         <Pressable style={styles.modalBackdrop} onPress={() => setShowDriverModal(false)}>
           <Pressable style={styles.modalSheet} onPress={() => {}}>
             <View style={styles.modalHandle} />
-            <Image
-              source={{ uri: driver?.image || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=200' }}
-              style={styles.previewDriverImage}
-            />
+            {driver?.image ? (
+              <Image source={{ uri: driver.image }} style={styles.previewDriverImage} />
+            ) : (
+              <View style={[styles.previewDriverImage, { backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }]}>
+                <Ionicons name="person" size={32} color="#94A3B8" />
+              </View>
+            )}
             <Text style={styles.modalTitle}>{driverName}</Text>
             <Text style={styles.modalSubtext}>Rating {driverRating} • {driverTrips} trips</Text>
             <Text style={styles.modalSubtext}>{driverVehicle}</Text>
