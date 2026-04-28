@@ -29,7 +29,7 @@ interface WalletState {
 
     // Actions
     fundWallet: (amount: number) => Promise<void>;
-    payCommission: (amount?: number) => Promise<void>;
+    payCommission: () => Promise<void | string>;
     addCommissionDebt: (amount: number) => Promise<void>;
     isAccountAtRisk: () => boolean; // Checks the 30-day rule
     fetchWallet: () => Promise<void>;
@@ -46,9 +46,11 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         await get().fetchWallet();
     },
 
-    payCommission: async (amount) => {
-        await api.post('/users/wallet/pay-commission', { amount });
-        await get().fetchWallet();
+    payCommission: async () => {
+        const res = await api.post('/payments/initialize-remittance');
+        const authUrl = res.data?.data?.authorization_url;
+        if (authUrl) return authUrl;
+        throw new Error('Could not initialize payment');
     },
 
     addCommissionDebt: async (amount) => {

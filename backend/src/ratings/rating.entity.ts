@@ -1,8 +1,9 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { Ride } from '../rides/ride.entity';
 import { User } from '../users/user.entity';
 
 @Entity('ratings')
+@Unique(['rideId', 'raterId', 'rateeId'])
 export class Rating {
     @PrimaryGeneratedColumn('uuid')
     id: string;

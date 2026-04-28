@@ -8,14 +8,23 @@ export class PaymentsController {
 
     @UseGuards(AuthGuard('jwt'))
     @Post('initialize')
-    async initialize(@Request() req, @Body() body: { amount: number; distance?: number; estimatedDurationMinutes?: number; rideId: string }) {
-        // Use user email from JWT
+    async initialize(@Request() req, @Body() body: { amount: number; distance: number; estimatedDurationMinutes: number; rideId: string; pickupLocation?: any }) {
         return this.paymentsService.initializePayment(
+            req.user.userId,
             req.user.email,
-            body.amount,
-            body.distance || 0,
-            body.estimatedDurationMinutes || 0,
+            body.distance,
+            body.estimatedDurationMinutes,
             body.rideId,
+            body.pickupLocation,
+        );
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Post('initialize-remittance')
+    async initializeRemittance(@Request() req) {
+        return this.paymentsService.initializeRemittance(
+            req.user.userId,
+            req.user.email,
         );
     }
 

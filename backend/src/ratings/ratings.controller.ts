@@ -10,10 +10,7 @@ export class RatingsController {
     @Post()
     async createRating(@Request() req, @Body() body: any) {
         // body: { rideId, rateeId, value, comment }
-        return this.ratingsService.createRating({
-            ...body,
-            raterId: req.user.userId
-        });
+        return this.ratingsService.createRating(req.user.userId, body);
     }
 
     @Get('user/:userId')

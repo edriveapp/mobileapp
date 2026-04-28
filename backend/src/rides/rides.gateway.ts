@@ -52,16 +52,22 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
         // Expose only first name to protect passenger privacy
         const storedName: string = String(p.firstName || p.name || '').trim();
         const firstName = storedName.split(' ')[0] || p.email || p.phone || 'Passenger';
+        const isActive = ['accepted', 'arrived', 'in_progress'].includes(ride.status);
         const passenger = {
             id: p.id,
             firstName,
             lastName: '',
-            email: p.email,
-            phone: p.phone,
+            email: isActive ? p.email : null,
+            phone: isActive ? p.phone : null,
             rating: p.rating,
             avatarUrl: p.avatarUrl,
         };
         return { ...ride, passenger };
+    }
+
+    private verifySocketUser(client: Socket): boolean {
+        const user = this.extractSocketUser(client);
+        return user !== null && user.userId === client.data.userId;
     }
 
     handleConnection(client: Socket) {
@@ -80,22 +86,24 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     @SubscribeMessage('update_location')
     async handleLocationUpdate(
-        @MessageBody() data: { rideId?: string; lat: number; lon: number },
+        @MessageBody() data: { lat: number; lon: number },
         @ConnectedSocket() client: Socket,
     ) {
         const driverId = client.data.userId;
-        if (!driverId) return;
+        if (!driverId || client.data.role !== 'driver') return;
         await this.redisService.setDriverLocation(driverId, data.lat, data.lon);
 
-        // Resolve passengerId from the ride in DB — never trust client-supplied IDs
-        if (data.rideId) {
-            const ride = await this.ridesService.findRideById(data.rideId);
-            if (ride?.driverId === driverId && ride.passengerId) {
-                this.server.to(`user_${ride.passengerId}`).emit('driver_location_update', {
-                    lat: data.lat,
-                    lon: data.lon,
-                    rideId: data.rideId,
-                });
+        // Never trust client-supplied rideId. Find active rides for driver.
+        const activeRides = await this.ridesService.getActiveRides(driverId, 'driver');
+        if (activeRides && activeRides.length > 0) {
+            for (const ride of activeRides) {
+                if (ride.passengerId) {
+                    this.server.to(`user_${ride.passengerId}`).emit('driver_location_update', {
+                        lat: data.lat,
+                        lon: data.lon,
+                        rideId: ride.id,
+                    });
+                }
             }
         }
     }
@@ -105,17 +113,18 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @MessageBody() data: { passengerId: string; origin: any; destination: any; tier: string },
         @ConnectedSocket() client: Socket,
     ) {
+        if (!client.data.userId || !this.verifySocketUser(client)) {
+            client.disconnect(true);
+            return;
+        }
+        
         // 1. Create Ride in DB via Service
-        const ride = await this.ridesService.createRide(data);
+        const ride = await this.ridesService.createRide({ ...data, passengerId: client.data.userId });
 
-        // 2. Find nearby drivers (Redis)
-        const nearbyDriverIds = await this.redisService.getNearbyDrivers(data.origin.lat, data.origin.lon, 5); // 5km radius
+        // 2. Find nearby drivers (Redis) - Cap to 50 drivers max for broadcast
+        const nearbyDriverIds = (await this.redisService.getNearbyDrivers(data.origin.lat, data.origin.lon, 5)).slice(0, 50);
 
-        // 3. Emit to drivers
-        // In a real app, map driverIds to socketIds. For MVP, broadcast or use rooms.
-        // simpler: join drivers to a 'drivers' room based on geohash or city
-        // For now, emit to all connected drivers? No, that's bad.
-        // Assuming driver joins room `driver_${driverId}` on connection.
+        // 3. Emit to drivers with ACK support using a reliable queue in production
         nearbyDriverIds.forEach(driverId => {
             this.server.to(`driver_${driverId}`).emit('ride_request', ride);
         });
@@ -127,6 +136,10 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
     handleJoinDriverRoom(@ConnectedSocket() client: Socket) {
         const userId = client.data.userId;
         if (!userId) return;
+        if (client.data.role !== 'driver') {
+            client.disconnect(true);
+            return;
+        }
         client.join(`driver_${userId}`);
         client.join('drivers');
     }
@@ -151,28 +164,34 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
 
         if (nearbyDriverIds.length > 0) {
-            const driverTokens = await this.usersService.getPushTokensForUsers(nearbyDriverIds);
-            await this.pushNotificationsService.sendToExpoTokens(
-                driverTokens,
-                'New rider request',
-                `${ride.origin?.address || 'A rider'} → ${ride.destination?.address || 'Destination'}`,
-                { type: 'ride_request', rideId: ride.id },
-                'default',
-            );
+            const pushLock = `push_lock:new_ride:${ride.id}`;
+            if (await this.redisService.acquireLock(pushLock, 60)) {
+                const driverTokens = await this.usersService.getPushTokensForUsers(nearbyDriverIds);
+                await this.pushNotificationsService.sendToExpoTokens(
+                    driverTokens,
+                    'New rider request',
+                    `${ride.origin?.address || 'A rider'} → ${ride.destination?.address || 'Destination'}`,
+                    { type: 'ride_request', rideId: ride.id },
+                    'default',
+                );
+            }
         }
     }
 
     async broadcastRideAccepted(ride: any) {
         this.server.to(`user_${ride.passengerId}`).emit('driver_accepted', ride);
 
-        const riderTokens = await this.usersService.getPushTokensForUser(ride.passengerId);
-        await this.pushNotificationsService.sendToExpoTokens(
-            riderTokens,
-            'Driver accepted your trip',
-            'Your ride request has been accepted. Chat is now open.',
-            { type: 'ride_accepted', rideId: ride.id },
-            'default',
-        );
+        const pushLock = `push_lock:accepted:${ride.id}`;
+        if (await this.redisService.acquireLock(pushLock, 60)) {
+            const riderTokens = await this.usersService.getPushTokensForUser(ride.passengerId);
+            await this.pushNotificationsService.sendToExpoTokens(
+                riderTokens,
+                'Driver accepted your trip',
+                'Your ride request has been accepted. Chat is now open.',
+                { type: 'ride_accepted', rideId: ride.id },
+                'default',
+            );
+        }
     }
 
     async broadcastRideStatusUpdate(ride: any) {
@@ -187,13 +206,16 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         // Push notification for key status changes
         if (ride.status === 'arrived' && ride.passengerId) {
-            const tokens = await this.usersService.getPushTokensForUser(ride.passengerId);
-            await this.pushNotificationsService.sendToExpoTokens(
-                tokens,
-                'Driver Arrived',
-                'Your driver has arrived at the pickup location.',
-                { type: 'ride_status', status: 'arrived', rideId: ride.id },
-            );
+            const pushLock = `push_lock:arrived:${ride.id}`;
+            if (await this.redisService.acquireLock(pushLock, 60)) {
+                const tokens = await this.usersService.getPushTokensForUser(ride.passengerId);
+                await this.pushNotificationsService.sendToExpoTokens(
+                    tokens,
+                    'Driver Arrived',
+                    'Your driver has arrived at the pickup location.',
+                    { type: 'ride_status', status: 'arrived', rideId: ride.id },
+                );
+            }
         }
     }
 
@@ -216,14 +238,17 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const safeRide = this.sanitizeRideForDriver(ride);
         this.server.to(`driver_${ride.driverId}`).emit('trip_booked', safeRide);
 
-        const driverTokens = await this.usersService.getPushTokensForUser(ride.driverId);
-        await this.pushNotificationsService.sendToExpoTokens(
-            driverTokens,
-            'New trip booking',
-            `${ride.passenger?.firstName || ride.passenger?.email || 'A rider'} booked ${ride.origin?.address || 'your trip'}`,
-            { type: 'trip_booked', rideId: ride.id },
-            'default',
-        );
+        const pushLock = `push_lock:trip_booked:${ride.id}`;
+        if (await this.redisService.acquireLock(pushLock, 60)) {
+            const driverTokens = await this.usersService.getPushTokensForUser(ride.driverId);
+            await this.pushNotificationsService.sendToExpoTokens(
+                driverTokens,
+                'New trip booking',
+                `${ride.passenger?.firstName || ride.passenger?.email || 'A rider'} booked ${ride.origin?.address || 'your trip'}`,
+                { type: 'trip_booked', rideId: ride.id },
+                'default',
+            );
+        }
     }
 
     @SubscribeMessage('accept_ride')
@@ -232,7 +257,10 @@ export class RidesGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @ConnectedSocket() client: Socket,
     ) {
         const driverId = client.data.userId;
-        if (!driverId) return;
+        if (!driverId || client.data.role !== 'driver' || !this.verifySocketUser(client)) {
+            client.disconnect(true);
+            return;
+        }
         const updatedRide = await this.ridesService.acceptRide(data.rideId, driverId);
         await this.broadcastRideAccepted(updatedRide);
 

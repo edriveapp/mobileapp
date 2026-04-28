@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/user.entity';
 import { Ride } from '../rides/ride.entity';
+import { Booking } from '../rides/booking.entity';
 import { Rating } from '../ratings/rating.entity';
 import { SupportMessage } from '../support/support-message.entity';
 import { SupportTicket } from '../support/support-ticket.entity';
@@ -18,7 +19,7 @@ import { WalletTransaction } from '../users/wallet-transaction.entity';
 @Module({
     imports: [
         ScheduleModule.forRoot(),
-        TypeOrmModule.forFeature([User, Ride, Rating, DriverWarning, NotificationCampaign, SupportTicket, SupportMessage, WalletTransaction]),
+        TypeOrmModule.forFeature([User, Ride, Booking, Rating, DriverWarning, NotificationCampaign, SupportTicket, SupportMessage, WalletTransaction]),
         CommonModule,
         PaymentsModule,
     ],

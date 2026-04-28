@@ -32,8 +32,13 @@ export default function RemittanceScreen() {
     }
 
     try {
-      await payCommission(commissionDue);
-      Alert.alert('Payment successful', 'Outstanding remittance has been paid.');
+      const authUrl = await payCommission();
+      if (typeof authUrl === 'string') {
+        const WebBrowser = require('expo-web-browser');
+        await WebBrowser.openBrowserAsync(authUrl);
+        // Add a slight delay then fetch wallet to see updated state
+        setTimeout(() => fetchWallet(), 2000);
+      }
     } catch (error: any) {
       Alert.alert('Payment failed', error?.message || 'Could not pay remittance right now.');
     }

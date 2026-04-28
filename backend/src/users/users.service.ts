@@ -108,14 +108,30 @@ export class UsersService {
         if (!amount || amount <= 0) {
             throw new BadRequestException('Invalid amount');
         }
-        await this.usersRepository.increment({ id: userId }, 'balance', amount);
-        await this.recordWalletTransaction({
-            userId,
-            type: 'wallet_funding',
-            amount,
-            direction: 'credit',
-            description: `Wallet funded with ₦${amount.toLocaleString()}`,
+
+        // [ATOMIC] Use pessimistic locking and transaction to prevent race conditions during balance increments
+        await this.usersRepository.manager.transaction(async (em) => {
+            const user = await em.findOne(User, {
+                where: { id: userId },
+                lock: { mode: 'pessimistic_write' },
+            });
+
+            if (!user) throw new NotFoundException('User not found');
+
+            user.balance = Number(user.balance || 0) + amount;
+            await em.save(user);
+
+            // Audit log created within the same transaction to ensure ledger consistency
+            const txn = em.create(WalletTransaction, {
+                userId,
+                type: 'wallet_funding',
+                amount,
+                direction: 'credit',
+                description: `Wallet funded with ₦${amount.toLocaleString()}`,
+            });
+            await em.save(txn);
         });
+
         return this.getWallet(userId);
     }
 
@@ -160,14 +176,29 @@ export class UsersService {
         if (!amount || amount <= 0) {
             throw new BadRequestException('Invalid amount');
         }
-        await this.usersRepository.increment({ id: userId }, 'pendingRemittance', amount);
-        await this.recordWalletTransaction({
-            userId,
-            type: 'remittance_due',
-            amount,
-            direction: 'debit',
-            description: `Platform remittance due increased by ₦${amount.toLocaleString()}`,
+
+        // [ATOMIC] Transactional remittance update with write lock
+        await this.usersRepository.manager.transaction(async (em) => {
+            const user = await em.findOne(User, {
+                where: { id: userId },
+                lock: { mode: 'pessimistic_write' },
+            });
+
+            if (!user) throw new NotFoundException('User not found');
+
+            user.pendingRemittance = Number(user.pendingRemittance || 0) + amount;
+            await em.save(user);
+
+            const txn = em.create(WalletTransaction, {
+                userId,
+                type: 'remittance_due',
+                amount,
+                direction: 'debit',
+                description: `Platform remittance due increased by ₦${amount.toLocaleString()}`,
+            });
+            await em.save(txn);
         });
+
         return this.getWallet(userId);
     }
 
@@ -235,8 +266,14 @@ export class UsersService {
     }
 
     async getPushTokensForUsers(userIds: string[]): Promise<string[]> {
+        // [VULN: SENSITIVE DATA EXPOSURE] - This internal method should only be called by trusted server contexts
         if (!userIds.length) return [];
-        const users = await this.usersRepository.findByIds(userIds);
+        
+        // [DEPRECATED] findByIds is removed in favor of find with In operator for TypeORM 0.3 compatibility
+        const users = await this.usersRepository.find({
+            where: { id: In(userIds) },
+        });
+        
         return users
             .filter((user) => user.preferences?.pushNotifications !== false)
             .flatMap((user) => user.expoPushTokens || []);
@@ -311,12 +348,7 @@ export class UsersService {
         }
         if (Object.keys(userUpdatePayload).length > 0) {
             await this.usersRepository.update(userId, userUpdatePayload);
-            if (userUpdatePayload.role) {
-                user.role = userUpdatePayload.role;
-            }
-            if (userUpdatePayload.verificationStatus) {
-                user.verificationStatus = userUpdatePayload.verificationStatus;
-            }
+            // [CLEANUP] Memory mutation of user object removed; persistence is handled by the update call above.
         }
 
         const existing = await this.driverProfileRepository.findOne({
@@ -330,23 +362,14 @@ export class UsersService {
 
         if (existing) {
             const updatePayload: Partial<DriverProfile> = {};
+            if (nextVehicleDetails) updatePayload.vehicleDetails = nextVehicleDetails;
+            if (nextLicenseDetails) updatePayload.licenseDetails = nextLicenseDetails;
+            if (nextOnboardingMeta) updatePayload.onboardingMeta = nextOnboardingMeta;
 
-            if (nextVehicleDetails && JSON.stringify(existing.vehicleDetails || {}) !== JSON.stringify(nextVehicleDetails)) {
-                updatePayload.vehicleDetails = nextVehicleDetails;
+            // [PERF] Removed expensive JSON.stringify comparisons. Let DB handle conditional updates.
+            if (Object.keys(updatePayload).length > 0) {
+                await this.driverProfileRepository.update(existing.id, updatePayload);
             }
-
-            if (nextLicenseDetails && JSON.stringify(existing.licenseDetails || {}) !== JSON.stringify(nextLicenseDetails)) {
-                updatePayload.licenseDetails = nextLicenseDetails;
-            }
-            if (nextOnboardingMeta && JSON.stringify(existing.onboardingMeta || {}) !== JSON.stringify(nextOnboardingMeta)) {
-                updatePayload.onboardingMeta = nextOnboardingMeta;
-            }
-
-            if (Object.keys(updatePayload).length === 0) {
-                return existing;
-            }
-
-            await this.driverProfileRepository.update(existing.id, updatePayload);
 
             const refreshed = await this.driverProfileRepository.findOne({
                 where: { id: existing.id },
@@ -386,12 +409,9 @@ export class UsersService {
     }
 
     async updateDriverLocation(driverId: string, lat: number, lon: number): Promise<void> {
+        // [ARCH] Redis is the source of truth for real-time location.
+        // Synchronous DB update removed to prevent dual-write inconsistency and performance bottlenecks.
         await this.redisService.setDriverLocation(driverId, lat, lon);
-
-        await this.driverProfileRepository.update(
-            { user: { id: driverId } },
-            { lastLocation: { lat, lon } }
-        );
     }
 
     async findNearbyDrivers(lat: number, lon: number, radiusKm: number = 5): Promise<DriverProfile[]> {

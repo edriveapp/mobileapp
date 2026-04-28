@@ -9,6 +9,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { AdminScope, User, UserRole, VerificationStatus } from '../users/user.entity';
 import { WalletTransaction, WalletTransactionType } from '../users/wallet-transaction.entity';
 import { Ride, RideStatus } from '../rides/ride.entity';
+import { Booking, BookingStatus } from '../rides/booking.entity';
 import { Rating } from '../ratings/rating.entity';
 import { buildTrendingAreas, extractAreaName } from '../rides/trending-areas.util';
 import { SupportMessage } from '../support/support-message.entity';
@@ -24,6 +25,8 @@ export class AdminService {
         private usersRepository: Repository<User>,
         @InjectRepository(Ride)
         private ridesRepository: Repository<Ride>,
+        @InjectRepository(Booking)
+        private bookingsRepository: Repository<Booking>,
         @InjectRepository(Rating)
         private ratingsRepository: Repository<Rating>,
         @InjectRepository(DriverWarning)
@@ -155,6 +158,7 @@ export class AdminService {
             trendScore: area.trendScore,
             rides24h: area.rides24h,
             growthRate: area.growthRate,
+            uniqueUsers: area.uniqueUsers,
         }));
 
         return {
@@ -1048,6 +1052,72 @@ export class AdminService {
         }
 
         return { success: true, ...result };
+    }
+
+    async verifyTransferPayment(actorUserId: string, bookingId: string) {
+        const actor = await this.getActor(actorUserId);
+        this.assertOperationsAdmin(actor);
+
+        const booking = await this.bookingsRepository.findOne({
+            where: { id: bookingId },
+            relations: ['ride', 'ride.driver', 'passenger'],
+        });
+        if (!booking) throw new NotFoundException('Booking not found');
+        if (booking.paymentMethod !== 'transfer') {
+            throw new BadRequestException('This booking is not a transfer payment');
+        }
+        if (booking.paymentStatus === 'paid') {
+            return { success: true, message: 'Already verified' };
+        }
+        if (booking.status === BookingStatus.CANCELLED) {
+            throw new BadRequestException('Cannot verify a cancelled booking');
+        }
+
+        // Mark the booking as paid
+        booking.paymentStatus = 'paid';
+        await this.bookingsRepository.save(booking);
+
+        // Also update the ride-level payment details
+        const ride = booking.ride;
+        if (ride) {
+            const amount = Number(booking.fareCharged || ride.fare || ride.tripFare || 0);
+            const estimatedDurationMinutes = Number(ride.estimatedDurationMinutes || 0);
+            const split = await this.paymentsService.calculatePaymentSplit(amount, estimatedDurationMinutes);
+
+            ride.paymentStatus = 'paid';
+            ride.paymentMethod = ride.paymentMethod || 'transfer';
+            ride.payoutStatus = 'earnings_allocated';
+            ride.platformCut = split.platformCutAmount;
+            ride.platformCutPercent = split.platformCutPercent;
+            ride.platformCutAmount = split.platformCutAmount;
+            ride.insuranceReservePercent = split.insuranceReservePercent;
+            ride.insuranceReserveAmount = split.insuranceReserveAmount;
+            ride.driverNetEarnings = split.driverNetEarnings;
+            ride.driverEarnings = split.driverNetEarnings;
+            await this.ridesRepository.save(ride);
+        }
+
+        // Notify passenger
+        const passenger = booking.passenger;
+        if (passenger?.expoPushTokens?.length) {
+            await this.pushService.sendToExpoTokens(
+                passenger.expoPushTokens,
+                'Transfer Verified',
+                'Your transfer payment has been confirmed. Your seat is fully paid.',
+                { type: 'transfer_verified', bookingId },
+            );
+        }
+        if (passenger?.email) {
+            await this.mailerService.sendEmail(
+                [passenger.email],
+                'Your edrive transfer payment has been confirmed',
+                `<p>Hi ${passenger.firstName || 'there'},</p><p>Your transfer payment of <strong>\u20A6${Number(booking.fareCharged || 0).toLocaleString()}</strong> has been verified and confirmed.</p><p>Thank you for riding with edrive!</p>`,
+                `Your transfer payment has been confirmed.`,
+                { from: 'support@edriveapp.com' },
+            );
+        }
+
+        return { success: true, bookingId, paymentStatus: 'paid' };
     }
 
     // ─── User Detail ──────────────────────────────────────────────────────────

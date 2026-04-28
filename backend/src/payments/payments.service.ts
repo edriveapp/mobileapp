@@ -9,6 +9,7 @@ import { RidesService } from '../rides/rides.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
+import { Booking, BookingStatus } from '../rides/booking.entity';
 
 @Injectable()
 export class PaymentsService {
@@ -19,6 +20,7 @@ export class PaymentsService {
         private configService: ConfigService,
         private ridesService: RidesService,
         @InjectRepository(User) private usersRepository: Repository<User>,
+        @InjectRepository(Booking) private bookingsRepository: Repository<Booking>,
     ) { }
 
     verifyWebhookSignature(rawBody: Buffer, paystackSignature: string): void {
@@ -41,17 +43,40 @@ export class PaymentsService {
         }, {});
 
         const rideId = metadata?.rideId || customMap?.ride_id;
+        const remittanceUserId = metadata?.remittanceUserId || customMap?.user_id;
+        const isRemittance = metadata?.isRemittance || customMap?.is_remittance;
+
+        if (await this.ridesService.isPaymentReferenceProcessed(data?.reference)) {
+            this.logger.log(`Webhook ignored (already processed): ${data?.reference}`);
+            return;
+        }
+
+        if (isRemittance && remittanceUserId) {
+            const amountPaid = (data?.amount ?? 0) / 100;
+            await this.ridesService.processRemittancePayment(remittanceUserId, amountPaid, data?.reference);
+            this.logger.log(`Webhook remittance confirmed: userId=${remittanceUserId} amount=₦${amountPaid}`);
+            return;
+        }
+
         if (!rideId) {
             this.logger.warn(`Webhook charge.success missing rideId: ref=${data?.reference}`);
             return;
         }
 
         const amount = (data?.amount ?? 0) / 100;
+        const userId = metadata?.userId || customMap?.user_id;
+        const pickupLocation = metadata?.pickupLocation;
         const distance = Number(metadata?.distanceInKm ?? customMap?.distance_km ?? 0);
         const estimatedDurationMinutes = Number(metadata?.estimatedDurationMinutes ?? customMap?.estimated_duration_minutes ?? 0);
-        const split = await this.calculatePaymentSplit(amount, estimatedDurationMinutes);
 
-        await this.ridesService.updatePaymentDetails(rideId, 'paid', {
+        const ride = await this.ridesService.findRideById(rideId);
+        if (!ride) {
+            this.logger.error(`Webhook charge.success: Ride ${rideId} not found`);
+            return;
+        }
+
+        const split = await this.calculatePaymentSplit(amount, estimatedDurationMinutes);
+        const paymentDetails = {
             driverNetEarnings: split.driverNetEarnings,
             platformCut: split.platformCutAmount,
             platformCutPercent: split.platformCutPercent,
@@ -60,8 +85,27 @@ export class PaymentsService {
             paystackReference: data?.reference,
             paymentReference: data?.reference,
             estimatedDurationMinutes,
-        });
-        this.logger.log(`Webhook payment confirmed: rideId=${rideId} amount=₦${amount}`);
+            pickupLocation,
+        };
+
+        if (ride.passengerId === userId || ride.driverId === userId) {
+            // Case 1: Direct ride request or driver funding? No, passenger paying for their own request.
+            await this.ridesService.updatePaymentDetails(rideId, 'paid', paymentDetails);
+            this.logger.log(`Webhook confirmed direct payment: rideId=${rideId} userId=${userId}`);
+        } else if (userId) {
+            // Case 2: Shared booking. Use bookPublishedTrip to create the Booking entity.
+            await this.ridesService.bookPublishedTrip(rideId, userId, {
+                paymentMethod: 'card',
+                paymentStatus: 'paid', // Mark as paid immediately since webhook confirmed it
+                pickupLocation,
+                estimatedDurationMinutes,
+                ...paymentDetails,
+            });
+            this.logger.log(`Webhook confirmed shared booking: rideId=${rideId} userId=${userId}`);
+        } else {
+            this.logger.warn(`Webhook charge.success missing userId for rideId=${rideId}`);
+            await this.ridesService.updatePaymentDetails(rideId, 'paid', paymentDetails);
+        }
     }
 
     async calculatePaymentSplit(amount: number, estimatedDurationMinutes: number) {
@@ -91,7 +135,27 @@ export class PaymentsService {
         };
     }
 
-    async initializePayment(email: string, amount: number, distanceInKm: number, estimatedDurationMinutes: number, rideId: string) {
+    async initializePayment(userId: string, email: string, distanceInKm: number, estimatedDurationMinutes: number, rideId: string, pickupLocation?: any) {
+        const ride = await this.ridesService.findRideById(rideId);
+        if (!ride) throw new NotFoundException('Ride not found');
+
+        let amount = 0;
+        if (ride.passengerId === userId || ride.driverId === userId) {
+            amount = Number(ride.tripFare || ride.fare || 0);
+        } else {
+            const booking = await this.bookingsRepository.findOne({ where: { rideId, passengerId: userId, status: BookingStatus.CONFIRMED } });
+            if (booking) {
+                amount = Number(booking.fareCharged || 0);
+            } else {
+                // If it's a new booking request for a published trip
+                amount = Number(ride.fare || ride.tripFare || 0);
+            }
+        }
+
+        if (amount <= 0) {
+            throw new BadRequestException('Amount must be greater than zero');
+        }
+
         const split = await this.calculatePaymentSplit(amount, estimatedDurationMinutes);
         const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
 
@@ -107,13 +171,17 @@ export class PaymentsService {
         const data = {
             email,
             amount: amount * 100, // Paystack expects kobo
+            channels: ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer'],
             callback_url: `${this.configService.get<string>('APP_URL') ?? ''}/payments/verify`,
             metadata: {
                 rideId,
+                userId,
+                pickupLocation,
                 distanceInKm,
                 estimatedDurationMinutes,
                 custom_fields: [
                     { display_name: "Ride ID", variable_name: "ride_id", value: rideId },
+                    { display_name: "User ID", variable_name: "user_id", value: userId },
                     { display_name: "Distance (km)", variable_name: "distance_km", value: distanceInKm },
                     { display_name: "Estimated Duration (minutes)", variable_name: "estimated_duration_minutes", value: estimatedDurationMinutes },
                     { display_name: "Driver Net Earnings", variable_name: "driver_net_earnings", value: split.driverNetEarnings },
@@ -129,6 +197,43 @@ export class PaymentsService {
         } catch (error) {
             console.error('Payment initialization failed:', error.response?.data || error.message);
             throw new InternalServerErrorException('Payment initialization failed');
+        }
+    }
+
+    async initializeRemittance(userId: string, email: string) {
+        const user = await this.usersRepository.findOne({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+        
+        const amount = Number(user.pendingRemittance || 0);
+        if (amount <= 0) {
+            throw new BadRequestException('No pending remittance due');
+        }
+
+        const secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY');
+        if (!secretKey) throw new InternalServerErrorException('PAYSTACK_SECRET_KEY is not configured');
+
+        const url = 'https://api.paystack.co/transaction/initialize';
+        const headers = { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' };
+        const data = {
+            email,
+            amount: amount * 100, // Paystack expects kobo
+            channels: ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer'],
+            callback_url: `${this.configService.get<string>('APP_URL') ?? ''}/payments/verify`,
+            metadata: {
+                remittanceUserId: userId,
+                custom_fields: [
+                    { display_name: "Remittance", variable_name: "is_remittance", value: true },
+                    { display_name: "User ID", variable_name: "user_id", value: userId }
+                ]
+            }
+        };
+
+        try {
+            const response = await lastValueFrom(this.httpService.post(url, data, { headers }));
+            return response.data;
+        } catch (error) {
+            this.logger.error('Remittance initialization failed:', error.response?.data || error.message);
+            throw new InternalServerErrorException('Remittance initialization failed');
         }
     }
 
@@ -152,30 +257,7 @@ export class PaymentsService {
             const data = response.data;
 
             if (data.status && data.data.status === 'success') {
-                const metadata = data.data.metadata;
-                const customFields = Array.isArray(metadata?.custom_fields) ? metadata.custom_fields : [];
-                const customMap = customFields.reduce((acc: Record<string, any>, field: any) => {
-                    if (field?.variable_name) acc[field.variable_name] = field?.value;
-                    return acc;
-                }, {});
-
-                const rideId = metadata?.rideId || customMap?.ride_id;
-                const amount = data.data.amount / 100; // Convert back from kobo
-                const estimatedDurationMinutes = Number(metadata?.estimatedDurationMinutes ?? customMap?.estimated_duration_minutes ?? 0);
-
-                if (rideId) {
-                    const split = await this.calculatePaymentSplit(amount, estimatedDurationMinutes);
-                    await this.ridesService.updatePaymentDetails(rideId, 'paid', {
-                        driverNetEarnings: split.driverNetEarnings,
-                        platformCut: split.platformCutAmount,
-                        platformCutPercent: split.platformCutPercent,
-                        insuranceReserveAmount: split.insuranceReserveAmount,
-                        insuranceReservePercent: split.insuranceReservePercent,
-                        paystackReference: data.data.reference,
-                        paymentReference: data.data.reference,
-                        estimatedDurationMinutes,
-                    });
-                }
+                return data;
             }
 
             return data;

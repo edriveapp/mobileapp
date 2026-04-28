@@ -1,9 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import { Brackets, MoreThanOrEqual, Repository } from 'typeorm';
 import { OSRMService } from '../common/osrm.service';
 import { RedisService } from '../common/redis.service';
 import { Ride, RideStatus } from './ride.entity';
+import { Booking, BookingStatus } from './booking.entity';
 import { User } from '../users/user.entity';
 import { WalletTransaction, WalletTransactionType } from '../users/wallet-transaction.entity';
 import { buildTrendingAreas } from './trending-areas.util';
@@ -20,6 +21,8 @@ export class RidesService {
     constructor(
         @InjectRepository(Ride)
         private ridesRepository: Repository<Ride>,
+        @InjectRepository(Booking)
+        private bookingsRepository: Repository<Booking>,
         @InjectRepository(User)
         private usersRepository: Repository<User>,
         @InjectRepository(WalletTransaction)
@@ -98,7 +101,7 @@ export class RidesService {
         if (!departureTime) return false;
         const ts = new Date(departureTime).getTime();
         if (!ts) return false;
-        return ts > Date.now();
+        return ts > Date.now() + 30 * 60 * 1000; // 30 minutes buffer
     }
 
     private async assertNoImmediateRideConflict(userId: string, role: 'driver' | 'passenger', excludeRideId?: string) {
@@ -125,12 +128,13 @@ export class RidesService {
         // Expose only first name to protect passenger privacy
         const storedName: string = String(p.firstName || p.name || '').trim();
         const firstName = storedName.split(' ')[0] || p.email || p.phone || 'Passenger';
+        const isActive = [RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS].includes(ride.status);
         (ride as any).passenger = {
             id: p.id,
             firstName,
             lastName: '',
-            email: p.email,
-            phone: p.phone,
+            email: isActive ? p.email : null,
+            phone: isActive ? p.phone : null,
             rating: p.rating,
             avatarUrl: p.avatarUrl,
         };
@@ -153,6 +157,12 @@ export class RidesService {
             const driver = await this.usersRepository.findOne({ where: { id: data.driverId } });
             if (driver?.isRestricted) {
                 throw new ForbiddenException('Your account has been restricted. Contact support.');
+            }
+            if ((driver?.pendingRemittance || 0) > 90000) {
+                throw new ForbiddenException('Account suspended due to high outstanding remittance. Please pay your balance.');
+            }
+            if (data.paymentMethod === 'cash' && (driver?.pendingRemittance || 0) > 20000) {
+                throw new ForbiddenException('You cannot create cash trips while your pending remittance is above ₦20,000.');
             }
         }
         const isFuture = this.isFutureReservation(data?.departureTime);
@@ -189,7 +199,7 @@ export class RidesService {
             pricingScenario: data.pricingScenario ?? null,
             pricingBreakdown: data.pricingBreakdown ?? null,
             estimatedDurationMinutes,
-            status: data.status ?? RideStatus.SEARCHING,
+            status: RideStatus.SEARCHING, // Hardcoded to prevent client manipulation
         } as Partial<Ride>);
 
         const savedRide = await this.ridesRepository.save(ride);
@@ -223,11 +233,30 @@ export class RidesService {
         if (driver.verificationStatus !== 'approved') {
             throw new ForbiddenException('Your account must be verified before accepting rides.');
         }
+        
+        if ((driver.pendingRemittance || 0) > 90000) {
+            throw new ForbiddenException('Account suspended due to high outstanding remittance. Please pay your balance.');
+        }
+
+        const lockKey = `ride_lock:${rideId}`;
+        const acquired = await this.redis.acquireLock(lockKey, 5);
+        if (!acquired) {
+            throw new BadRequestException('Ride is currently being accepted by another driver.');
+        }
 
         const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
+        if (!ride) {
+            await this.redis.del(lockKey);
+            throw new NotFoundException('Ride not found');
+        }
+        if (ride.status !== RideStatus.SEARCHING) {
+            await this.redis.del(lockKey);
+            throw new BadRequestException('Ride no longer available');
+        }
 
-        if (!ride) throw new NotFoundException('Ride not found'); // Use NestJS built-in exceptions
-        if (ride.status !== RideStatus.SEARCHING) throw new BadRequestException('Ride no longer available');
+        if (ride.paymentMethod === 'cash' && (driver.pendingRemittance || 0) > 20000) {
+            throw new ForbiddenException('You cannot accept cash trips while your pending remittance is above ₦20,000.');
+        }
 
         if (ride.passengerId && ride.passengerId === driverId) {
             throw new ForbiddenException('You cannot accept your own ride request.');
@@ -319,7 +348,28 @@ export class RidesService {
         return result;
     }
 
+    /**
+     * Derive payment status server-side from the payment method.
+     * Never trust client-supplied paymentStatus.
+     */
+    private derivePaymentStatus(paymentMethod: string): string {
+        switch (paymentMethod) {
+            case 'card':   return 'pending';              // Webhook / verify will mark paid
+            case 'transfer': return 'pending_verification'; // Admin / reconciliation confirms
+            case 'cash':
+            default:       return 'pending';              // Collected at pickup
+        }
+    }
+
     async bookPublishedTrip(rideId: string, passengerId: string, data: any): Promise<Ride> {
+        // Prevent duplicate bookings by the same passenger on the same trip
+        const existingBooking = await this.bookingsRepository.findOne({
+            where: { rideId, passengerId, status: BookingStatus.CONFIRMED },
+        });
+        if (existingBooking) {
+            throw new BadRequestException('You already have a booking on this trip');
+        }
+
         // Atomic seat decrement: only succeeds if availableSeats > 0 right now.
         // This prevents two simultaneous bookings from both reading seats=1 and both decrementing.
         const result = await this.ridesRepository
@@ -346,25 +396,64 @@ export class RidesService {
 
         if (!this.isFutureReservation(ride.departureTime)) {
             await this.assertNoImmediateRideConflict(passengerId, 'passenger', ride.id);
-            await this.assertNoImmediateRideConflict(ride.driverId, 'driver', ride.id);
         }
 
-        ride.passengerId = passengerId;
+        // Server-side payment status -- never trust client for cash, but webhook can override
+        const paymentMethod = data.paymentMethod ?? 'cash';
+        const paymentStatus = data.paymentStatus ?? this.derivePaymentStatus(paymentMethod);
+
+        // Create a Booking record so every passenger is tracked individually
+        const booking = this.bookingsRepository.create({
+            rideId: ride.id,
+            passengerId,
+            seatsBooked: 1,
+            pickupLocation: data.pickupLocation ?? ride.pickupLocation ?? ride.origin,
+            paymentMethod,
+            paymentStatus,
+            fareCharged: Number(ride.fare || ride.tripFare || 0),
+        });
+        await this.bookingsRepository.save(booking);
+
+        // Backward-compat: set passengerId on ride only if it's the first booking
+        if (!ride.passengerId) {
+            ride.passengerId = passengerId;
+        }
+
         ride.pickupLocation = data.pickupLocation ?? ride.pickupLocation ?? ride.origin;
-        ride.paymentMethod = data.paymentMethod ?? ride.paymentMethod ?? 'cash';
-        ride.paymentStatus = data.paymentStatus ?? 'pending';
         ride.estimatedDurationMinutes = data.estimatedDurationMinutes ?? data.duration ?? ride.estimatedDurationMinutes ?? null;
-        ride.status = RideStatus.ACCEPTED;
+
+        // Keep ride SEARCHING while seats remain so others can still book.
+        // Transition to ACCEPTED only when every seat is taken.
+        if (ride.availableSeats <= 0) {
+            ride.status = RideStatus.ACCEPTED;
+            await this.setRideState(ride.id, RideStatus.ACCEPTED);
+        }
 
         await this.ridesRepository.save(ride);
+
+        // If payment is already confirmed (e.g. from webhook), process the wallet transactions
+        if (paymentStatus === 'paid') {
+            await this.updatePaymentDetails(rideId, 'paid', {
+                driverNetEarnings: data.driverNetEarnings,
+                platformCut: data.platformCut,
+                platformCutPercent: data.platformCutPercent,
+                insuranceReserveAmount: data.insuranceReserveAmount,
+                insuranceReservePercent: data.insuranceReservePercent,
+                paystackReference: data.paystackReference,
+                paymentReference: data.paymentReference,
+                estimatedDurationMinutes: ride.estimatedDurationMinutes,
+            });
+        }
+
         const booked = (await this.findRideById(ride.id)) as Ride;
-        await this.setRideState(booked.id, RideStatus.ACCEPTED);
         await this.invalidateAvailableCache();
         return booked;
     }
 
     // Valid status transitions per actor
     private readonly driverTransitions: Partial<Record<RideStatus, RideStatus[]>> = {
+        // Driver can close bookings on a published trip and begin the ride
+        [RideStatus.SEARCHING]: [RideStatus.ACCEPTED, RideStatus.CANCELLED],
         [RideStatus.ACCEPTED]: [RideStatus.ARRIVED, RideStatus.CANCELLED],
         [RideStatus.ARRIVED]: [RideStatus.IN_PROGRESS, RideStatus.CANCELLED],
         [RideStatus.IN_PROGRESS]: [RideStatus.COMPLETED],
@@ -375,27 +464,22 @@ export class RidesService {
         [RideStatus.ACCEPTED]: [RideStatus.CANCELLED],
     };
 
-    async updateStatus(rideId: string, status: RideStatus): Promise<Ride> {
-        await this.ridesRepository.update(rideId, { status });
-
-        const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
-
-        if (!ride) {
-            throw new NotFoundException('Ride not found');
-        }
-
-        return ride;
-    }
+    // Removed updateStatus to prevent auth bypass. Callers must use updateStatusAsActor.
 
     async updateStatusAsActor(rideId: string, userId: string, status: RideStatus): Promise<Ride> {
         const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
         if (!ride) throw new NotFoundException('Ride not found');
 
         const isDriver = ride.driverId === userId;
-        const isPassenger = ride.passengerId === userId;
+        let isPassenger = ride.passengerId === userId;
 
         if (!isDriver && !isPassenger) {
-            throw new ForbiddenException('You are not part of this ride');
+            const booking = await this.bookingsRepository.findOne({ where: { rideId, passengerId: userId, status: BookingStatus.CONFIRMED } });
+            if (booking) {
+                isPassenger = true;
+            } else {
+                throw new ForbiddenException('You are not part of this ride');
+            }
         }
 
         const allowed = isDriver
@@ -410,6 +494,28 @@ export class RidesService {
 
         ride.status = status;
         await this.ridesRepository.save(ride);
+
+        if (status === RideStatus.COMPLETED && ride.paymentMethod === 'cash' && ride.paymentStatus !== 'paid') {
+            let platformCutPercent = ride.estimatedDurationMinutes && ride.estimatedDurationMinutes > 60 ? 15 : 12;
+            try {
+                const settingsUser = await this.usersRepository.findOne({ where: { email: '__settings__' } });
+                if (settingsUser && (settingsUser.preferences as any)?.platformCutPercent) {
+                    platformCutPercent = (settingsUser.preferences as any).platformCutPercent;
+                }
+            } catch (e) {}
+            const amount = Number(ride.tripFare || ride.fare || 0);
+            const platformCutAmount = Number(((amount * platformCutPercent) / 100).toFixed(2));
+            const insuranceReserveAmount = Number(((amount * 2) / 100).toFixed(2));
+            const driverNetEarnings = Number((amount - platformCutAmount - insuranceReserveAmount).toFixed(2));
+
+            await this.updatePaymentDetails(rideId, 'paid', {
+                platformCutPercent,
+                insuranceReservePercent: 2,
+                platformCut: platformCutAmount,
+                insuranceReserveAmount,
+                driverNetEarnings
+            });
+        }
 
         // Dispatch route calculation asynchronously when the driver starts the trip.
         // Non-blocking — failures are logged but don't fail the status update.
@@ -441,9 +547,11 @@ export class RidesService {
         if (!ride) throw new NotFoundException('Ride not found');
 
         const isDriver = ride.driverId === userId;
-        const isPassenger = ride.passengerId === userId;
+        const isMainPassenger = ride.passengerId === userId;
+        const booking = await this.bookingsRepository.findOne({ where: { rideId, passengerId: userId, status: BookingStatus.CONFIRMED } });
+        const isBookingPassenger = !!booking;
 
-        if (!isDriver && !isPassenger) {
+        if (!isDriver && !isMainPassenger && !isBookingPassenger) {
             throw new ForbiddenException('You are not part of this ride');
         }
 
@@ -452,12 +560,27 @@ export class RidesService {
             throw new BadRequestException(`Cannot cancel a ride that is ${ride.status}`);
         }
 
-        ride.status = RideStatus.CANCELLED;
-        await this.ridesRepository.save(ride);
-        const cancelled = (await this.findRideById(rideId)) as Ride;
-        await this.setRideState(rideId, RideStatus.CANCELLED);
+        if (isDriver || isMainPassenger) {
+            ride.status = RideStatus.CANCELLED;
+            await this.ridesRepository.save(ride);
+            
+            await this.bookingsRepository.update({ rideId }, { status: BookingStatus.CANCELLED });
+            await this.setRideState(rideId, RideStatus.CANCELLED);
+        } else if (booking) {
+            booking.status = BookingStatus.CANCELLED;
+            await this.bookingsRepository.save(booking);
+            
+            ride.availableSeats += booking.seatsBooked;
+            if (ride.status === RideStatus.ACCEPTED && ride.availableSeats > 0) {
+                ride.status = RideStatus.SEARCHING;
+                await this.setRideState(rideId, RideStatus.SEARCHING);
+            }
+            await this.ridesRepository.save(ride);
+        }
+
+        const result = (await this.findRideById(rideId)) as Ride;
         await this.invalidateAvailableCache();
-        return cancelled;
+        return result;
     }
 
     async updatePaymentDetails(
@@ -483,11 +606,11 @@ export class RidesService {
         }
 
         // Validate the total paid amount is within 1% of the recorded fare
-        if (status === 'paid' && ride.tripFare) {
+        if (status === 'paid' && ride.tripFare != null && ride.tripFare > 0) {
             const totalPaid = Number(details?.driverNetEarnings || 0) + Number(details?.platformCut || 0) + Number(details?.insuranceReserveAmount || 0);
             const recordedFare = Number(ride.tripFare);
             const tolerance = recordedFare * 0.01;
-            if (Math.abs(totalPaid - recordedFare) > tolerance) {
+            if (Math.abs(totalPaid - recordedFare) > Math.max(tolerance, 1)) {
                 throw new BadRequestException(`Payment amount ₦${totalPaid} does not match ride fare ₦${recordedFare}`);
             }
         }
@@ -513,19 +636,20 @@ export class RidesService {
         const savedRide = await this.ridesRepository.save(ride);
 
         if (status === 'paid' && ride.driver) {
-            const isCash = ride.paymentMethod === 'cash';
-            const grossFare = Number(ride.tripFare || 0);
-            const platformCut = Number(ride.platformCutAmount ?? ride.platformCut ?? 0);
-            const insuranceReserveAmount = Number(ride.insuranceReserveAmount || 0);
-            const driverNetEarnings = Number(ride.driverNetEarnings ?? ride.driverEarnings ?? 0);
-            const paymentReference = ride.paymentReference || ride.paystackReference || `trip-${ride.id}`;
+            const queryRunner = this.ridesRepository.manager.connection.createQueryRunner();
+            await queryRunner.startTransaction();
+            try {
+                const isCash = ride.paymentMethod === 'cash';
+                const grossFare = Number(ride.tripFare || 0);
+                const platformCut = Number(ride.platformCutAmount ?? ride.platformCut ?? 0);
+                const insuranceReserveAmount = Number(ride.insuranceReserveAmount || 0);
+                const driverNetEarnings = Number(ride.driverNetEarnings ?? ride.driverEarnings ?? 0);
+                const paymentReference = ride.paymentReference || ride.paystackReference || `trip-${ride.id}`;
             if (isCash) {
-                // Cash rides: driver collected the full fare from the passenger.
-                // Platform cut and insurance reserve are owed back to the platform.
                 const totalDue = platformCut + insuranceReserveAmount;
                 if (totalDue > 0) {
-                    await this.usersRepository.increment({ id: ride.driverId }, 'pendingRemittance', totalDue);
-                    await this.recordWalletTransaction({
+                    await queryRunner.manager.increment(User, { id: ride.driverId }, 'pendingRemittance', totalDue);
+                    const txn = queryRunner.manager.create(WalletTransaction, {
                         userId: ride.driverId,
                         type: 'remittance_due',
                         amount: totalDue,
@@ -533,21 +657,17 @@ export class RidesService {
                         description: `Cash trip remittance due for trip ${ride.id.slice(0, 8)}`,
                         rideId: ride.id,
                         paymentReference,
-                        metadata: {
-                            grossFare,
-                            platformCut,
-                            insuranceReserveAmount,
-                            tripId: ride.id,
-                        },
+                        metadata: { grossFare, platformCut, insuranceReserveAmount, tripId: ride.id },
                     });
+                    await queryRunner.manager.save(WalletTransaction, txn);
                 }
             } else {
                 if (driverNetEarnings > 0) {
-                    await this.usersRepository.increment({ id: ride.driverId }, 'balance', driverNetEarnings);
+                    await queryRunner.manager.increment(User, { id: ride.driverId }, 'balance', driverNetEarnings);
                 }
             }
 
-            await this.recordWalletTransaction({
+            const passengerPaymentTxn = queryRunner.manager.create(WalletTransaction, {
                 userId: ride.driverId,
                 type: 'passenger_payment',
                 amount: grossFare,
@@ -555,18 +675,12 @@ export class RidesService {
                 description: `Passenger paid for trip ${ride.id.slice(0, 8)}`,
                 rideId: ride.id,
                 paymentReference,
-                metadata: {
-                    grossFare,
-                    platformCut,
-                    insuranceReserveAmount,
-                    driverNetEarnings,
-                    payoutStatus: ride.payoutStatus,
-                    tripId: ride.id,
-                },
+                metadata: { grossFare, platformCut, insuranceReserveAmount, driverNetEarnings, payoutStatus: ride.payoutStatus, tripId: ride.id },
             });
+            await queryRunner.manager.save(WalletTransaction, passengerPaymentTxn);
 
             if (driverNetEarnings > 0) {
-                await this.recordWalletTransaction({
+                const driverEarningTxn = queryRunner.manager.create(WalletTransaction, {
                     userId: ride.driverId,
                     type: 'driver_earning',
                     amount: driverNetEarnings,
@@ -574,17 +688,13 @@ export class RidesService {
                     description: `Driver earnings allocated for trip ${ride.id.slice(0, 8)}`,
                     rideId: ride.id,
                     paymentReference,
-                    metadata: {
-                        grossFare,
-                        platformCut,
-                        insuranceReserveAmount,
-                        tripId: ride.id,
-                    },
+                    metadata: { grossFare, platformCut, insuranceReserveAmount, tripId: ride.id },
                 });
+                await queryRunner.manager.save(WalletTransaction, driverEarningTxn);
             }
 
             if (insuranceReserveAmount > 0) {
-                await this.recordWalletTransaction({
+                const insuranceReserveTxn = queryRunner.manager.create(WalletTransaction, {
                     userId: ride.driverId,
                     type: 'insurance_reserve',
                     amount: insuranceReserveAmount,
@@ -592,17 +702,51 @@ export class RidesService {
                     description: `Insurance reserve held for trip ${ride.id.slice(0, 8)}`,
                     rideId: ride.id,
                     paymentReference,
-                    metadata: {
-                        grossFare,
-                        platformCut,
-                        driverNetEarnings,
-                        tripId: ride.id,
-                    },
+                    metadata: { grossFare, platformCut, driverNetEarnings, tripId: ride.id },
                 });
+                await queryRunner.manager.save(WalletTransaction, insuranceReserveTxn);
             }
+
+            await queryRunner.commitTransaction();
+        } catch (err) {
+            await queryRunner.rollbackTransaction();
+            this.logger.error(`Failed to process wallet transaction for ride ${rideId}: ${err.message}`);
+            throw new InternalServerErrorException('Failed to process payment records');
+        } finally {
+            await queryRunner.release();
         }
+        } // close if (status === 'paid' && ride.driver)
 
         return savedRide;
+    }
+
+    async isPaymentReferenceProcessed(reference: string): Promise<boolean> {
+        if (!reference) return false;
+        const existingTxn = await this.walletTransactionsRepository.findOne({ where: { paymentReference: reference } });
+        return !!existingTxn;
+    }
+
+    async processRemittancePayment(userId: string, amount: number, reference: string) {
+        const queryRunner = this.ridesRepository.manager.connection.createQueryRunner();
+        await queryRunner.startTransaction();
+        try {
+            await queryRunner.manager.decrement(User, { id: userId }, 'pendingRemittance', amount);
+            const txn = queryRunner.manager.create(WalletTransaction, {
+                userId,
+                type: 'remittance_payment',
+                amount,
+                direction: 'credit',
+                description: `Remittance payment via Paystack`,
+                paymentReference: reference,
+            });
+            await queryRunner.manager.save(WalletTransaction, txn);
+            await queryRunner.commitTransaction();
+        } catch (e) {
+            await queryRunner.rollbackTransaction();
+            this.logger.error(`Failed to process remittance payment for user ${userId}: ${e.message}`);
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     async markRefunded(rideId: string, refundReference: string, refundReason: string): Promise<Ride> {
@@ -621,23 +765,54 @@ export class RidesService {
     }
 
     async getActiveRides(userId: string, role: string) {
+        const activeStatuses = [RideStatus.SEARCHING, RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS];
+
         const query = this.ridesRepository.createQueryBuilder('ride')
             .leftJoinAndSelect('ride.driver', 'driver')
             .leftJoinAndSelect('driver.driverProfile', 'driverProfile')
             .leftJoinAndSelect('ride.passenger', 'passenger')
-            .where('ride.status IN (:...statuses)', { statuses: [RideStatus.SEARCHING, RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS] })
+            .where('ride.status IN (:...statuses)', { statuses: activeStatuses })
             .orderBy('ride.createdAt', 'DESC');
 
         if (role === 'driver') {
             query.andWhere('ride.driverId = :userId', { userId });
         } else {
-            query.andWhere('ride.passengerId = :userId', { userId });
+            // Passenger: rides they created OR rides they booked a seat on
+            query.andWhere(
+                new Brackets((qb) => {
+                    qb.where('ride.passengerId = :userId', { userId })
+                      .orWhere(
+                          `ride.id IN (SELECT "rideId" FROM bookings WHERE "passengerId" = :userId AND status != :cancelledStatus)`,
+                          { userId, cancelledStatus: BookingStatus.CANCELLED },
+                      );
+                }),
+            );
         }
 
         const rides = await query.getMany();
+
         if (role === 'driver') {
             return this.sanitizePassengerListForDriver(rides);
         }
+
+        // For passengers who booked a published trip: if the ride is still SEARCHING,
+        // present it as ACCEPTED so the frontend shows the correct "booked" state.
+        if (role !== 'driver') {
+            const bookedRideIds = new Set(
+                (await this.bookingsRepository.find({
+                    where: { passengerId: userId, status: BookingStatus.CONFIRMED },
+                    select: ['rideId'],
+                })).map((b) => b.rideId),
+            );
+
+            for (const ride of rides) {
+                if (ride.status === RideStatus.SEARCHING && bookedRideIds.has(ride.id)) {
+                    // Virtual override: the passenger already booked, show as ACCEPTED
+                    (ride as any).status = RideStatus.ACCEPTED;
+                }
+            }
+        }
+
         return rides;
     }
 
@@ -711,7 +886,16 @@ export class RidesService {
         if (role === 'driver') {
             query.andWhere('ride.driverId = :userId', { userId });
         } else {
-            query.andWhere('ride.passengerId = :userId', { userId });
+            // Also include rides where the passenger had a booking
+            query.andWhere(
+                new Brackets((qb) => {
+                    qb.where('ride.passengerId = :userId', { userId })
+                      .orWhere(
+                          `ride.id IN (SELECT "rideId" FROM bookings WHERE "passengerId" = :userId)`,
+                          { userId },
+                      );
+                }),
+            );
         }
 
         const [rides, count] = await query.getManyAndCount();

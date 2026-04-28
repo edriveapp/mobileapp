@@ -180,7 +180,7 @@ export default function TripDetailsScreen() {
     });
   };
 
-  const completeBooking = async (method: PaymentMethod, paymentStatus: string) => {
+  const completeBooking = async (method: PaymentMethod) => {
     if (!trip?.id) return null;
 
     // Safely get location — fall back to trip origin if location denied or fails
@@ -195,7 +195,7 @@ export default function TripDetailsScreen() {
 
     return bookTrip(trip.id, {
       paymentMethod: method,
-      paymentStatus,
+      // paymentStatus is derived server-side from paymentMethod -- never sent by client
       pickupLocation: {
         lat: coords?.latitude ?? (trip.origin?.lat || 0),
         lon: coords?.longitude ?? (trip.origin?.lon || 0),
@@ -204,7 +204,7 @@ export default function TripDetailsScreen() {
     });
   };
 
-  const finishSuccessfulBooking = async (method: PaymentMethod, paymentStatus: string) => {
+  const finishSuccessfulBooking = async (method: PaymentMethod) => {
     setPaymentError(null);
     setPaymentStep('processing');
 
@@ -213,7 +213,7 @@ export default function TripDetailsScreen() {
         await wait(1800);
       }
 
-      await completeBooking(method, paymentStatus);
+      await completeBooking(method);
       setPaymentStep('success');
       await wait(1200);
       setShowPaymentModal(false);
@@ -227,47 +227,73 @@ export default function TripDetailsScreen() {
     }
   };
 
+  const handleCardPayment = async () => {
+    setPaymentError(null);
+    setPaymentStep('processing');
+
+    try {
+      // Get current location for pickup info (stored in metadata or used later)
+      let coords = null;
+      try {
+        coords = await LocationService.getCurrentCoordinates();
+      } catch (e) {}
+
+      const res = await api.post('/payments/initialize', {
+        amount,
+        rideId: trip?.id,
+        distance: Number(trip?.distance || trip?.distanceKm || 0),
+        estimatedDurationMinutes: Number(trip?.duration || trip?.estimatedDurationMinutes || 0),
+        // Pass pickup info so webhook can use it to book
+        pickupLocation: {
+          lat: coords?.latitude ?? (trip?.origin?.lat || 0),
+          lon: coords?.longitude ?? (trip?.origin?.lon || 0),
+          address: getAddressText(trip?.origin),
+        }
+      });
+
+      const authUrl = res.data?.data?.authorization_url;
+      if (authUrl) {
+        await WebBrowser.openBrowserAsync(authUrl);
+        // Do NOT call completeBooking here.
+        // The webhook will handle creating the booking record once money is confirmed.
+        setPaymentStep('processing');
+      } else {
+        throw new Error('Could not initialize payment session');
+      }
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || error?.message || 'Payment failed to initialize';
+      setPaymentError(errMsg);
+      setPaymentStep('method');
+    }
+  };
+
   const handleSelectPaymentMethod = async (method: PaymentMethod) => {
     setPaymentError(null);
 
     if (method === 'transfer') {
-      setPaymentStep('transfer');
-      return;
+      // For bank transfer via Paystack, it's the same online flow
+      return handleCardPayment();
     }
 
     if (method === 'cash') {
-      setPaymentStep('cash');
+      // Cash can book immediately as it's settled later
+      setPaymentStep('processing');
+      try {
+        await completeBooking('cash');
+        setPaymentStep('success');
+        setTimeout(() => {
+          setShowPaymentModal(false);
+          router.replace('/(tabs)/trips');
+        }, 1500);
+      } catch (e: any) {
+        setPaymentError(e?.response?.data?.message || 'Failed to book trip');
+        setPaymentStep('method');
+      }
       return;
     }
 
-    // Card flow
-    setPaymentStep('processing');
-    try {
-      const res = await api.post('/payments/initialize', {
-        amount,
-        distance: Number(trip?.distance || trip?.distanceKm || 0),
-        rideId: trip?.id
-      });
-      
-      const authUrl = res.data?.data?.authorization_url;
-      if (authUrl) {
-         // Use WebBrowser for a better in-app experience
-         const result = await WebBrowser.openBrowserAsync(authUrl);
-         
-         // Even if they close the browser, we should check status or just assume pending
-         // The webhook will finalize it. For UI, we proceed to 'success' mode.
-         await wait(1000);
-         await completeBooking('card', 'pending');
-         setPaymentStep('success');
-         await wait(1500);
-         setShowPaymentModal(false);
-         router.replace('/(tabs)/trips');
-      } else {
-         throw new Error("Could not get payment link.");
-      }
-    } catch (e: any) {
-      setPaymentError(e?.message || 'Failed to initialize payment');
-      setPaymentStep('method'); // go back to start
+    if (method === 'card') {
+      return handleCardPayment();
     }
   };
 
@@ -390,7 +416,9 @@ export default function TripDetailsScreen() {
       <View style={styles.footer}>
         {(() => {
           const isPassenger = trip.passengerId === user?.id;
-          const isPaid = (trip.paymentStatus || '').toLowerCase() === 'paid';
+          const paymentStatusLower = (trip.paymentStatus || '').toLowerCase();
+          const isPaid = paymentStatusLower === 'paid';
+          const isPendingVerification = paymentStatusLower === 'pending_verification';
           const noSeats = (trip.availableSeats === 0 || trip.seats === 0);
 
           if (String(trip?.status).toLowerCase() === 'pending_driver') {
@@ -426,6 +454,14 @@ export default function TripDetailsScreen() {
                 <View style={[styles.bookButton, { backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
                   <Ionicons name="checkmark-circle" size={20} color="white" />
                   <Text style={styles.bookButtonText}>Seat Reserved (Paid)</Text>
+                </View>
+              );
+            }
+            if (isPendingVerification) {
+              return (
+                <View style={[styles.bookButton, { backgroundColor: '#F59E0B', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+                  <Ionicons name="time-outline" size={20} color="white" />
+                  <Text style={styles.bookButtonText}>Seat Reserved (Transfer Pending)</Text>
                 </View>
               );
             }
@@ -501,43 +537,27 @@ export default function TripDetailsScreen() {
               </>
             )}
 
-            {paymentStep === 'transfer' && (
-              <>
-                <Text style={styles.modalTitle}>Transfer to pay</Text>
-                <Text style={styles.modalSubtext}>Use the details below. The amount and account text are selectable so you can copy them easily.</Text>
-
-                <View style={styles.transferCard}>
-                  <Text style={styles.transferLabel}>Amount</Text>
-                  <Text selectable style={styles.transferAmount}>{formatCurrency(amount)}</Text>
-                  <View style={styles.transferDivider} />
-                  <Text style={styles.transferLabel}>Bank</Text>
-                  <Text selectable style={styles.transferValue}>{TRANSFER_ACCOUNT.bankName}</Text>
-                  <Text style={styles.transferLabel}>Account Number</Text>
-                  <Text selectable style={styles.transferValue}>{TRANSFER_ACCOUNT.accountNumber}</Text>
-                  <Text style={styles.transferLabel}>Account Name</Text>
-                  <Text selectable style={styles.transferValue}>{TRANSFER_ACCOUNT.accountName}</Text>
-                </View>
-
-                <View style={styles.transferHintCard}>
-                  <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
-                  <Text style={styles.transferHintText}>Reference: {paymentReference}. After transfer, we will check and confirm it automatically.</Text>
-                </View>
-
-                {!!paymentError && <Text style={styles.paymentErrorText}>{paymentError}</Text>}
-
-                <View style={styles.inlineActionRow}>
-                  <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setPaymentStep('method')}>
-                    <Text style={styles.modalSecondaryText}>Back</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalPrimaryButton, styles.inlinePrimaryButton]}
-                    onPress={() => finishSuccessfulBooking('transfer', 'paid')}
-                    disabled={isLoading}
-                  >
-                    <Text style={styles.modalPrimaryText}>{isLoading ? 'Checking...' : 'I have made payment'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+            {(paymentStep === 'processing' || paymentStep === 'transfer') && (
+              <View style={styles.processingWrap}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.modalTitle}>
+                  {paymentStep === 'transfer' ? 'Waiting for Transfer' : 'Processing Payment'}
+                </Text>
+                <Text style={styles.modalSubtext}>
+                  {paymentStep === 'transfer' 
+                    ? 'Please complete your transfer in the payment window. We will notify you once confirmed.'
+                    : 'Please complete your payment in the browser window. Do not close this app.'}
+                </Text>
+                <TouchableOpacity 
+                  style={styles.modalSecondaryButton} 
+                  onPress={() => {
+                    setPaymentStep('method');
+                    setPaymentError(null);
+                  }}
+                >
+                  <Text style={styles.modalSecondaryText}>Cancel / Change Method</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             {paymentStep === 'cash' && (
@@ -558,7 +578,7 @@ export default function TripDetailsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalPrimaryButton, styles.inlinePrimaryButton]}
-                    onPress={() => finishSuccessfulBooking('cash', 'pending')}
+                    onPress={() => finishSuccessfulBooking('cash')}
                     disabled={isLoading}
                   >
                     <Text style={styles.modalPrimaryText}>{isLoading ? 'Booking...' : 'Book trip now'}</Text>
@@ -596,7 +616,7 @@ export default function TripDetailsScreen() {
                 <View style={styles.successOrb}>
                   <Ionicons name="checkmark" size={32} color="white" />
                 </View>
-                <Text style={styles.modalTitle}>Payment successful</Text>
+                <Text style={styles.modalTitle}>Seat reserved</Text>
                 <Text style={styles.modalSubtext}>Your trip is booked. We are opening your active trip now.</Text>
               </View>
             )}

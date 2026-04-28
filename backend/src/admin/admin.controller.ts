@@ -221,6 +221,14 @@ export class AdminController {
         return this.adminService.refundRide(req.user.userId, rideId, body.reason, body.amount);
     }
 
+    @Post('bookings/:bookingId/verify-transfer')
+    verifyTransferPayment(
+        @Request() req: any,
+        @Param('bookingId') bookingId: string,
+    ) {
+        return this.adminService.verifyTransferPayment(req.user.userId, bookingId);
+    }
+
     // ─── User Detail & Wallet ─────────────────────────────────────────────────
 
     @Get('users/:id/detail')

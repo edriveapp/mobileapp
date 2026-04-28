@@ -47,6 +47,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
+    async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
+        if (!this.client) return true; // Fail-open if no redis (rely on DB)
+        const result = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX');
+        return result === 'OK';
+    }
+
     async get(key: string): Promise<string | null> {
         if (!this.client) return null;
         return this.client.get(key);
