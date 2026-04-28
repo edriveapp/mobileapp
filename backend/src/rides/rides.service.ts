@@ -639,16 +639,24 @@ export class RidesService {
             const queryRunner = this.ridesRepository.manager.connection.createQueryRunner();
             await queryRunner.startTransaction();
             try {
-                const isCash = ride.paymentMethod === 'cash';
-                const grossFare = Number(ride.tripFare || 0);
-                const platformCut = Number(ride.platformCutAmount ?? ride.platformCut ?? 0);
-                const insuranceReserveAmount = Number(ride.insuranceReserveAmount || 0);
-                const driverNetEarnings = Number(ride.driverNetEarnings ?? ride.driverEarnings ?? 0);
-                const paymentReference = ride.paymentReference || ride.paystackReference || `trip-${ride.id}`;
+            // [SECURITY] Fetch user with pessimistic_write lock to ensure atomicity of balance/remittance updates
+            const driver = await queryRunner.manager.findOne(User, {
+                where: { id: ride.driverId },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!driver) throw new Error('Driver not found for payment allocation');
+
+            const isCash = ride.paymentMethod === 'cash';
+            const grossFare = Number(ride.tripFare || 0);
+            const platformCut = Number(ride.platformCutAmount ?? ride.platformCut ?? 0);
+            const insuranceReserveAmount = Number(ride.insuranceReserveAmount || 0);
+            const driverNetEarnings = Number(ride.driverNetEarnings ?? ride.driverEarnings ?? 0);
+            const paymentReference = ride.paymentReference || ride.paystackReference || `trip-${ride.id}`;
+
             if (isCash) {
                 const totalDue = platformCut + insuranceReserveAmount;
                 if (totalDue > 0) {
-                    await queryRunner.manager.increment(User, { id: ride.driverId }, 'pendingRemittance', totalDue);
+                    driver.pendingRemittance = Number(driver.pendingRemittance || 0) + totalDue;
                     const txn = queryRunner.manager.create(WalletTransaction, {
                         userId: ride.driverId,
                         type: 'remittance_due',
@@ -663,9 +671,12 @@ export class RidesService {
                 }
             } else {
                 if (driverNetEarnings > 0) {
-                    await queryRunner.manager.increment(User, { id: ride.driverId }, 'balance', driverNetEarnings);
+                    driver.balance = Number(driver.balance || 0) + driverNetEarnings;
                 }
             }
+            
+            // Persist the updated financial state within the transaction
+            await queryRunner.manager.save(driver);
 
             const passengerPaymentTxn = queryRunner.manager.create(WalletTransaction, {
                 userId: ride.driverId,
@@ -727,11 +738,18 @@ export class RidesService {
     }
 
     async processRemittancePayment(userId: string, amount: number, reference: string) {
-        const queryRunner = this.ridesRepository.manager.connection.createQueryRunner();
-        await queryRunner.startTransaction();
-        try {
-            await queryRunner.manager.decrement(User, { id: userId }, 'pendingRemittance', amount);
-            const txn = queryRunner.manager.create(WalletTransaction, {
+        // [ATOMIC] Use transaction with write lock to ensure remittance is decremented safely
+        await this.usersRepository.manager.transaction(async (em) => {
+            const user = await em.findOne(User, {
+                where: { id: userId },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!user) return;
+
+            user.pendingRemittance = Math.max(0, Number(user.pendingRemittance || 0) - amount);
+            await em.save(user);
+
+            const txn = em.create(WalletTransaction, {
                 userId,
                 type: 'remittance_payment',
                 amount,
@@ -739,29 +757,32 @@ export class RidesService {
                 description: `Remittance payment via Paystack`,
                 paymentReference: reference,
             });
-            await queryRunner.manager.save(WalletTransaction, txn);
-            await queryRunner.commitTransaction();
-        } catch (e) {
-            await queryRunner.rollbackTransaction();
-            this.logger.error(`Failed to process remittance payment for user ${userId}: ${e.message}`);
-        } finally {
-            await queryRunner.release();
-        }
+            await em.save(txn);
+        });
     }
 
     async markRefunded(rideId: string, refundReference: string, refundReason: string): Promise<Ride> {
-        const ride = await this.ridesRepository.findOne({ where: { id: rideId }, relations: ['driver'] });
-        if (!ride) throw new NotFoundException('Ride not found');
+        return await this.ridesRepository.manager.transaction(async (em) => {
+            const ride = await em.findOne(Ride, { where: { id: rideId }, relations: ['driver'] });
+            if (!ride) throw new NotFoundException('Ride not found');
 
-        // Reverse the driver's credited balance for online payments
-        if (ride.paymentMethod !== 'cash' && ride.driverEarnings && Number(ride.driverEarnings) > 0 && ride.driverId) {
-            await this.usersRepository.decrement({ id: ride.driverId }, 'balance', Number(ride.driverEarnings));
-        }
+            // [ATOMIC] Reversing driver earnings must be protected by a write lock
+            if (ride.paymentMethod !== 'cash' && ride.driverEarnings && Number(ride.driverEarnings) > 0 && ride.driverId) {
+                const driver = await em.findOne(User, {
+                    where: { id: ride.driverId },
+                    lock: { mode: 'pessimistic_write' },
+                });
+                if (driver) {
+                    driver.balance = Math.max(0, Number(driver.balance || 0) - Number(ride.driverEarnings));
+                    await em.save(driver);
+                }
+            }
 
-        ride.paymentStatus = 'refunded';
-        ride.refundReference = refundReference;
-        ride.refundReason = refundReason;
-        return this.ridesRepository.save(ride);
+            ride.paymentStatus = 'refunded';
+            ride.refundReference = refundReference;
+            ride.refundReason = refundReason;
+            return await em.save(ride);
+        });
     }
 
     async getActiveRides(userId: string, role: string) {

@@ -6,9 +6,10 @@ import { PaymentsController } from './payments.controller';
 
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/user.entity';
+import { Booking } from '../rides/booking.entity';
 
 @Module({
-    imports: [HttpModule, RidesModule, TypeOrmModule.forFeature([User])],
+    imports: [HttpModule, RidesModule, TypeOrmModule.forFeature([User, Booking])],
     providers: [PaymentsService],
     controllers: [PaymentsController],
     exports: [PaymentsService],

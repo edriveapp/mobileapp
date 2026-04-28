@@ -47,9 +47,17 @@ export class EmailOtpService {
   }
 
   async sendOtp(email: string): Promise<{ success: boolean }> {
+    const cooldownKey = `otp_cooldown:${email.toLowerCase()}`;
+    const onCooldown = await this.redisService.get(cooldownKey);
+    if (onCooldown) {
+      throw new Error('Please wait 60 seconds before requesting another code.');
+    }
+
     const code = this.generateCode();
     // Use Redis for OTP storage, expires in 600s (10 minutes)
     await this.redisService.set(`otp:${email.toLowerCase()}`, code, 600);
+    // Set a 60-second cooldown
+    await this.redisService.set(cooldownKey, '1', 60);
     // Reset attempts counter
     await this.redisService.set(`otp_attempts:${email.toLowerCase()}`, '0', 600);
 

@@ -151,8 +151,8 @@ export class UsersService {
                 throw new BadRequestException('Insufficient wallet balance');
             }
 
-            await em.decrement(User, { id: userId }, 'balance', payAmount);
-            await em.decrement(User, { id: userId }, 'pendingRemittance', payAmount);
+            user.balance = Number(user.balance || 0) - payAmount;
+            user.pendingRemittance = Number(user.pendingRemittance || 0) - payAmount;
             
             const txn = em.create(WalletTransaction, {
                 userId,
@@ -162,11 +162,11 @@ export class UsersService {
                 description: `Platform remittance payment of ₦${payAmount.toLocaleString()}`,
             });
             await em.save(txn);
-            
-            const updated = await em.findOne(User, { where: { id: userId } });
+            await em.save(user);
+
             return {
-                balance: Number(updated?.balance || 0),
-                pendingRemittance: Number(updated?.pendingRemittance || 0),
+                balance: Number(user.balance),
+                pendingRemittance: Number(user.pendingRemittance),
                 transactions: [], // Return empty for legacy compatibility, typically handled by getWallet
             };
         });

@@ -1204,7 +1204,7 @@ export class AdminService {
             if (!user) throw new NotFoundException('User not found');
 
             if (type === 'credit') {
-                await em.increment(User, { id: userId }, 'balance', amount);
+                user.balance = Number(user.balance || 0) + amount;
                 const txn = em.create(WalletTransaction, {
                     userId,
                     type: 'wallet_adjustment_credit',
@@ -1215,7 +1215,7 @@ export class AdminService {
                 await em.save(txn);
             } else {
                 if (Number(user.balance || 0) < amount) throw new BadRequestException('Insufficient wallet balance');
-                await em.decrement(User, { id: userId }, 'balance', amount);
+                user.balance = Number(user.balance || 0) - amount;
                 const txn = em.create(WalletTransaction, {
                     userId,
                     type: 'wallet_adjustment_debit',
@@ -1226,10 +1226,8 @@ export class AdminService {
                 await em.save(txn);
             }
 
-            return {
-                updatedUser: await em.findOne(User, { where: { id: userId } }),
-                balanceChange: amount,
-            };
+            await em.save(user);
+            return { updatedUser: user, balanceChange: amount * (type === 'credit' ? 1 : -1) };
         });
 
         if (updatedUser?.expoPushTokens?.length) {
@@ -1267,7 +1265,7 @@ export class AdminService {
 
             const cleared = Number(user.pendingRemittance || 0);
             if (cleared > 0) {
-                await em.update(User, userId, { pendingRemittance: 0 });
+                user.pendingRemittance = 0;
                 const txn = em.create(WalletTransaction, {
                     userId,
                     type: 'remittance_payment',
@@ -1277,7 +1275,8 @@ export class AdminService {
                 });
                 await em.save(txn);
             }
-            return { clearedAmount: cleared, updatedUser: await em.findOne(User, { where: { id: userId } }) };
+            await em.save(user);
+            return { clearedAmount: cleared, updatedUser: user };
         });
         
         if (clearedAmount > 0 && updatedUser) {
@@ -1317,7 +1316,7 @@ export class AdminService {
             });
             if (!user) throw new NotFoundException('User not found');
 
-            await em.increment(User, { id: userId }, 'pendingRemittance', amount);
+            user.pendingRemittance = Number(user.pendingRemittance || 0) + amount;
             
             const txn = em.create(WalletTransaction, {
                 userId,
