@@ -925,4 +925,23 @@ export class RidesService {
         }
         return [rides, count] as const;
     }
+
+    async isParticipant(rideId: string, userId: string): Promise<boolean> {
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
+        if (!ride) return false;
+        if (ride.driverId === userId || ride.passengerId === userId) return true;
+        const booking = await this.bookingsRepository.findOne({ where: { rideId, passengerId: userId, status: BookingStatus.CONFIRMED } });
+        return !!booking;
+    }
+
+    async getParticipantIds(rideId: string): Promise<string[]> {
+        const ride = await this.ridesRepository.findOne({ where: { id: rideId } });
+        if (!ride) return [];
+        const ids = new Set<string>();
+        if (ride.driverId) ids.add(ride.driverId);
+        if (ride.passengerId) ids.add(ride.passengerId);
+        const bookings = await this.bookingsRepository.find({ where: { rideId, status: BookingStatus.CONFIRMED } });
+        for (const b of bookings) ids.add(b.passengerId);
+        return Array.from(ids);
+    }
 }

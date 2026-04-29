@@ -1,5 +1,5 @@
-import React from 'react';
 import { Search } from 'lucide-react';
+import React from 'react';
 import { apiRequest } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
 

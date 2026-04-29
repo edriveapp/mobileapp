@@ -16,7 +16,8 @@ export class ChatController {
         // Only participants of the ride may read its messages
         const ride = await this.ridesService.findRideById(rideId);
         if (!ride) return [];
-        if (ride.driverId !== req.user.userId && ride.passengerId !== req.user.userId) {
+        const isParticipant = await this.ridesService.isParticipant(rideId, req.user.userId);
+        if (!isParticipant) {
             throw new ForbiddenException('You are not a participant of this ride');
         }
         return this.chatService.getMessages(rideId);
@@ -28,7 +29,8 @@ export class ChatController {
     async sendMessage(@Param('rideId') rideId: string, @Body() body: { text: string }, @Request() req) {
         const ride = await this.ridesService.findRideById(rideId);
         if (!ride) throw new ForbiddenException('Ride not found');
-        if (ride.driverId !== req.user.userId && ride.passengerId !== req.user.userId) {
+        const isParticipant = await this.ridesService.isParticipant(rideId, req.user.userId);
+        if (!isParticipant) {
             throw new ForbiddenException('You are not a participant of this ride');
         }
         // senderId from the verified JWT, never from the request body

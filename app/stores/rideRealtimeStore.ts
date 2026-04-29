@@ -28,6 +28,17 @@ interface RideRealtimeState {
   clearLatestChatMessage: () => void;
 }
 
+let fetchTripsTimeout: any = null;
+let lastEtaUpdate = 0;
+const notified = new Set<string>();
+
+const safeFetchMyTrips = () => {
+  if (fetchTripsTimeout) clearTimeout(fetchTripsTimeout);
+  fetchTripsTimeout = setTimeout(() => {
+    useTripStore.getState().fetchMyTrips();
+  }, 300);
+};
+
 export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
   isConnected: false,
   requestQueue: [],
@@ -41,6 +52,9 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
     const socket = useSocketStore.getState().socket;
     if (!socket) return;
 
+    // SERIOUS BUG FIX: Guard against attaching duplicate listeners
+    if (socket.listeners('ride_request').length > 0) return;
+
     socket.on('ride_request', (ride) => {
       const user = useAuthStore.getState().user;
       useTripStore.getState().prependAvailableRide(ride);
@@ -50,18 +64,23 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
       }));
 
       if (user?.role === 'driver') {
-        presentLocalNotification(
-          'New rider request',
-          `${getPassengerName(ride)} needs a ride to ${ride?.destination?.address || 'a destination'}`,
-          { type: 'ride_request', rideId: ride.id },
-          'request',
-        );
+        const notifId = `ride_request_${ride.id}`;
+        if (!notified.has(notifId)) {
+          notified.add(notifId);
+          presentLocalNotification(
+            'New rider request',
+            `${getPassengerName(ride)} needs a ride to ${ride?.destination?.address || 'a destination'}`,
+            { type: 'ride_request', rideId: ride.id },
+            'request',
+          );
+        }
       }
     });
 
     socket.on('ride_request_updated', (ride) => {
       const user = useAuthStore.getState().user;
       if (user?.role === 'driver') {
+        // Optional: debounce this too if it's called frequently
         useTripStore.getState().fetchAvailableTrips({ role: 'driver' });
       }
       set((state) => ({
@@ -73,34 +92,44 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
     });
 
     socket.on('driver_accepted', (ride) => {
-      useTripStore.getState().fetchMyTrips();
+      safeFetchMyTrips();
       useTripStore.getState().updateRideStatus('ACCEPTED', ride);
       set({ latestAcceptedRide: ride });
-      presentLocalNotification(
-        'Driver accepted your request',
-        `${ride?.driver?.firstName || ride?.driver?.name || 'Your driver'} is on the way.`,
-        { type: 'ride_accepted', rideId: ride.id },
-        'booking',
-      );
+      
+      const notifId = `driver_accepted_${ride.id}`;
+      if (!notified.has(notifId)) {
+        notified.add(notifId);
+        presentLocalNotification(
+          'Driver accepted your request',
+          `${ride?.driver?.firstName || ride?.driver?.name || 'Your driver'} is on the way.`,
+          { type: 'ride_accepted', rideId: ride.id },
+          'booking',
+        );
+      }
     });
 
     socket.on('trip_booked', (ride) => {
-      useTripStore.getState().fetchMyTrips();
+      safeFetchMyTrips();
       set({ latestBookedTrip: ride });
-      presentLocalNotification(
-        'New trip booking',
-        `${getPassengerName(ride)} booked your trip to ${ride?.destination?.address || 'a destination'}`,
-        { type: 'trip_booked', rideId: ride.id },
-        'booking',
-      );
+
+      const notifId = `trip_booked_${ride.id}`;
+      if (!notified.has(notifId)) {
+        notified.add(notifId);
+        presentLocalNotification(
+          'New trip booking',
+          `${getPassengerName(ride)} booked your trip to ${ride?.destination?.address || 'a destination'}`,
+          { type: 'trip_booked', rideId: ride.id },
+          'booking',
+        );
+      }
     });
 
     socket.on('ride_status_update', (ride) => {
-      useTripStore.getState().updateRideStatus(ride.status.toUpperCase(), ride);
-      // If it's the current ride, refresh trips to be safe
-      useTripStore.getState().fetchMyTrips();
+      // FIX: Assume ride object shape may be invalid
+      useTripStore.getState().updateRideStatus(String(ride?.status || '').toUpperCase() as any, ride);
+      safeFetchMyTrips();
       
-      if (ride.status === 'completed' || ride.status === 'cancelled') {
+      if (ride?.status === 'completed' || ride?.status === 'cancelled') {
         const user = useAuthStore.getState().user;
         if (user?.role === 'driver') {
           useTripStore.getState().fetchAvailableTrips({ role: 'driver' });
@@ -109,6 +138,11 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
     });
 
     socket.on('driver_location_update', async (data: { lat: number; lon: number; rideId?: string }) => {
+      // FIX: Throttle location updates to prevent memory leaks and UI lag
+      const now = Date.now();
+      if (now - lastEtaUpdate < 5000) return;
+      lastEtaUpdate = now;
+
       const currentRide = useTripStore.getState().currentRide;
       if (!currentRide) return;
 
@@ -130,19 +164,23 @@ export const useRideRealtimeStore = create<RideRealtimeState>((set, get) => ({
       if (message?.rideId) {
         void useChatStore.getState().incrementUnread(message.rideId);
       }
-      // Trigger a local notification so user hears the ding and sees a banner
-      presentLocalNotification(
-        'New message',
-        message?.text || 'You have a new message',
-        { type: 'chat_message', rideId: message?.rideId || '' },
-        'message',
-      );
-      set({
-        latestChatMessage: {
-          rideId: message?.rideId || '',
-          text: message?.text || 'New message',
-        },
-      });
+      
+      const chatNotifId = `chat_${message?.rideId}_${message?.text}`;
+      if (!notified.has(chatNotifId)) {
+        notified.add(chatNotifId);
+        presentLocalNotification(
+          'New message',
+          message?.text || 'You have a new message',
+          { type: 'chat_message', rideId: message?.rideId || '' },
+          'message',
+        );
+        set({
+          latestChatMessage: {
+            rideId: message?.rideId || '',
+            text: message?.text || 'New message',
+          },
+        });
+      }
     });
   },
 

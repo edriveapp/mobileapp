@@ -2,16 +2,19 @@ import { io, Socket } from 'socket.io-client';
 import { create } from 'zustand';
 import { getSocketBaseUrl } from '../services/api';
 import { useAuthStore } from './authStore';
+import { useTripStore } from './tripStore';
 
 interface SocketState {
   socket: Socket | null;
   isConnected: boolean;
   connect: () => void;
   disconnect: () => void;
-  emit: (event: string, data: any) => void;
+  emit: (event: string, data?: any) => void;
   joinRoom: (roomName: string) => void;
   leaveRoom: (roomName: string) => void;
 }
+
+const queue: { event: string; data: any }[] = [];
 
 export const useSocketStore = create<SocketState>((set, get) => ({
   socket: null,
@@ -19,14 +22,18 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
   connect: () => {
     const existing = get().socket;
-    if (existing?.connected) return;
+    const { token, user } = useAuthStore.getState();
+    
+    if (!token || !user) return;
 
-    if (existing) {
-        existing.disconnect();
+    if (existing?.connected && (existing.auth as any)?.token === token) {
+      return;
     }
 
-    const { token, user } = useAuthStore.getState();
-    if (!token || !user) return;
+    if (existing) {
+      existing.removeAllListeners();
+      existing.disconnect();
+    }
 
     const socketUrl = getSocketBaseUrl();
     const socket = io(socketUrl, {
@@ -36,15 +43,50 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
     socket.on('connect', () => {
       set({ isConnected: true });
-      // Always join user-specific rooms on connect
-      socket.emit('join_user_room', user.id);
+      
+      socket.emit('join_user_room');
       if (user.role === 'driver') {
-        socket.emit('join_driver_room', user.id);
+        socket.emit('join_driver_room');
+      }
+
+      queue.forEach(({ event, data }) => {
+        socket.emit(event, data);
+      });
+      queue.length = 0;
+    });
+
+    socket.io.on('reconnect', () => {
+      console.log('Reconnected 🔁');
+      socket.emit('join_user_room');
+      if (user.role === 'driver') {
+        socket.emit('join_driver_room');
       }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('connect_error', (err) => {
+      console.log('Socket connect error:', err.message);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
       set({ isConnected: false });
+    });
+
+    // Bridge socket events to tripStore
+    socket.on('ride_status_update', (ride) => {
+      useTripStore.getState().updateRideStatus(ride.status?.toUpperCase(), ride);
+    });
+
+    socket.on('driver_accepted', (ride) => {
+      useTripStore.getState().updateRideStatus('ACCEPTED', ride);
+    });
+
+    socket.on('driver_location_update', (data) => {
+      // optional: update map driver position
+    });
+
+    socket.on('ride_request', (ride) => {
+      useTripStore.getState().prependAvailableRide(ride);
     });
 
     set({ socket });
@@ -53,25 +95,27 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   disconnect: () => {
     const { socket } = get();
     if (socket) {
+      socket.removeAllListeners();
       socket.disconnect();
     }
     set({ socket: null, isConnected: false });
   },
 
-  emit: (event: string, data: any) => {
-    const { socket } = get();
-    if (socket?.connected) {
+  emit: (event: string, data?: any) => {
+    const { socket, isConnected } = get();
+    if (socket && isConnected) {
       socket.emit(event, data);
     } else {
-      console.warn(`Socket not connected. Cannot emit ${event}`);
+      // Do not queue high-frequency transient events like location updates
+      if (event !== 'driver_location_update') {
+        queue.push({ event, data });
+      }
     }
   },
 
   joinRoom: (roomName: string) => {
-    const { socket } = get();
-    if (socket?.connected) {
-      // We assume the backend has a generic join_room or specific ones
-      // For rides/chats, we use specific ones already defined in gateways
+    const { socket, isConnected } = get();
+    if (socket && isConnected) {
       if (roomName.startsWith('ride_')) {
         socket.emit('join_chat', { rideId: roomName.replace('ride_', '') });
       } else {
@@ -81,8 +125,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   },
 
   leaveRoom: (roomName: string) => {
-    const { socket } = get();
-    if (socket?.connected) {
+    const { socket, isConnected } = get();
+    if (socket && isConnected) {
       socket.emit('leave_room', roomName);
     }
   },

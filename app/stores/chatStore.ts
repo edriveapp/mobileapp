@@ -16,7 +16,6 @@ export interface Message {
 
 interface ChatState {
   messages: Message[];
-  isConnected: boolean;
   currentRideId: string | null;
   unreadByRide: Record<string, number>;
   setupChat: (rideId: string) => void;
@@ -35,6 +34,26 @@ interface ChatState {
 const getChatStorageKey = (rideId: string) => `chat_messages_${rideId}`;
 const getUnreadStorageKey = () => 'chat_unread_counts';
 
+// Global flags for socket listener and persistence
+let messageListenerAttached = false;
+const writeQueue = new Map<string, Message[]>();
+const seenMessages = new Set<string>();
+
+const schedulePersist = (rideId: string, messages: Message[]) => {
+  writeQueue.set(rideId, messages);
+
+  setTimeout(async () => {
+    const latest = writeQueue.get(rideId);
+    if (latest) {
+      await AsyncStorage.setItem(
+        getChatStorageKey(rideId),
+        JSON.stringify(normalizeMessages(latest))
+      );
+      writeQueue.delete(rideId);
+    }
+  }, 300);
+};
+
 const normalizeMessages = (messages: Message[]) => {
   const unique = new Map<string, Message>();
   messages.forEach((message) => {
@@ -51,12 +70,11 @@ const normalizeMessages = (messages: Message[]) => {
 const persistMessages = async (rideId: string, messages: Message[]) => {
   // Don't persist optimistic messages
   const toSave = messages.filter((m) => !m.pending);
-  await AsyncStorage.setItem(getChatStorageKey(rideId), JSON.stringify(normalizeMessages(toSave)));
+  schedulePersist(rideId, toSave);
 };
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
-  isConnected: false,
   currentRideId: null,
   unreadByRide: {},
 
@@ -105,7 +123,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setMessages: async (rideId, messages) => {
     const normalized = normalizeMessages(messages);
     set({ messages: normalized, currentRideId: rideId });
-    await persistMessages(rideId, normalized);
+    schedulePersist(rideId, normalized);
   },
 
   setupChat: (rideId: string) => {
@@ -120,14 +138,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     socket.emit('join_chat', { rideId });
     void get().markRideRead(rideId);
 
-    // Use the message's own rideId — never the stale closure value.
-    // A single persistent handler is set once; setupChat just refreshes currentRideId.
-    if (!socket.listeners('receive_message').length) {
+    // Reset listener flag on reconnect to prevent stale handlers
+    socket.on('connect', () => {
+      messageListenerAttached = false;
+    });
+
+    // Use manual flag instead of unreliable listeners()
+    if (!messageListenerAttached) {
       socket.on('receive_message', (message: Message & { rideId?: string }) => {
         const msgRideId = message.rideId ?? get().currentRideId;
         if (!msgRideId) return;
         void get().addMessage(msgRideId, message);
       });
+      messageListenerAttached = true;
     }
   },
 
@@ -149,27 +172,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const user = useAuthStore.getState().user;
     if (!user) return;
 
-    // 1. Send via REST or Optimistic append
-    const optimisticId = `optimistic_${Date.now()}`;
+    // 1. Create optimistic message with unique clientId
+    const clientId = `optimistic_${Date.now()}_${Math.random()}`;
     const optimisticMsg: Message = {
-      _id: optimisticId,
+      _id: clientId,
       text,
       createdAt: new Date().toISOString(),
       user: { _id: user.id, name: user.name || 'Me' },
       pending: true,
     };
-    
+
     // Add optimistic message to the UI immediately
     const nextMessages = [...get().messages, optimisticMsg];
     set({ messages: nextMessages });
 
-    // 2. Emit over socket
+    // 2. Emit over socket with clientId for correlation
     if (socket && socket.connected) {
       socket.emit('send_message', {
         rideId,
         text,
         senderId: user.id,
         role: user.role === 'driver' ? 'DRIVER' : 'PASSENGER',
+        clientId, // Add for server echo
       });
     } else {
       console.warn("Socket not connected, message might not send until reconnected");
@@ -184,14 +208,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (isActiveChat) {
       const withoutOptimistic = state.messages.filter((m) => {
         if (!m.pending) return true;
-        return !(m.user._id === msg.user?._id && m.text === msg.text);
+        // Match pending messages by text and user to replace with server confirmation
+        return !(m.pending && m.text === msg.text && m.user._id === msg.user._id);
       });
 
       const alreadyConfirmed = withoutOptimistic.some((m) => !m.pending && m._id === msg._id);
       if (!alreadyConfirmed) {
         const nextMessages = normalizeMessages([...withoutOptimistic, { ...msg, pending: false }]);
         set({ messages: nextMessages });
-        await persistMessages(incomingRideId, nextMessages);
+        schedulePersist(incomingRideId, nextMessages);
       }
     } else {
       // Message arrived for a different ride — persist it silently under the correct key
@@ -200,14 +225,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const existing: Message[] = cached ? JSON.parse(cached) : [];
         const alreadyHave = existing.some((m) => m._id === msg._id);
         if (!alreadyHave) {
-          await persistMessages(incomingRideId, normalizeMessages([...existing, { ...msg, pending: false }]));
+          const updated = normalizeMessages([...existing, { ...msg, pending: false }]);
+          schedulePersist(incomingRideId, updated);
         }
       } catch { /* non-fatal */ }
     }
 
     const user = useAuthStore.getState().user;
     const isOwnMessage = msg.user?._id === user?.id;
-    if (!isOwnMessage && !isActiveChat) {
+    // Prevent double-counting unread with seen message tracking
+    if (!isOwnMessage && !isActiveChat && !seenMessages.has(msg._id)) {
+      seenMessages.add(msg._id);
       await get().incrementUnread(incomingRideId);
     }
   },

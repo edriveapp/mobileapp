@@ -45,7 +45,8 @@ export class ChatGateway implements OnGatewayConnection {
     // Only allow participants of the ride to join the chat room
     const ride = await this.ridesService.findRideById(data.rideId);
     if (!ride) return;
-    if (ride.driverId !== userId && ride.passengerId !== userId) return;
+    const isParticipant = await this.ridesService.isParticipant(data.rideId, userId);
+    if (!isParticipant) return;
     client.join(`ride_${data.rideId}`);
   }
 
@@ -67,13 +68,11 @@ export class ChatGateway implements OnGatewayConnection {
     if (!ride) return;
 
     // Verify sender is part of this ride
-    const isDriver = ride.driverId === senderId;
-    const isPassenger = ride.passengerId === senderId;
-    if (!isDriver && !isPassenger) return;
+    const isParticipant = await this.ridesService.isParticipant(payload.rideId, senderId);
+    if (!isParticipant) return;
 
-    const senderName = isDriver
-      ? `${ride.driver?.firstName || ''} ${ride.driver?.lastName || ''}`.trim() || ride.driver?.email || 'Driver'
-      : String(ride.passenger?.firstName || '').trim() || ride.passenger?.email || 'Passenger';
+    const sender = await this.usersService.findOneById(senderId);
+    const senderName = sender ? `${sender.firstName || ''} ${sender.lastName || ''}`.trim() || sender.email || 'User' : 'User';
 
     const savedMessage = await this.chatService.saveMessage(payload.rideId, payload.text, senderId, senderName);
 
@@ -87,8 +86,12 @@ export class ChatGateway implements OnGatewayConnection {
 
     this.server.to(`ride_${payload.rideId}`).emit('receive_message', message);
 
-    const recipientId = isDriver ? ride.passengerId : ride.driverId;
-    if (recipientId) {
+    const participantIds = await this.ridesService.getParticipantIds(payload.rideId);
+    const isDriver = ride.driverId === senderId;
+    
+    for (const recipientId of participantIds) {
+      if (recipientId === senderId) continue;
+      
       this.server.to(`user_${recipientId}`).emit('chat_message_alert', {
         rideId: payload.rideId,
         text: payload.text,
