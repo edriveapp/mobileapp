@@ -445,7 +445,7 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
   return (
     <>
       {csvModalOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-90 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <div>
@@ -497,7 +497,7 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
       )}
 
       {previewMode && (
-        <div className="fixed inset-0 z-[95] flex flex-col bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-95 flex flex-col bg-slate-950/80 backdrop-blur-sm">
           <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 text-white">
             <div>
               <p className="text-sm font-semibold">Campaign preview</p>

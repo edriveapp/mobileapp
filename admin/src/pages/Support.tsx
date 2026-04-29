@@ -84,6 +84,20 @@ export default function Support() {
       body: { text: reply.trim() },
     });
     setReply('');
+
+    // Auto-assign ticket to the engaging admin if unassigned
+    if (!activeTicket?.assignedToUserId && user?.id) {
+      try {
+        await apiRequest(`/support/tickets/${activeTicketId}/assign`, {
+          method: 'PATCH',
+          token,
+          body: { assignedToUserId: user.id },
+        });
+      } catch (err) {
+        console.error('Failed to auto-assign ticket', err);
+      }
+    }
+
     await loadActiveTicket();
     await loadTickets();
   };
@@ -138,11 +152,16 @@ export default function Support() {
                   {ticket.creatorName || ticket.createdByRole}
                   <span className="ml-1 text-gray-400">· {ticket.createdByRole}</span>
                 </p>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex gap-2 flex-wrap items-center">
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">{ticket.status}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{ticket.priority || 'normal'}</span>
                   {ticket.category === 'inbound_email' && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">email</span>
+                  )}
+                  {ticket.assignedToUserId && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ticket.assignedToUserId === user?.id ? 'bg-indigo-100 text-indigo-700' : 'bg-purple-100 text-purple-700'}`}>
+                      {ticket.assignedToUserId === user?.id ? 'assigned to you' : 'assigned'}
+                    </span>
                   )}
                 </div>
               </button>
@@ -154,14 +173,21 @@ export default function Support() {
           <div className="p-4 border-b border-gray-100 flex justify-between items-center">
             <div>
               <h3 className="font-semibold text-gray-900">{activeTicket ? `Ticket #${activeTicket.id.slice(0, 8)}` : 'Select a ticket'}</h3>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 flex items-center gap-2">
                 {activeTicket
                   ? `From ${activeTicket.creatorName || activeTicket.createdByRole} (${activeTicket.createdByRole})`
                   : 'No active ticket selected'}
+                {activeTicket?.assignedToUserId && (
+                  <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px]">
+                    Assigned: {activeTicket.assignedToUserId === user?.id ? 'You' : 'Other Agent'}
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={claimTicket} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors">Claim</button>
+              {activeTicket && activeTicket.assignedToUserId !== user?.id && (
+                <button onClick={claimTicket} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors">Claim</button>
+              )}
               <button onClick={() => updateStatus('in_progress')} className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 rounded-lg text-sm font-medium transition-colors">In Progress</button>
               <button onClick={() => updateStatus('resolved')} className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 rounded-lg text-sm font-medium transition-colors">Resolve</button>
             </div>

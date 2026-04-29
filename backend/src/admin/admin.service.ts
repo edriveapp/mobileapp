@@ -182,13 +182,17 @@ export class AdminService {
         const prefs = (settings?.preferences as any) || {};
         return {
             platformCutPercent: prefs.platformCutPercent ?? 15,
+            baseFare: prefs.baseFare ?? 500,
+            minimumFare: prefs.minimumFare ?? 1000,
+            surgeMultiplier: prefs.surgeMultiplier ?? 1.0,
+            cancellationFee: prefs.cancellationFee ?? 500,
         };
     }
 
-    async updatePlatformSettings(actorUserId: string, settings: { platformCutPercent: number }) {
+    async updatePlatformSettings(actorUserId: string, settings: any) {
         const actor = await this.getActor(actorUserId);
         this.assertSuperAdmin(actor);
-        if (settings.platformCutPercent < 0 || settings.platformCutPercent > 100) {
+        if (settings.platformCutPercent !== undefined && (settings.platformCutPercent < 0 || settings.platformCutPercent > 100)) {
             throw new BadRequestException('Platform cut must be between 0 and 100');
         }
         let settingsUser = await this.usersRepository.findOne({ where: { email: '__settings__' } });
@@ -205,10 +209,10 @@ export class AdminService {
         }
         (settingsUser.preferences as any) = {
             ...(settingsUser.preferences || {}),
-            platformCutPercent: settings.platformCutPercent,
+            ...settings,
         };
         await this.usersRepository.save(settingsUser);
-        return { platformCutPercent: settings.platformCutPercent };
+        return this.getPlatformSettings(actorUserId);
     }
 
     // ─── Driver Management ─────────────────────────────────────────────────────
@@ -683,19 +687,20 @@ export class AdminService {
     }
 
     private async broadcastCampaign(campaign: NotificationCampaign) {
-        const users = await this.usersRepository.find({
-            where: { role: UserRole.PASSENGER },
-        });
-        const drivers = await this.usersRepository.find({
-            where: { role: UserRole.DRIVER },
-        });
+        // Optimize query to fetch only push tokens to prevent memory bloat and connection timeouts
+        const users = await this.usersRepository
+            .createQueryBuilder('user')
+            .select(['user.expoPushTokens'])
+            .where('user.role IN (:...roles)', { roles: [UserRole.PASSENGER, UserRole.DRIVER] })
+            .andWhere('user.isRestricted = false')
+            .getMany();
 
         const allTokens: string[] = [];
-        [...users, ...drivers].forEach((u) => {
+        for (const u of users) {
             if (Array.isArray(u.expoPushTokens)) {
                 allTokens.push(...u.expoPushTokens);
             }
-        });
+        }
 
         if (allTokens.length) {
             await this.pushService.sendToExpoTokens(allTokens, campaign.title, campaign.body);

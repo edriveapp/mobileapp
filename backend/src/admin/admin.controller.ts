@@ -34,7 +34,7 @@ export class AdminController {
     }
 
     @Patch('settings')
-    updatePlatformSettings(@Request() req: any, @Body() body: { platformCutPercent: number }) {
+    updatePlatformSettings(@Request() req: any, @Body() body: any) {
         return this.adminService.updatePlatformSettings(req.user.userId, body);
     }
 
