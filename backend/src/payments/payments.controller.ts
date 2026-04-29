@@ -28,13 +28,11 @@ export class PaymentsController {
         );
     }
 
-    @UseGuards(AuthGuard('jwt'))
     @Get('verify')
     async verify(@Query('reference') reference: string) {
         return this.paymentsService.verifyPayment(reference);
     }
 
-    @UseGuards(AuthGuard('jwt'))
     @Get('verify/:reference')
     async verifyByPath(@Param('reference') reference: string) {
         return this.paymentsService.verifyPayment(reference);

@@ -118,7 +118,7 @@ export default function CreateTripScreen() {
   const fetchMyTrips = useTripStore((state) => state.fetchMyTrips);
   const postTrip = useTripStore((state) => state.postTrip);
   const updateTrip = useTripStore((state) => state.updateTrip);
-  const isSubmitting = useTripStore((state) => state.isLoading);
+  const isSubmitting = useTripStore((state) => state.isMutatingRide);
 
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
@@ -150,10 +150,22 @@ export default function CreateTripScreen() {
     [activeTrips, tripId]
   );
   const seatsCount = Math.max(parseInt(seats || '1', 10) || 1, 1);
-  const priceModel = useMemo(() => buildPriceModel(routeDistanceKm, seatsCount), [routeDistanceKm, seatsCount]);
+  const basePriceModel = useMemo(() => buildPriceModel(routeDistanceKm, seatsCount), [routeDistanceKm, seatsCount]);
+  const priceModel = useMemo(() => {
+    if (hasManualPrice && price) {
+      const customSeatFare = parseInt(price, 10) || 0;
+      const customTotalTripFare = customSeatFare * seatsCount;
+      return {
+        ...basePriceModel,
+        totalTripFare: customTotalTripFare,
+        seatFare: customSeatFare,
+      };
+    }
+    return basePriceModel;
+  }, [basePriceModel, hasManualPrice, price, seatsCount]);
   const seatPriceFloor = useMemo(
-    () => getDriverSeatFloor(priceModel.totalTripFare, seatsCount),
-    [priceModel.totalTripFare, seatsCount]
+    () => getDriverSeatFloor(basePriceModel.totalTripFare, seatsCount),
+    [basePriceModel.totalTripFare, seatsCount]
   );
 
   useEffect(() => {

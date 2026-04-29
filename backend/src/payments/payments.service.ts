@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
 
 import { RidesService } from '../rides/rides.service';
+import { RidesGateway } from '../rides/rides.gateway';
 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -19,6 +20,7 @@ export class PaymentsService {
         private httpService: HttpService,
         private configService: ConfigService,
         private ridesService: RidesService,
+        private ridesGateway: RidesGateway,
         @InjectRepository(User) private usersRepository: Repository<User>,
         @InjectRepository(Booking) private bookingsRepository: Repository<Booking>,
     ) { }
@@ -32,46 +34,53 @@ export class PaymentsService {
         }
     }
 
-    async handleWebhookEvent(event: string, data: any): Promise<void> {
-        if (event !== 'charge.success') return;
-
-        const metadata = data?.metadata;
+    private parseMetadata(metadata: any) {
         const customFields = Array.isArray(metadata?.custom_fields) ? metadata.custom_fields : [];
         const customMap = customFields.reduce((acc: Record<string, any>, field: any) => {
             if (field?.variable_name) acc[field.variable_name] = field?.value;
             return acc;
         }, {});
 
-        const rideId = metadata?.rideId || customMap?.ride_id;
-        const remittanceUserId = metadata?.remittanceUserId || customMap?.user_id;
-        const isRemittance = metadata?.isRemittance || customMap?.is_remittance;
+        return {
+            rideId: metadata?.rideId || customMap?.ride_id,
+            userId: metadata?.userId || customMap?.user_id,
+            remittanceUserId: metadata?.remittanceUserId || customMap?.user_id,
+            isRemittance: metadata?.isRemittance || customMap?.is_remittance,
+            pickupLocation: metadata?.pickupLocation,
+            distanceInKm: Number(metadata?.distanceInKm ?? customMap?.distance_km ?? 0),
+            estimatedDurationMinutes: Number(metadata?.estimatedDurationMinutes ?? customMap?.estimated_duration_minutes ?? 0),
+        };
+    }
 
-        if (await this.ridesService.isPaymentReferenceProcessed(data?.reference)) {
-            this.logger.log(`Webhook ignored (already processed): ${data?.reference}`);
+    private async processPaystackSuccessPayload(payload: any): Promise<void> {
+        const metadata = this.parseMetadata(payload?.metadata);
+        const rideId = metadata.rideId;
+        const userId = metadata.userId;
+        const remittanceUserId = metadata.remittanceUserId;
+        const isRemittance = metadata.isRemittance;
+        const pickupLocation = metadata.pickupLocation;
+        const estimatedDurationMinutes = metadata.estimatedDurationMinutes;
+
+        if (await this.ridesService.isPaymentReferenceProcessed(payload?.reference)) {
+            this.logger.log(`Paystack transaction already processed: ${payload?.reference}`);
             return;
         }
 
+        const amount = (payload?.amount ?? 0) / 100;
         if (isRemittance && remittanceUserId) {
-            const amountPaid = (data?.amount ?? 0) / 100;
-            await this.ridesService.processRemittancePayment(remittanceUserId, amountPaid, data?.reference);
-            this.logger.log(`Webhook remittance confirmed: userId=${remittanceUserId} amount=₦${amountPaid}`);
+            await this.ridesService.processRemittancePayment(remittanceUserId, amount, payload?.reference);
+            this.logger.log(`Remittance payment confirmed: userId=${remittanceUserId} amount=₦${amount}`);
             return;
         }
 
         if (!rideId) {
-            this.logger.warn(`Webhook charge.success missing rideId: ref=${data?.reference}`);
+            this.logger.warn(`Paystack success payload missing rideId: ref=${payload?.reference}`);
             return;
         }
 
-        const amount = (data?.amount ?? 0) / 100;
-        const userId = metadata?.userId || customMap?.user_id;
-        const pickupLocation = metadata?.pickupLocation;
-        const distance = Number(metadata?.distanceInKm ?? customMap?.distance_km ?? 0);
-        const estimatedDurationMinutes = Number(metadata?.estimatedDurationMinutes ?? customMap?.estimated_duration_minutes ?? 0);
-
         const ride = await this.ridesService.findRideById(rideId);
         if (!ride) {
-            this.logger.error(`Webhook charge.success: Ride ${rideId} not found`);
+            this.logger.error(`Paystack success payload: Ride ${rideId} not found`);
             return;
         }
 
@@ -82,30 +91,38 @@ export class PaymentsService {
             platformCutPercent: split.platformCutPercent,
             insuranceReserveAmount: split.insuranceReserveAmount,
             insuranceReservePercent: split.insuranceReservePercent,
-            paystackReference: data?.reference,
-            paymentReference: data?.reference,
+            paystackReference: payload?.reference,
+            paymentReference: payload?.reference,
             estimatedDurationMinutes,
             pickupLocation,
         };
 
         if (ride.passengerId === userId || ride.driverId === userId) {
-            // Case 1: Direct ride request or driver funding? No, passenger paying for their own request.
             await this.ridesService.updatePaymentDetails(rideId, 'paid', paymentDetails);
-            this.logger.log(`Webhook confirmed direct payment: rideId=${rideId} userId=${userId}`);
-        } else if (userId) {
-            // Case 2: Shared booking. Use bookPublishedTrip to create the Booking entity.
-            await this.ridesService.bookPublishedTrip(rideId, userId, {
+            this.logger.log(`Direct payment confirmed: rideId=${rideId} userId=${userId}`);
+            return;
+        }
+
+        if (userId) {
+            const bookedRide = await this.ridesService.bookPublishedTrip(rideId, userId, {
                 paymentMethod: 'card',
-                paymentStatus: 'paid', // Mark as paid immediately since webhook confirmed it
+                paymentStatus: 'paid',
                 pickupLocation,
                 estimatedDurationMinutes,
                 ...paymentDetails,
             });
-            this.logger.log(`Webhook confirmed shared booking: rideId=${rideId} userId=${userId}`);
-        } else {
-            this.logger.warn(`Webhook charge.success missing userId for rideId=${rideId}`);
-            await this.ridesService.updatePaymentDetails(rideId, 'paid', paymentDetails);
+            await this.ridesGateway.broadcastTripBooked(bookedRide);
+            this.logger.log(`Shared booking confirmed: rideId=${rideId} userId=${userId}`);
+            return;
         }
+
+        this.logger.warn(`Paystack success payload missing userId for rideId=${rideId}`);
+        await this.ridesService.updatePaymentDetails(rideId, 'paid', paymentDetails);
+    }
+
+    async handleWebhookEvent(event: string, data: any): Promise<void> {
+        if (event !== 'charge.success') return;
+        await this.processPaystackSuccessPayload(data);
     }
 
     async calculatePaymentSplit(amount: number, estimatedDurationMinutes: number) {
@@ -256,7 +273,8 @@ export class PaymentsService {
             const response = await lastValueFrom(this.httpService.get(url, { headers }));
             const data = response.data;
 
-            if (data.status && data.data.status === 'success') {
+            if (data.status && data.data?.status === 'success') {
+                await this.processPaystackSuccessPayload(data.data);
                 return data;
             }
 

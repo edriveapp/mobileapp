@@ -54,7 +54,7 @@ export default function DriverLayout() {
     refreshProfile();
     const interval = setInterval(() => {
       refreshProfile();
-    }, 15000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [refreshProfile, user]);
 

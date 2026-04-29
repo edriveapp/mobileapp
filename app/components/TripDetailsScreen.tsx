@@ -98,6 +98,7 @@ export default function TripDetailsScreen() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('method');
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paystackReference, setPaystackReference] = useState<string | null>(null);
   const animation = useRef(new Animated.Value(0)).current;
 
   const trip = useMemo(() => {
@@ -180,6 +181,14 @@ export default function TripDetailsScreen() {
     });
   };
 
+  const handleReportDriver = () => {
+    if (!driverName) {
+      Alert.alert('Report unavailable', 'We could not identify the driver to report.');
+      return;
+    }
+    router.push('/support');
+  };
+
   const completeBooking = async (method: PaymentMethod) => {
     if (!trip?.id) return null;
 
@@ -202,6 +211,19 @@ export default function TripDetailsScreen() {
         address: locationLabel || getAddressText(trip.origin),
       },
     });
+  };
+
+  const verifyPaystackReference = async (reference: string) => {
+    if (!reference) return false;
+    try {
+      const response = await api.get(`/payments/verify/${reference}`);
+      return (
+        response?.data?.data?.status === 'success' ||
+        response?.data?.status === true
+      );
+    } catch {
+      return false;
+    }
   };
 
   const finishSuccessfulBooking = async (method: PaymentMethod) => {
@@ -252,18 +274,46 @@ export default function TripDetailsScreen() {
       });
 
       const authUrl = res.data?.data?.authorization_url;
-      if (authUrl) {
-        await WebBrowser.openBrowserAsync(authUrl);
-        // Do NOT call completeBooking here.
-        // The webhook will handle creating the booking record once money is confirmed.
-        setPaymentStep('processing');
-      } else {
+      const reference = res.data?.data?.reference;
+      if (!authUrl || !reference) {
         throw new Error('Could not initialize payment session');
       }
+
+      setPaystackReference(reference);
+      await WebBrowser.openBrowserAsync(authUrl);
+      setPaymentStep('card_hold');
     } catch (error: any) {
       const errMsg = error?.response?.data?.message || error?.message || 'Payment failed to initialize';
       setPaymentError(errMsg);
       setPaymentStep('method');
+    }
+  };
+
+  const handleConfirmPaystackPayment = async () => {
+    if (!paystackReference) {
+      setPaymentError('Payment reference missing. Please retry from the payment screen.');
+      return;
+    }
+
+    setPaymentError(null);
+    setPaymentStep('processing');
+
+    try {
+      const isVerified = await verifyPaystackReference(paystackReference);
+      if (!isVerified) {
+        setPaymentError('Payment is not confirmed yet. If you completed the payment, wait a few seconds and try again.');
+        setPaymentStep('card_hold');
+        return;
+      }
+
+      setPaymentStep('success');
+      await wait(1200);
+      setShowPaymentModal(false);
+      router.replace('/(tabs)/trips');
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || error?.message || 'Unable to verify payment. Please try again.';
+      setPaymentError(errMsg);
+      setPaymentStep('card_hold');
     }
   };
 
@@ -403,6 +453,21 @@ export default function TripDetailsScreen() {
             <Text style={styles.flowText}>2. We attach your live pickup area automatically</Text>
             <Text style={styles.flowText}>3. The driver gets the trip and pickup request instantly</Text>
           </View>
+
+          {trip?.passengerId === user?.id && (
+            <View style={styles.transferHintCard}>
+              <Text style={styles.transferHintTitle}>Negotiate before you pay</Text>
+              <Text style={styles.transferHintText}>
+                Speak with your driver first and confirm pickup details before sending the transfer.
+              </Text>
+            </View>
+          )}
+
+          {driver?.id && (
+            <TouchableOpacity style={styles.reportButton} onPress={handleReportDriver}>
+              <Text style={styles.reportButtonText}>Report {driverName}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {!!trip.notes && (
@@ -537,17 +602,11 @@ export default function TripDetailsScreen() {
               </>
             )}
 
-            {(paymentStep === 'processing' || paymentStep === 'transfer') && (
+            {paymentStep === 'transfer' && (
               <View style={styles.processingWrap}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.modalTitle}>
-                  {paymentStep === 'transfer' ? 'Waiting for Transfer' : 'Processing Payment'}
-                </Text>
-                <Text style={styles.modalSubtext}>
-                  {paymentStep === 'transfer' 
-                    ? 'Please complete your transfer in the payment window. We will notify you once confirmed.'
-                    : 'Please complete your payment in the browser window. Do not close this app.'}
-                </Text>
+                <Text style={styles.modalTitle}>Waiting for Transfer</Text>
+                <Text style={styles.modalSubtext}>Please complete your transfer in the payment window. We will notify you once confirmed.</Text>
                 <TouchableOpacity 
                   style={styles.modalSecondaryButton} 
                   onPress={() => {
@@ -589,15 +648,27 @@ export default function TripDetailsScreen() {
 
             {paymentStep === 'card_hold' && (
               <>
-                <Text style={styles.modalTitle}>Card is on hold</Text>
-                <Text style={styles.modalSubtext}>We are keeping card checkout out of this test flow for now. Use transfer or cash to continue booking this trip.</Text>
+                <Text style={styles.modalTitle}>Payment pending</Text>
+                <Text style={styles.modalSubtext}>Your payment session is open in the browser. If it completes but the seat is not booked immediately, use the button below to confirm.</Text>
                 <View style={styles.holdCard}>
                   <Ionicons name="time-outline" size={22} color="#B54708" />
-                  <Text style={styles.holdText}>Card payment will come back once gateway verification is ready.</Text>
+                  <Text style={styles.holdText}>Webhook delivery may take a few seconds. If the booking is still pending, tap Confirm payment.</Text>
                 </View>
-                <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setPaymentStep('method')}>
-                  <Text style={styles.modalSecondaryText}>Choose another method</Text>
-                </TouchableOpacity>
+                {!!paystackReference && (
+                  <Text style={styles.transactionRefText}>Transaction ref: {paystackReference}</Text>
+                )}
+                {!!paymentError && <Text style={styles.paymentErrorText}>{paymentError}</Text>}
+                <View style={styles.inlineActionRow}>
+                  <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setPaymentStep('method')}>
+                    <Text style={styles.modalSecondaryText}>Choose another method</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalPrimaryButton, styles.inlinePrimaryButton]}
+                    onPress={handleConfirmPaystackPayment}
+                  >
+                    <Text style={styles.modalPrimaryText}>Confirm payment</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
 
@@ -836,12 +907,30 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 8,
   },
+  transferHintTitle: {
+    fontSize: 13,
+    fontFamily: Fonts.semibold,
+    color: '#92400E',
+    marginBottom: 4,
+  },
   transferHintText: {
     flex: 1,
     color: COLORS.text,
     fontSize: 12,
     lineHeight: 18,
     fontFamily: Fonts.rounded,
+  },
+  reportButton: {
+    marginTop: SPACING.m,
+    borderRadius: 14,
+    backgroundColor: '#EF4444',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  reportButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontFamily: Fonts.semibold,
   },
   inlineActionRow: { flexDirection: 'row', gap: 10, marginTop: SPACING.l },
   inlinePrimaryButton: { marginTop: 0 },
@@ -869,6 +958,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   holdText: { flex: 1, color: '#7A2E0B', fontFamily: Fonts.rounded, lineHeight: 18 },
+  transactionRefText: {
+    marginTop: SPACING.s,
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontFamily: Fonts.rounded,
+    textAlign: 'center',
+  },
   processingWrap: { alignItems: 'center', paddingVertical: SPACING.xl },
   processingOrb: {
     width: 72,
