@@ -161,6 +161,38 @@ function DriverDetailModal({
       setDebtAmount('');
       setDebtReason('');
       alert('Commission debt added successfully.');
+      // Re-fetch to update stats
+      const updated = await apiRequest<DriverDetail>(`/admin/drivers/${driverId}`, { token });
+      setDetail(updated);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAdjustWallet = async (type: 'credit' | 'debit') => {
+    const amountStr = prompt(`Enter amount to ${type} (₦):`);
+    if (!amountStr) return;
+    const amount = Number(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount.');
+      return;
+    }
+    const reason = prompt(`Enter reason for ${type}:`);
+    if (!reason) return;
+
+    setSubmitting(true);
+    try {
+      await apiRequest(`/admin/users/${driverId}/wallet`, {
+        method: 'POST',
+        token,
+        body: { amount, type, reason },
+      });
+      alert(`Wallet ${type}ed successfully.`);
+      // Re-fetch to update stats
+      const updated = await apiRequest<DriverDetail>(`/admin/drivers/${driverId}`, { token });
+      setDetail(updated);
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -356,9 +388,32 @@ function DriverDetailModal({
 
           {tab === 'wallet' && (
             <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => handleAdjustWallet('credit')}
+                  className="flex flex-col items-center justify-center p-4 bg-emerald-50 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-colors group"
+                >
+                  <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                    <CheckCircle className="w-6 h-6" />
+                  </div>
+                  <span className="text-sm font-semibold text-emerald-800">Credit Wallet</span>
+                  <span className="text-xs text-emerald-600 mt-1">Add funds for driver</span>
+                </button>
+                <button
+                  onClick={() => handleAdjustWallet('debit')}
+                  className="flex flex-col items-center justify-center p-4 bg-red-50 border border-red-100 rounded-xl hover:bg-red-100 transition-colors group"
+                >
+                  <div className="w-10 h-10 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                    <XCircle className="w-6 h-6" />
+                  </div>
+                  <span className="text-sm font-semibold text-red-800">Debit Wallet</span>
+                  <span className="text-xs text-red-600 mt-1">Deduct funds from driver</span>
+                </button>
+              </div>
+
               <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-                <h3 className="text-sm font-semibold text-amber-800 mb-2">Add Commission Debt</h3>
-                <p className="text-xs text-amber-700 mb-4">Manually increase the driver's pending remittance balance.</p>
+                <h3 className="text-sm font-semibold text-amber-800 mb-2">Manage Commission Debt</h3>
+                <p className="text-xs text-amber-700 mb-4">Increase the driver's pending remittance balance manually.</p>
                 <div className="space-y-3">
                   <input
                     type="number"

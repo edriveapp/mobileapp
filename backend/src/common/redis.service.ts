@@ -10,7 +10,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     constructor(private configService: ConfigService) { }
 
     onModuleInit() {
-        const url = this.configService.get<string>('REDIS_URL');
+        const url = this.configService.get<string>('redis.url');
         if (!url) {
             this.logger.warn('REDIS_URL is not set — Redis features will be unavailable');
             return;
@@ -40,22 +40,36 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     async set(key: string, value: string, ttl?: number) {
         if (!this.client) return;
-        if (ttl) {
-            await this.client.set(key, value, 'EX', ttl);
-        } else {
-            await this.client.set(key, value);
+        try {
+            if (ttl) {
+                await this.client.set(key, value, 'EX', ttl);
+            } else {
+                await this.client.set(key, value);
+            }
+        } catch (err) {
+            this.logger.error(`Redis SET error for key ${key}: ${err.message}`);
         }
     }
 
     async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
-        if (!this.client) return true; // Fail-open if no redis (rely on DB)
-        const result = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX');
-        return result === 'OK';
+        if (!this.client) return true; // Fail-open if no redis (rely on DB constraints)
+        try {
+            const result = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX');
+            return result === 'OK';
+        } catch (err) {
+            this.logger.error(`Redis LOCK error for key ${key}: ${err.message}`);
+            return true; // Fail-open
+        }
     }
 
     async get(key: string): Promise<string | null> {
         if (!this.client) return null;
-        return this.client.get(key);
+        try {
+            return await this.client.get(key);
+        } catch (err) {
+            this.logger.error(`Redis GET error for key ${key}: ${err.message}`);
+            return null;
+        }
     }
 
     async setDriverLocation(driverId: string, lat: number, lon: number) {
