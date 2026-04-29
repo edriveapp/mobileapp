@@ -1,104 +1,117 @@
-import { LocationService } from '@/app/services/locationService';
-import { useTripStore } from '@/app/stores/tripStore';
-import { COLORS, Fonts, SPACING } from '@/constants/theme';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { LocationService } from "@/app/services/locationService";
+import { useTripStore } from "@/app/stores/tripStore";
+import { safeOpenURL } from "@/app/utils/linking";
+import { COLORS, Fonts, SPACING } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Easing,
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { safeOpenURL } from '@/app/utils/linking';
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Easing,
+    Image,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
-import { SafeAreaView } from 'react-native-safe-area-context';
-import * as WebBrowser from 'expo-web-browser';
-import { useAuthStore } from '../stores/authStore';
-import api from '../services/api';
+import * as WebBrowser from "expo-web-browser";
+import { SafeAreaView } from "react-native-safe-area-context";
+import api from "../services/api";
+import { useAuthStore } from "../stores/authStore";
 
-type PaymentMethod = 'card' | 'transfer' | 'cash';
-type PaymentStep = 'method' | 'transfer' | 'cash' | 'card_hold' | 'processing' | 'success';
+type PaymentMethod = "card" | "transfer" | "cash";
+type PaymentStep =
+  | "method"
+  | "transfer"
+  | "cash"
+  | "card_hold"
+  | "processing"
+  | "success";
 
 const PAYMENT_METHODS = [
   {
-    id: 'card' as PaymentMethod,
-    label: 'Card',
-    icon: 'card-outline' as const,
-    description: 'Pay securely with your credit/debit card.',
+    id: "card" as PaymentMethod,
+    label: "Card",
+    icon: "card-outline" as const,
+    description: "Pay securely with your credit/debit card.",
   },
   {
-    id: 'transfer' as PaymentMethod,
-    label: 'Transfer',
-    icon: 'swap-horizontal-outline' as const,
-    description: 'Pay into the eDrive bank account and we auto-confirm it.',
+    id: "transfer" as PaymentMethod,
+    label: "Transfer",
+    icon: "swap-horizontal-outline" as const,
+    description: "Pay into the eDrive bank account and we auto-confirm it.",
   },
   {
-    id: 'cash' as PaymentMethod,
-    label: 'Cash',
-    icon: 'cash-outline' as const,
-    description: 'Pay the driver physically at pickup.',
+    id: "cash" as PaymentMethod,
+    label: "Cash",
+    icon: "cash-outline" as const,
+    description: "Pay the driver physically at pickup.",
   },
 ];
 
 const TRANSFER_ACCOUNT = {
-  bankName: 'Providus Bank',
-  accountName: 'eDrive Mobility Ltd',
-  accountNumber: '1234567890',
+  bankName: "Providus Bank",
+  accountName: "eDrive Mobility Ltd",
+  accountNumber: "1234567890",
 };
 
 const getAddressText = (value: any) => {
-  if (!value) return '';
-  if (typeof value === 'string') return value;
-  return value.address || '';
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return value.address || "";
 };
 
 const getDriverName = (driver: any) => {
-  const fullName = [driver?.firstName, driver?.lastName].filter(Boolean).join(' ').trim();
-  return fullName || driver?.name || driver?.email || 'Driver';
+  const fullName = [driver?.firstName, driver?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return fullName || driver?.name || driver?.email || "Driver";
 };
 
 const formatTripDateTime = (trip: any) => {
   if (trip?.departureTime) {
     const departure = new Date(trip.departureTime);
     return departure.toLocaleString([], {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   }
 
-  const date = trip?.date || 'Today';
-  const time = trip?.time || 'Any time';
+  const date = trip?.date || "Today";
+  const time = trip?.time || "Any time";
   return `${date} • ${time}`;
 };
 
-const formatCurrency = (amount: number) => `₦${Number(amount || 0).toLocaleString()}`;
+const formatCurrency = (amount: number) =>
+  `₦${Number(amount || 0).toLocaleString()}`;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function TripDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { trips, availableTrips, activeTrips, history, bookTrip, isLoading } = useTripStore();
+  const { trips, availableTrips, activeTrips, history, bookTrip, isLoading } =
+    useTripStore();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [showDriverModal, setShowDriverModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentStep, setPaymentStep] = useState<PaymentStep>('method');
+  const [paymentStep, setPaymentStep] = useState<PaymentStep>("method");
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [paystackReference, setPaystackReference] = useState<string | null>(null);
+  const [paystackReference, setPaystackReference] = useState<string | null>(
+    null,
+  );
   const animation = useRef(new Animated.Value(0)).current;
 
   const trip = useMemo(() => {
@@ -108,7 +121,10 @@ export default function TripDetailsScreen() {
 
   const amount = Number(trip?.price || trip?.fare || 0);
   const paymentReference = useMemo(
-    () => `EDR-${String(id || '').slice(0, 6).toUpperCase()}-${String(Date.now()).slice(-4)}`,
+    () =>
+      `EDR-${String(id || "")
+        .slice(0, 6)
+        .toUpperCase()}-${String(Date.now()).slice(-4)}`,
     [id],
   );
 
@@ -118,7 +134,7 @@ export default function TripDetailsScreen() {
   }, []);
 
   useEffect(() => {
-    if (paymentStep !== 'processing') {
+    if (paymentStep !== "processing") {
       animation.stopAnimation();
       animation.setValue(0);
       return;
@@ -144,49 +160,58 @@ export default function TripDetailsScreen() {
   const driver = trip?.driver || {};
   const driverName = getDriverName(driver);
   const driverPhone = driver?.phone || driver?.phoneNumber || null;
-  const driverVehicle = trip?.tier || driver?.carModel || driver?.vehicleType || 'Vehicle details pending';
+  const driverVehicle =
+    trip?.tier ||
+    driver?.carModel ||
+    driver?.vehicleType ||
+    "Vehicle details pending";
   const driverRating = Number(driver?.rating || 0).toFixed(1);
   const driverTrips = Number(driver?.tripsCompleted || 0);
 
   const isUnacceptedRide = !trip?.driverId && !driver?.id;
 
   const openPaymentFlow = () => {
-    setPaymentStep('method');
+    setPaymentStep("method");
     setPaymentError(null);
     setShowPaymentModal(true);
   };
 
   const closePaymentFlow = () => {
-    if (paymentStep === 'processing') return;
+    if (paymentStep === "processing") return;
     setShowPaymentModal(false);
-    setPaymentStep('method');
+    setPaymentStep("method");
     setPaymentError(null);
   };
 
   const handleCallDriver = () => {
     if (!driverPhone) {
-      Alert.alert('No phone number', 'Driver phone number is not available yet.');
+      Alert.alert(
+        "No phone number",
+        "Driver phone number is not available yet.",
+      );
       return;
     }
 
-    safeOpenURL(`tel:${driverPhone}`, 'This device cannot place phone calls.');
+    safeOpenURL(`tel:${driverPhone}`, "This device cannot place phone calls.");
   };
-
 
   const handleChatDriver = () => {
     if (!trip?.id) return;
     router.push({
-      pathname: '/chat/[id]',
+      pathname: "/chat/[id]",
       params: { id: trip.id, recipientName: driverName },
     });
   };
 
   const handleReportDriver = () => {
     if (!driverName) {
-      Alert.alert('Report unavailable', 'We could not identify the driver to report.');
+      Alert.alert(
+        "Report unavailable",
+        "We could not identify the driver to report.",
+      );
       return;
     }
-    router.push('/support');
+    router.push("/support");
   };
 
   const completeBooking = async (method: PaymentMethod) => {
@@ -194,7 +219,7 @@ export default function TripDetailsScreen() {
 
     // Safely get location — fall back to trip origin if location denied or fails
     let coords = null;
-    let locationLabel = '';
+    let locationLabel = "";
     try {
       coords = await LocationService.getCurrentCoordinates();
       locationLabel = await LocationService.getCurrentState();
@@ -218,7 +243,7 @@ export default function TripDetailsScreen() {
     try {
       const response = await api.get(`/payments/verify/${reference}`);
       return (
-        response?.data?.data?.status === 'success' ||
+        response?.data?.data?.status === "success" ||
         response?.data?.status === true
       );
     } catch {
@@ -228,30 +253,33 @@ export default function TripDetailsScreen() {
 
   const finishSuccessfulBooking = async (method: PaymentMethod) => {
     setPaymentError(null);
-    setPaymentStep('processing');
+    setPaymentStep("processing");
 
     try {
-      if (method === 'transfer') {
+      if (method === "transfer") {
         await wait(1800);
       }
 
       await completeBooking(method);
-      setPaymentStep('success');
+      setPaymentStep("success");
       await wait(1200);
       setShowPaymentModal(false);
       // Navigate to Trips tab specifically so user sees their booking in "My Trips"
-      router.replace('/(tabs)/trips');
+      router.replace("/(tabs)/trips");
     } catch (error: any) {
-      const errMsg = error?.message || error?.response?.data?.message || 'Could not complete this booking. Please try again.';
+      const errMsg =
+        error?.message ||
+        error?.response?.data?.message ||
+        "Could not complete this booking. Please try again.";
       setPaymentError(errMsg);
       // Return to the payment step that was active
-      setPaymentStep(method === 'cash' ? 'cash' : 'transfer');
+      setPaymentStep(method === "cash" ? "cash" : "transfer");
     }
   };
 
   const handleCardPayment = async () => {
     setPaymentError(null);
-    setPaymentStep('processing');
+    setPaymentStep("processing");
 
     try {
       // Get current location for pickup info (stored in metadata or used later)
@@ -260,96 +288,108 @@ export default function TripDetailsScreen() {
         coords = await LocationService.getCurrentCoordinates();
       } catch (e) {}
 
-      const res = await api.post('/payments/initialize', {
+      const res = await api.post("/payments/initialize", {
         amount,
         rideId: trip?.id,
         distance: Number(trip?.distance || trip?.distanceKm || 0),
-        estimatedDurationMinutes: Number(trip?.duration || trip?.estimatedDurationMinutes || 0),
+        estimatedDurationMinutes: Number(
+          trip?.duration || trip?.estimatedDurationMinutes || 0,
+        ),
         // Pass pickup info so webhook can use it to book
         pickupLocation: {
           lat: coords?.latitude ?? (trip?.origin?.lat || 0),
           lon: coords?.longitude ?? (trip?.origin?.lon || 0),
           address: getAddressText(trip?.origin),
-        }
+        },
       });
 
       const authUrl = res.data?.data?.authorization_url;
       const reference = res.data?.data?.reference;
       if (!authUrl || !reference) {
-        throw new Error('Could not initialize payment session');
+        throw new Error("Could not initialize payment session");
       }
 
       setPaystackReference(reference);
       await WebBrowser.openBrowserAsync(authUrl);
-      setPaymentStep('card_hold');
+      setPaymentStep("card_hold");
     } catch (error: any) {
-      const errMsg = error?.response?.data?.message || error?.message || 'Payment failed to initialize';
+      const errMsg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Payment failed to initialize";
       setPaymentError(errMsg);
-      setPaymentStep('method');
+      setPaymentStep("method");
     }
   };
 
   const handleConfirmPaystackPayment = async () => {
     if (!paystackReference) {
-      setPaymentError('Payment reference missing. Please retry from the payment screen.');
+      setPaymentError(
+        "Payment reference missing. Please retry from the payment screen.",
+      );
       return;
     }
 
     setPaymentError(null);
-    setPaymentStep('processing');
+    setPaymentStep("processing");
 
     try {
       const isVerified = await verifyPaystackReference(paystackReference);
       if (!isVerified) {
-        setPaymentError('Payment is not confirmed yet. If you completed the payment, wait a few seconds and try again.');
-        setPaymentStep('card_hold');
+        setPaymentError(
+          "Payment is not confirmed yet. If you completed the payment, wait a few seconds and try again.",
+        );
+        setPaymentStep("card_hold");
         return;
       }
 
-      setPaymentStep('success');
+      setPaymentStep("success");
       await wait(1200);
       setShowPaymentModal(false);
-      router.replace('/(tabs)/trips');
+      router.replace("/(tabs)/trips");
     } catch (error: any) {
-      const errMsg = error?.response?.data?.message || error?.message || 'Unable to verify payment. Please try again.';
+      const errMsg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Unable to verify payment. Please try again.";
       setPaymentError(errMsg);
-      setPaymentStep('card_hold');
+      setPaymentStep("card_hold");
     }
   };
 
   const handleSelectPaymentMethod = async (method: PaymentMethod) => {
     setPaymentError(null);
 
-    if (method === 'transfer') {
+    if (method === "transfer") {
       // For bank transfer via Paystack, it's the same online flow
       return handleCardPayment();
     }
 
-    if (method === 'cash') {
+    if (method === "cash") {
       // Cash can book immediately as it's settled later
-      setPaymentStep('processing');
+      setPaymentStep("processing");
       try {
-        await completeBooking('cash');
-        setPaymentStep('success');
+        await completeBooking("cash");
+        setPaymentStep("success");
         setTimeout(() => {
           setShowPaymentModal(false);
-          router.replace('/(tabs)/trips');
+          router.replace("/(tabs)/trips");
         }, 1500);
       } catch (e: any) {
-        setPaymentError(e?.response?.data?.message || 'Failed to book trip');
-        setPaymentStep('method');
+        setPaymentError(e?.response?.data?.message || "Failed to book trip");
+        setPaymentStep("method");
       }
       return;
     }
 
-    if (method === 'card') {
+    if (method === "card") {
       return handleCardPayment();
     }
   };
 
   const processingRotation = animation.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: ["0deg", "360deg"],
   });
 
   if (loading) {
@@ -372,11 +412,14 @@ export default function TripDetailsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar style="dark" backgroundColor={COLORS.background} />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Trip Details</Text>
@@ -388,8 +431,14 @@ export default function TripDetailsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.routeHeader}>
           <Text style={styles.originText}>{getAddressText(trip.origin)}</Text>
-          <Ionicons name="arrow-forward" size={20} color={COLORS.textSecondary} />
-          <Text style={styles.destText}>{getAddressText(trip.destination)}</Text>
+          <Ionicons
+            name="arrow-forward"
+            size={20}
+            color={COLORS.textSecondary}
+          />
+          <Text style={styles.destText}>
+            {getAddressText(trip.destination)}
+          </Text>
         </View>
         <Text style={styles.dateText}>{formatTripDateTime(trip)}</Text>
 
@@ -399,7 +448,9 @@ export default function TripDetailsScreen() {
             <Text style={styles.priceValue}>{formatCurrency(amount)}</Text>
           </View>
           <View style={styles.seatsContainer}>
-            <Text style={styles.seatsValue}>{trip.availableSeats ?? trip.seats ?? 0}</Text>
+            <Text style={styles.seatsValue}>
+              {trip.availableSeats ?? trip.seats ?? 0}
+            </Text>
             <Text style={styles.seatsLabel}>seats left</Text>
           </View>
         </View>
@@ -408,11 +459,26 @@ export default function TripDetailsScreen() {
           <>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Driver</Text>
-              <TouchableOpacity style={styles.driverCard} onPress={() => setShowDriverModal(true)}>
+              <TouchableOpacity
+                style={styles.driverCard}
+                onPress={() => setShowDriverModal(true)}
+              >
                 {driver?.image ? (
-                  <Image source={{ uri: driver.image }} style={styles.driverImage} />
+                  <Image
+                    source={{ uri: driver.image }}
+                    style={styles.driverImage}
+                  />
                 ) : (
-                  <View style={[styles.driverImage, { backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center' }]}>
+                  <View
+                    style={[
+                      styles.driverImage,
+                      {
+                        backgroundColor: "#E2E8F0",
+                        justifyContent: "center",
+                        alignItems: "center",
+                      },
+                    ]}
+                  >
                     <Ionicons name="person" size={24} color="#94A3B8" />
                   </View>
                 )}
@@ -422,12 +488,18 @@ export default function TripDetailsScreen() {
                   </View>
                   <View style={styles.ratingRow}>
                     <Ionicons name="star" size={14} color="#FFD700" />
-                    <Text style={styles.ratingText}>{driverRating} • {driverTrips} trips</Text>
+                    <Text style={styles.ratingText}>
+                      {driverRating} • {driverTrips} trips
+                    </Text>
                   </View>
                   <Text style={styles.driverMetaText}>{driverVehicle}</Text>
                 </View>
 
-                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={COLORS.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
@@ -435,11 +507,17 @@ export default function TripDetailsScreen() {
               <Text style={styles.sectionTitle}>Vehicle</Text>
               <View style={styles.vehicleCard}>
                 <View style={styles.vehicleIcon}>
-                  <Ionicons name="car-sport-outline" size={32} color={COLORS.textSecondary} />
+                  <Ionicons
+                    name="car-sport-outline"
+                    size={32}
+                    color={COLORS.textSecondary}
+                  />
                 </View>
                 <View>
                   <Text style={styles.vehicleName}>{driverVehicle}</Text>
-                  <Text style={styles.vehiclePlate}>{driver?.plateNumber || 'Plate number pending'}</Text>
+                  <Text style={styles.vehiclePlate}>
+                    {driver?.plateNumber || "Plate number pending"}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -450,21 +528,31 @@ export default function TripDetailsScreen() {
           <Text style={styles.sectionTitle}>Pickup and payment flow</Text>
           <View style={styles.flowCard}>
             <Text style={styles.flowText}>1. Pick transfer or cash</Text>
-            <Text style={styles.flowText}>2. We attach your live pickup area automatically</Text>
-            <Text style={styles.flowText}>3. The driver gets the trip and pickup request instantly</Text>
+            <Text style={styles.flowText}>
+              2. We attach your live pickup area automatically
+            </Text>
+            <Text style={styles.flowText}>
+              3. The driver gets the trip and pickup request instantly
+            </Text>
           </View>
 
           {trip?.passengerId === user?.id && (
             <View style={styles.transferHintCard}>
-              <Text style={styles.transferHintTitle}>Negotiate before you pay</Text>
+              <Text style={styles.transferHintTitle}>
+                Negotiate before you pay
+              </Text>
               <Text style={styles.transferHintText}>
-                Speak with your driver first and confirm pickup details before sending the transfer.
+                Speak with your driver first and confirm pickup details before
+                sending the transfer.
               </Text>
             </View>
           )}
 
           {driver?.id && (
-            <TouchableOpacity style={styles.reportButton} onPress={handleReportDriver}>
+            <TouchableOpacity
+              style={styles.reportButton}
+              onPress={handleReportDriver}
+            >
               <Text style={styles.reportButtonText}>Report {driverName}</Text>
             </TouchableOpacity>
           )}
@@ -481,34 +569,78 @@ export default function TripDetailsScreen() {
       <View style={styles.footer}>
         {(() => {
           const isPassenger = trip.passengerId === user?.id;
-          const paymentStatusLower = (trip.paymentStatus || '').toLowerCase();
-          const isPaid = paymentStatusLower === 'paid';
-          const isPendingVerification = paymentStatusLower === 'pending_verification';
-          const noSeats = (trip.availableSeats === 0 || trip.seats === 0);
+          const paymentStatusLower = (trip.paymentStatus || "").toLowerCase();
+          const isPaid = paymentStatusLower === "paid";
+          const isPendingVerification =
+            paymentStatusLower === "pending_verification";
+          const noSeats = trip.availableSeats === 0 || trip.seats === 0;
 
-          if (String(trip?.status).toLowerCase() === 'pending_driver') {
+          if (String(trip?.status).toLowerCase() === "pending_driver") {
             return (
-              <View style={[styles.bookButton, { backgroundColor: '#F59E0B', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+              <View
+                style={[
+                  styles.bookButton,
+                  {
+                    backgroundColor: "#F59E0B",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    flexDirection: "row",
+                    gap: 8,
+                  },
+                ]}
+              >
                 <Ionicons name="time-outline" size={20} color="white" />
-                <Text style={styles.bookButtonText}>Waiting for driver to accept...</Text>
+                <Text style={styles.bookButtonText}>
+                  Waiting for driver to accept...
+                </Text>
               </View>
             );
           }
 
           if (isUnacceptedRide) {
             return (
-              <View style={[styles.bookButton, { backgroundColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+              <View
+                style={[
+                  styles.bookButton,
+                  {
+                    backgroundColor: "#CBD5E1",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    flexDirection: "row",
+                    gap: 8,
+                  },
+                ]}
+              >
                 <ActivityIndicator size="small" color="#64748B" />
-                <Text style={[styles.bookButtonText, { color: '#64748B' }]}>Searching for driver...</Text>
+                <Text style={[styles.bookButtonText, { color: "#64748B" }]}>
+                  Searching for driver...
+                </Text>
               </View>
             );
           }
 
           if (noSeats && !isPassenger) {
             return (
-              <View style={[styles.bookButton, { backgroundColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
-                <Ionicons name="close-circle-outline" size={20} color="#64748B" />
-                <Text style={[styles.bookButtonText, { color: '#64748B' }]}>No seats available</Text>
+              <View
+                style={[
+                  styles.bookButton,
+                  {
+                    backgroundColor: "#CBD5E1",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    flexDirection: "row",
+                    gap: 8,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="close-circle-outline"
+                  size={20}
+                  color="#64748B"
+                />
+                <Text style={[styles.bookButtonText, { color: "#64748B" }]}>
+                  No seats available
+                </Text>
               </View>
             );
           }
@@ -516,55 +648,118 @@ export default function TripDetailsScreen() {
           if (isPassenger) {
             if (isPaid) {
               return (
-                <View style={[styles.bookButton, { backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+                <View
+                  style={[
+                    styles.bookButton,
+                    {
+                      backgroundColor: "#10B981",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      flexDirection: "row",
+                      gap: 8,
+                    },
+                  ]}
+                >
                   <Ionicons name="checkmark-circle" size={20} color="white" />
-                  <Text style={styles.bookButtonText}>Seat Reserved (Paid)</Text>
+                  <Text style={styles.bookButtonText}>
+                    Seat Reserved (Paid)
+                  </Text>
                 </View>
               );
             }
             if (isPendingVerification) {
               return (
-                <View style={[styles.bookButton, { backgroundColor: '#F59E0B', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }]}>
+                <View
+                  style={[
+                    styles.bookButton,
+                    {
+                      backgroundColor: "#F59E0B",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      flexDirection: "row",
+                      gap: 8,
+                    },
+                  ]}
+                >
                   <Ionicons name="time-outline" size={20} color="white" />
-                  <Text style={styles.bookButtonText}>Seat Reserved (Transfer Pending)</Text>
+                  <Text style={styles.bookButtonText}>
+                    Seat Reserved (Transfer Pending)
+                  </Text>
                 </View>
               );
             }
             return (
-              <TouchableOpacity style={[styles.bookButton, { backgroundColor: '#F59E0B' }]} onPress={openPaymentFlow}>
+              <TouchableOpacity
+                style={[styles.bookButton, { backgroundColor: "#F59E0B" }]}
+                onPress={openPaymentFlow}
+              >
                 <Text style={styles.bookButtonText}>Complete Payment</Text>
               </TouchableOpacity>
             );
           }
 
           return (
-            <TouchableOpacity style={styles.bookButton} onPress={openPaymentFlow}>
+            <TouchableOpacity
+              style={styles.bookButton}
+              onPress={openPaymentFlow}
+            >
               <Text style={styles.bookButtonText}>Continue to Payment</Text>
             </TouchableOpacity>
           );
         })()}
       </View>
 
-      <Modal visible={showDriverModal} transparent animationType="slide" onRequestClose={() => setShowDriverModal(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowDriverModal(false)}>
+      <Modal
+        visible={showDriverModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDriverModal(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setShowDriverModal(false)}
+        >
           <Pressable style={styles.modalSheet} onPress={() => {}}>
             <View style={styles.modalHandle} />
             {driver?.image ? (
-              <Image source={{ uri: driver.image }} style={styles.previewDriverImage} />
+              <Image
+                source={{ uri: driver.image }}
+                style={styles.previewDriverImage}
+              />
             ) : (
-              <View style={[styles.previewDriverImage, { backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }]}>
+              <View
+                style={[
+                  styles.previewDriverImage,
+                  {
+                    backgroundColor: "#E2E8F0",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    marginBottom: 12,
+                  },
+                ]}
+              >
                 <Ionicons name="person" size={32} color="#94A3B8" />
               </View>
             )}
             <Text style={styles.modalTitle}>{driverName}</Text>
-            <Text style={styles.modalSubtext}>Rating {driverRating} • {driverTrips} trips</Text>
+            <Text style={styles.modalSubtext}>
+              Rating {driverRating} • {driverTrips} trips
+            </Text>
             <Text style={styles.modalSubtext}>{driverVehicle}</Text>
-            <Text style={styles.modalSubtext}>{driverPhone || 'Phone unavailable'}</Text>
+            <Text style={styles.modalSubtext}>
+              {driverPhone || "Phone unavailable"}
+            </Text>
             <View style={styles.modalActionRow}>
-              <TouchableOpacity style={styles.modalSecondaryButton} onPress={handleCallDriver}>
+              <TouchableOpacity
+                style={styles.modalSecondaryButton}
+                onPress={handleCallDriver}
+              >
                 <Text style={styles.modalSecondaryText}>Call</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalPrimaryButton} onPress={handleChatDriver}>
+              <TouchableOpacity
+                style={styles.modalPrimaryButton}
+                onPress={handleChatDriver}
+              >
                 <Text style={styles.modalPrimaryText}>Chat</Text>
               </TouchableOpacity>
             </View>
@@ -572,15 +767,23 @@ export default function TripDetailsScreen() {
         </Pressable>
       </Modal>
 
-      <Modal visible={showPaymentModal} transparent animationType="slide" onRequestClose={closePaymentFlow}>
+      <Modal
+        visible={showPaymentModal}
+        transparent
+        animationType="slide"
+        onRequestClose={closePaymentFlow}
+      >
         <Pressable style={styles.modalBackdrop} onPress={closePaymentFlow}>
           <Pressable style={styles.modalSheet} onPress={() => {}}>
             <View style={styles.modalHandle} />
 
-            {paymentStep === 'method' && (
+            {paymentStep === "method" && (
               <>
                 <Text style={styles.modalTitle}>Choose payment method</Text>
-                <Text style={styles.modalSubtext}>Nothing is selected yet. Tap one option and we move straight into the next step.</Text>
+                <Text style={styles.modalSubtext}>
+                  Nothing is selected yet. Tap one option and we move straight
+                  into the next step.
+                </Text>
                 <View style={styles.paymentList}>
                   {PAYMENT_METHODS.map((method) => (
                     <TouchableOpacity
@@ -589,81 +792,137 @@ export default function TripDetailsScreen() {
                       onPress={() => handleSelectPaymentMethod(method.id)}
                     >
                       <View style={styles.paymentIconWrap}>
-                        <Ionicons name={method.icon} size={20} color={COLORS.primary} />
+                        <Ionicons
+                          name={method.icon}
+                          size={20}
+                          color={COLORS.primary}
+                        />
                       </View>
                       <View style={styles.paymentTextWrap}>
                         <Text style={styles.paymentLabel}>{method.label}</Text>
-                        <Text style={styles.paymentDescription}>{method.description}</Text>
+                        <Text style={styles.paymentDescription}>
+                          {method.description}
+                        </Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={COLORS.textSecondary}
+                      />
                     </TouchableOpacity>
                   ))}
                 </View>
               </>
             )}
 
-            {paymentStep === 'transfer' && (
+            {paymentStep === "transfer" && (
               <View style={styles.processingWrap}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
                 <Text style={styles.modalTitle}>Waiting for Transfer</Text>
-                <Text style={styles.modalSubtext}>Please complete your transfer in the payment window. We will notify you once confirmed.</Text>
-                <TouchableOpacity 
-                  style={styles.modalSecondaryButton} 
+                <Text style={styles.modalSubtext}>
+                  Please complete your transfer in the payment window. We will
+                  notify you once confirmed.
+                </Text>
+                <TouchableOpacity
+                  style={styles.modalSecondaryButton}
                   onPress={() => {
-                    setPaymentStep('method');
+                    setPaymentStep("method");
                     setPaymentError(null);
                   }}
                 >
-                  <Text style={styles.modalSecondaryText}>Cancel / Change Method</Text>
+                  <Text style={styles.modalSecondaryText}>
+                    Cancel / Change Method
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            {paymentStep === 'cash' && (
+            {paymentStep === "cash" && (
               <>
                 <Text style={styles.modalTitle}>Cash at pickup</Text>
-                <Text style={styles.modalSubtext}>We will send your pickup area to the driver and reserve this seat immediately.</Text>
+                <Text style={styles.modalSubtext}>
+                  We will send your pickup area to the driver and reserve this
+                  seat immediately.
+                </Text>
                 <View style={styles.cashCard}>
                   <View style={styles.cashTopRow}>
-                    <Ionicons name="cash-outline" size={22} color={COLORS.primary} />
-                    <Text style={styles.cashAmount}>{formatCurrency(amount)}</Text>
+                    <Ionicons
+                      name="cash-outline"
+                      size={22}
+                      color={COLORS.primary}
+                    />
+                    <Text style={styles.cashAmount}>
+                      {formatCurrency(amount)}
+                    </Text>
                   </View>
-                  <Text style={styles.cashBodyText}>Pay the driver physically when they arrive at your pickup point.</Text>
+                  <Text style={styles.cashBodyText}>
+                    Pay the driver physically when they arrive at your pickup
+                    point.
+                  </Text>
                 </View>
-                {!!paymentError && <Text style={styles.paymentErrorText}>{paymentError}</Text>}
+                {!!paymentError && (
+                  <Text style={styles.paymentErrorText}>{paymentError}</Text>
+                )}
                 <View style={styles.inlineActionRow}>
-                  <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setPaymentStep('method')}>
+                  <TouchableOpacity
+                    style={styles.modalSecondaryButton}
+                    onPress={() => setPaymentStep("method")}
+                  >
                     <Text style={styles.modalSecondaryText}>Back</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.modalPrimaryButton, styles.inlinePrimaryButton]}
-                    onPress={() => finishSuccessfulBooking('cash')}
+                    style={[
+                      styles.modalPrimaryButton,
+                      styles.inlinePrimaryButton,
+                    ]}
+                    onPress={() => finishSuccessfulBooking("cash")}
                     disabled={isLoading}
                   >
-                    <Text style={styles.modalPrimaryText}>{isLoading ? 'Booking...' : 'Book trip now'}</Text>
+                    <Text style={styles.modalPrimaryText}>
+                      {isLoading ? "Booking..." : "Book trip now"}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </>
             )}
 
-            {paymentStep === 'card_hold' && (
+            {paymentStep === "card_hold" && (
               <>
                 <Text style={styles.modalTitle}>Payment pending</Text>
-                <Text style={styles.modalSubtext}>Your payment session is open in the browser. If it completes but the seat is not booked immediately, use the button below to confirm.</Text>
+                <Text style={styles.modalSubtext}>
+                  Your payment session is open in the browser. If it completes
+                  but the seat is not booked immediately, use the button below
+                  to confirm.
+                </Text>
                 <View style={styles.holdCard}>
                   <Ionicons name="time-outline" size={22} color="#B54708" />
-                  <Text style={styles.holdText}>Webhook delivery may take a few seconds. If the booking is still pending, tap Confirm payment.</Text>
+                  <Text style={styles.holdText}>
+                    Webhook delivery may take a few seconds. If the booking is
+                    still pending, tap Confirm payment.
+                  </Text>
                 </View>
                 {!!paystackReference && (
-                  <Text style={styles.transactionRefText}>Transaction ref: {paystackReference}</Text>
+                  <Text style={styles.transactionRefText}>
+                    Transaction ref: {paystackReference}
+                  </Text>
                 )}
-                {!!paymentError && <Text style={styles.paymentErrorText}>{paymentError}</Text>}
+                {!!paymentError && (
+                  <Text style={styles.paymentErrorText}>{paymentError}</Text>
+                )}
                 <View style={styles.inlineActionRow}>
-                  <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setPaymentStep('method')}>
-                    <Text style={styles.modalSecondaryText}>Choose another method</Text>
+                  <TouchableOpacity
+                    style={styles.modalSecondaryButton}
+                    onPress={() => setPaymentStep("method")}
+                  >
+                    <Text style={styles.modalSecondaryText}>
+                      Choose another method
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.modalPrimaryButton, styles.inlinePrimaryButton]}
+                    style={[
+                      styles.modalPrimaryButton,
+                      styles.inlinePrimaryButton,
+                    ]}
                     onPress={handleConfirmPaystackPayment}
                   >
                     <Text style={styles.modalPrimaryText}>Confirm payment</Text>
@@ -672,23 +931,36 @@ export default function TripDetailsScreen() {
               </>
             )}
 
-            {paymentStep === 'processing' && (
+            {paymentStep === "processing" && (
               <View style={styles.processingWrap}>
-                <Animated.View style={[styles.processingOrb, { transform: [{ rotate: processingRotation }] }]}>
-                  <Ionicons name="sync-outline" size={28} color={COLORS.primary} />
+                <Animated.View
+                  style={[
+                    styles.processingOrb,
+                    { transform: [{ rotate: processingRotation }] },
+                  ]}
+                >
+                  <Ionicons
+                    name="sync-outline"
+                    size={28}
+                    color={COLORS.primary}
+                  />
                 </Animated.View>
                 <Text style={styles.modalTitle}>Confirming payment</Text>
-                <Text style={styles.modalSubtext}>Auto-detecting your transfer and booking your seat now.</Text>
+                <Text style={styles.modalSubtext}>
+                  Auto-detecting your transfer and booking your seat now.
+                </Text>
               </View>
             )}
 
-            {paymentStep === 'success' && (
+            {paymentStep === "success" && (
               <View style={styles.processingWrap}>
                 <View style={styles.successOrb}>
                   <Ionicons name="checkmark" size={32} color="white" />
                 </View>
                 <Text style={styles.modalTitle}>Seat reserved</Text>
-                <Text style={styles.modalSubtext}>Your trip is booked. We are opening your active trip now.</Text>
+                <Text style={styles.modalSubtext}>
+                  Your trip is booked. We are opening your active trip now.
+                </Text>
               </View>
             )}
           </Pressable>
@@ -699,218 +971,285 @@ export default function TripDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: "#FAFAFA" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  errorContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: SPACING.l,
     paddingVertical: SPACING.m,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: "#FAFAFA",
   },
   backButton: { padding: 4 },
   headerTitle: { fontSize: 18, fontFamily: Fonts.bold, color: COLORS.text },
   content: { padding: SPACING.l, paddingBottom: 100 },
   routeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 12,
     marginBottom: 8,
   },
   originText: { fontSize: 18, fontFamily: Fonts.semibold, color: COLORS.text },
   destText: { fontSize: 18, fontFamily: Fonts.semibold, color: COLORS.primary },
   dateText: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 13,
     color: COLORS.textSecondary,
     fontFamily: Fonts.rounded,
     marginBottom: SPACING.l,
   },
   priceCard: {
-    backgroundColor: '#17321C',
+    backgroundColor: "#17321C",
     borderRadius: 18,
     padding: SPACING.l,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: SPACING.l,
   },
-  priceLabel: { color: '#B7D7BD', fontSize: 12, fontFamily: Fonts.rounded },
-  priceValue: { color: 'white', fontSize: 28, fontFamily: Fonts.bold },
-  seatsContainer: { alignItems: 'center' },
-  seatsValue: { color: 'white', fontSize: 24, fontFamily: Fonts.bold },
-  seatsLabel: { color: '#B7D7BD', fontSize: 12, fontFamily: Fonts.rounded },
+  priceLabel: { color: "#B7D7BD", fontSize: 12, fontFamily: Fonts.rounded },
+  priceValue: { color: "white", fontSize: 28, fontFamily: Fonts.bold },
+  seatsContainer: { alignItems: "center" },
+  seatsValue: { color: "white", fontSize: 24, fontFamily: Fonts.bold },
+  seatsLabel: { color: "#B7D7BD", fontSize: 12, fontFamily: Fonts.rounded },
   section: { marginBottom: SPACING.l },
-  sectionTitle: { fontSize: 16, color: COLORS.text, fontFamily: Fonts.semibold, marginBottom: 10 },
+  sectionTitle: {
+    fontSize: 16,
+    color: COLORS.text,
+    fontFamily: Fonts.semibold,
+    marginBottom: 10,
+  },
   driverCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: SPACING.m,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   driverImage: { width: 54, height: 54, borderRadius: 27, marginRight: 12 },
   driverInfo: { flex: 1 },
-  driverNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  driverNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 4,
+  },
   driverName: { fontSize: 16, color: COLORS.text, fontFamily: Fonts.semibold },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  ratingText: { fontSize: 12, color: COLORS.textSecondary, fontFamily: Fonts.rounded },
-  driverMetaText: { fontSize: 12, color: COLORS.textSecondary, fontFamily: Fonts.rounded, marginTop: 4 },
-  contactActions: { flexDirection: 'row', gap: 8 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  ratingText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontFamily: Fonts.rounded,
+  },
+  driverMetaText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontFamily: Fonts.rounded,
+    marginTop: 4,
+  },
+  contactActions: { flexDirection: "row", gap: 8 },
   iconButton: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#EEF6F0',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#EEF6F0",
   },
   vehicleCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: SPACING.m,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   vehicleIcon: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   vehicleName: { fontSize: 15, color: COLORS.text, fontFamily: Fonts.semibold },
-  vehiclePlate: { fontSize: 12, color: COLORS.textSecondary, fontFamily: Fonts.rounded },
-  flowCard: { backgroundColor: '#fff', borderRadius: 16, padding: SPACING.m, gap: 8 },
+  vehiclePlate: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontFamily: Fonts.rounded,
+  },
+  flowCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: SPACING.m,
+    gap: 8,
+  },
   flowText: { color: COLORS.text, fontFamily: Fonts.rounded, fontSize: 13 },
-  descriptionText: { color: COLORS.textSecondary, fontFamily: Fonts.rounded, lineHeight: 20 },
+  descriptionText: {
+    color: COLORS.textSecondary,
+    fontFamily: Fonts.rounded,
+    lineHeight: 20,
+  },
   footer: {
     padding: SPACING.l,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: "#E5E7EB",
   },
   bookButton: {
     height: 54,
     borderRadius: 14,
     backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
-  bookButtonText: { color: 'white', fontSize: 16, fontFamily: Fonts.semibold },
+  bookButtonText: { color: "white", fontSize: 16, fontFamily: Fonts.semibold },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
   },
   modalSheet: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: SPACING.l,
     paddingBottom: SPACING.xl,
   },
   modalHandle: {
-    alignSelf: 'center',
+    alignSelf: "center",
     width: 44,
     height: 5,
     borderRadius: 999,
-    backgroundColor: '#D0D5DD',
+    backgroundColor: "#D0D5DD",
     marginBottom: SPACING.m,
   },
-  modalTitle: { fontSize: 20, color: COLORS.text, fontFamily: Fonts.bold, textAlign: 'center', marginBottom: 6 },
-  modalSubtext: { fontSize: 13, color: COLORS.textSecondary, fontFamily: Fonts.rounded, textAlign: 'center', marginBottom: 8 },
-  previewDriverImage: { width: 72, height: 72, borderRadius: 36, alignSelf: 'center', marginBottom: 12 },
-  modalActionRow: { flexDirection: 'row', gap: 10, marginTop: SPACING.m },
+  modalTitle: {
+    fontSize: 20,
+    color: COLORS.text,
+    fontFamily: Fonts.bold,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  modalSubtext: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontFamily: Fonts.rounded,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  previewDriverImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignSelf: "center",
+    marginBottom: 12,
+  },
+  modalActionRow: { flexDirection: "row", gap: 10, marginTop: SPACING.m },
   modalSecondaryButton: {
     flex: 1,
     height: 48,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D0D5DD',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: "#D0D5DD",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  modalSecondaryText: { color: '#344054', fontSize: 14, fontFamily: Fonts.semibold },
+  modalSecondaryText: {
+    color: "#344054",
+    fontSize: 14,
+    fontFamily: Fonts.semibold,
+  },
   modalPrimaryButton: {
     flex: 1,
     height: 48,
     borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: COLORS.primary,
     marginTop: SPACING.m,
   },
-  modalPrimaryText: { color: 'white', fontSize: 14, fontFamily: Fonts.semibold },
+  modalPrimaryText: {
+    color: "white",
+    fontSize: 14,
+    fontFamily: Fonts.semibold,
+  },
   paymentList: { gap: 10, marginTop: SPACING.m },
   paymentCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     borderWidth: 1,
-    borderColor: '#E4E7EC',
+    borderColor: "#E4E7EC",
     borderRadius: 16,
     padding: 14,
-    backgroundColor: '#FCFCFD',
+    backgroundColor: "#FCFCFD",
   },
   paymentIconWrap: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#EEF6F0',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#EEF6F0",
+    justifyContent: "center",
+    alignItems: "center",
   },
   paymentTextWrap: { flex: 1 },
-  paymentLabel: { color: COLORS.text, fontSize: 15, fontFamily: Fonts.semibold, marginBottom: 2 },
-  paymentDescription: { color: COLORS.textSecondary, fontSize: 12, fontFamily: Fonts.rounded },
+  paymentLabel: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontFamily: Fonts.semibold,
+    marginBottom: 2,
+  },
+  paymentDescription: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontFamily: Fonts.rounded,
+  },
   transferCard: {
     borderRadius: 18,
-    backgroundColor: '#0b0b0b',
+    backgroundColor: "#0b0b0b",
     padding: SPACING.l,
     marginTop: SPACING.m,
   },
   transferLabel: {
-    color: '#94A3B8',
+    color: "#94A3B8",
     fontSize: 12,
     fontFamily: Fonts.rounded,
     marginBottom: 4,
   },
   transferValue: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
     fontFamily: Fonts.semibold,
     marginBottom: 12,
   },
   transferAmount: {
-    color: 'white',
+    color: "white",
     fontSize: 30,
     fontFamily: Fonts.bold,
     marginBottom: 12,
   },
   transferDivider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: "rgba(255,255,255,0.12)",
     marginBottom: 12,
   },
   transferHintCard: {
     marginTop: SPACING.m,
     borderRadius: 14,
-    backgroundColor: '#EEF6F0',
+    backgroundColor: "#EEF6F0",
     padding: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 8,
   },
   transferHintTitle: {
     fontSize: 13,
     fontFamily: Fonts.semibold,
-    color: '#92400E',
+    color: "#92400E",
     marginBottom: 4,
   },
   transferHintText: {
@@ -923,57 +1262,71 @@ const styles = StyleSheet.create({
   reportButton: {
     marginTop: SPACING.m,
     borderRadius: 14,
-    backgroundColor: '#EF4444',
+    backgroundColor: "#EF4444",
     paddingVertical: 14,
-    alignItems: 'center',
+    alignItems: "center",
   },
   reportButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 15,
     fontFamily: Fonts.semibold,
   },
-  inlineActionRow: { flexDirection: 'row', gap: 10, marginTop: SPACING.l },
+  inlineActionRow: { flexDirection: "row", gap: 10, marginTop: SPACING.l },
   inlinePrimaryButton: { marginTop: 0 },
   cashCard: {
     marginTop: SPACING.m,
     borderRadius: 18,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: "#FFF7ED",
     borderWidth: 1,
-    borderColor: '#FED7AA',
+    borderColor: "#FED7AA",
     padding: SPACING.l,
     gap: 10,
   },
-  cashTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cashAmount: { color: '#9A3412', fontSize: 24, fontFamily: Fonts.bold },
-  cashBodyText: { color: '#7C2D12', fontSize: 13, lineHeight: 20, fontFamily: Fonts.rounded },
+  cashTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cashAmount: { color: "#9A3412", fontSize: 24, fontFamily: Fonts.bold },
+  cashBodyText: {
+    color: "#7C2D12",
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: Fonts.rounded,
+  },
   holdCard: {
     marginTop: SPACING.m,
     borderRadius: 16,
-    backgroundColor: '#FFFAEB',
+    backgroundColor: "#FFFAEB",
     borderWidth: 1,
-    borderColor: '#FEC84B',
+    borderColor: "#FEC84B",
     padding: SPACING.m,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
   },
-  holdText: { flex: 1, color: '#7A2E0B', fontFamily: Fonts.rounded, lineHeight: 18 },
+  holdText: {
+    flex: 1,
+    color: "#7A2E0B",
+    fontFamily: Fonts.rounded,
+    lineHeight: 18,
+  },
   transactionRefText: {
     marginTop: SPACING.s,
     color: COLORS.textSecondary,
     fontSize: 12,
     fontFamily: Fonts.rounded,
-    textAlign: 'center',
+    textAlign: "center",
   },
-  processingWrap: { alignItems: 'center', paddingVertical: SPACING.xl },
+  processingWrap: { alignItems: "center", paddingVertical: SPACING.xl },
   processingOrb: {
     width: 72,
     height: 72,
     borderRadius: 36,
     borderWidth: 3,
-    borderColor: '#D1FADF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: "#D1FADF",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 18,
   },
   successOrb: {
@@ -981,15 +1334,15 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 18,
   },
   paymentErrorText: {
     marginTop: SPACING.m,
-    color: '#B42318',
+    color: "#B42318",
     fontSize: 12,
     fontFamily: Fonts.rounded,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });

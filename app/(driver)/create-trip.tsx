@@ -1,14 +1,14 @@
-import { useAuthStore } from '@/app/stores/authStore';
-import { useDriverStore } from '@/app/stores/driverStore';
-import { useTripStore } from '@/app/stores/tripStore';
-import { NavigatrService } from '@/app/services/navigatrService';
-import { getDriverSeatFloor, roundFare } from '@/app/utils/pricing';
-import { COLORS, Fonts, SPACING } from '@/constants/theme';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useMemo, useState } from 'react';
+import { NavigatrService } from "@/app/services/navigatrService";
+import { useAuthStore } from "@/app/stores/authStore";
+import { useDriverStore } from "@/app/stores/driverStore";
+import { useTripStore } from "@/app/stores/tripStore";
+import { getDriverSeatFloor, roundFare } from "@/app/utils/pricing";
+import { COLORS, Fonts, SPACING } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Keyboard,
@@ -21,13 +21,16 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+} from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 // Route suggestions for quick selection
 const POPULAR_ROUTES = [
-  { origin: 'Lagos (Jibowu)', destination: 'Abuja (Utako)' },
-  { origin: 'Port Harcourt (Aba Road)', destination: 'Lagos (Yaba)' },
-  { origin: 'Abuja (Utako)', destination: 'Kaduna (Mando)' },
+  { origin: "Lagos (Jibowu)", destination: "Abuja (Utako)" },
+  { origin: "Port Harcourt (Aba Road)", destination: "Lagos (Yaba)" },
+  { origin: "Abuja (Utako)", destination: "Kaduna (Mando)" },
 ];
 // Removed DRIVER_VERIFICATION_ON_HOLD bypass
 
@@ -36,18 +39,22 @@ const TRIP_SETUP_COST = 1500;
 const EMPTY_RETURN_BUFFER_PER_KM = 45;
 const PROFIT_MARGIN = 0.35;
 
-type RouteLookupStatus = 'idle' | 'loading' | 'ready' | 'error';
+type RouteLookupStatus = "idle" | "loading" | "ready" | "error";
 
 let DateTimePickerNative: any = null;
-if (Platform.OS !== 'web') {
+if (Platform.OS !== "web") {
   try {
-    DateTimePickerNative = require('@react-native-community/datetimepicker').default;
+    DateTimePickerNative =
+      require("@react-native-community/datetimepicker").default;
   } catch {
     DateTimePickerNative = null;
   }
 }
 
-const fetchRouteMetrics = async (originQuery: string, destinationQuery: string) => {
+const fetchRouteMetrics = async (
+  originQuery: string,
+  destinationQuery: string,
+) => {
   const [originPlace, destinationPlace] = await Promise.all([
     NavigatrService.geocode(originQuery),
     NavigatrService.geocode(destinationQuery),
@@ -56,18 +63,26 @@ const fetchRouteMetrics = async (originQuery: string, destinationQuery: string) 
   const result = await NavigatrService.route(
     { lat: originPlace.lat, lng: originPlace.lng },
     { lat: destinationPlace.lat, lng: destinationPlace.lng },
-    { maneuvers: true }
+    { maneuvers: true },
   );
 
   const distanceKm = Math.round(result.distanceMeters / 1000);
   if (!distanceKm) {
-    throw new Error('Route distance is unavailable right now.');
+    throw new Error("Route distance is unavailable right now.");
   }
 
   return {
     distanceKm,
-    originCoords: { lat: originPlace.lat, lon: originPlace.lng, address: originQuery.trim() },
-    destinationCoords: { lat: destinationPlace.lat, lon: destinationPlace.lng, address: destinationQuery.trim() },
+    originCoords: {
+      lat: originPlace.lat,
+      lon: originPlace.lng,
+      address: originQuery.trim(),
+    },
+    destinationCoords: {
+      lat: destinationPlace.lat,
+      lon: destinationPlace.lng,
+      address: destinationQuery.trim(),
+    },
   };
 };
 
@@ -90,11 +105,7 @@ const buildPriceModel = (distanceKm: number, seatsCount: number) => {
   const totalTripFare = roundFare(baseTripCost * (1 + PROFIT_MARGIN));
   const seatFare = roundFare(totalTripFare / Math.max(seatsCount, 1));
   const suggestions = Array.from(
-    new Set([
-      roundFare(seatFare * 0.98),
-      seatFare,
-      roundFare(seatFare * 1.02),
-    ])
+    new Set([roundFare(seatFare * 0.98), seatFare, roundFare(seatFare * 1.02)]),
   );
 
   return {
@@ -120,23 +131,32 @@ export default function CreateTripScreen() {
   const updateTrip = useTripStore((state) => state.updateTrip);
   const isSubmitting = useTripStore((state) => state.isMutatingRide);
 
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
-  const [tripNotes, setTripNotes] = useState('');
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [tripNotes, setTripNotes] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [price, setPrice] = useState('');
-  const [seats, setSeats] = useState('4');
+  const [price, setPrice] = useState("");
+  const [seats, setSeats] = useState("4");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [didHydrateTrip, setDidHydrateTrip] = useState(false);
   const [hasManualPrice, setHasManualPrice] = useState(false);
-  const [routeLookupStatus, setRouteLookupStatus] = useState<RouteLookupStatus>('idle');
-  const [routeError, setRouteError] = useState('');
+  const [routeLookupStatus, setRouteLookupStatus] =
+    useState<RouteLookupStatus>("idle");
+  const [routeError, setRouteError] = useState("");
   const [routeDistanceKm, setRouteDistanceKm] = useState(0);
-  const [originCoords, setOriginCoords] = useState({ lat: 0, lon: 0, address: '' });
-  const [destinationCoords, setDestinationCoords] = useState({ lat: 0, lon: 0, address: '' });
+  const [originCoords, setOriginCoords] = useState({
+    lat: 0,
+    lon: 0,
+    address: "",
+  });
+  const [destinationCoords, setDestinationCoords] = useState({
+    lat: 0,
+    lon: 0,
+    address: "",
+  });
   const [errors, setErrors] = useState({
     origin: false,
     destination: false,
@@ -147,10 +167,13 @@ export default function CreateTripScreen() {
   const isEditMode = !!tripId;
   const existingTrip = useMemo(
     () => activeTrips.find((trip: any) => trip.id === tripId),
-    [activeTrips, tripId]
+    [activeTrips, tripId],
   );
-  const seatsCount = Math.max(parseInt(seats || '1', 10) || 1, 1);
-  const basePriceModel = useMemo(() => buildPriceModel(routeDistanceKm, seatsCount), [routeDistanceKm, seatsCount]);
+  const seatsCount = Math.max(parseInt(seats || "1", 10) || 1, 1);
+  const basePriceModel = useMemo(
+    () => buildPriceModel(routeDistanceKm, seatsCount),
+    [routeDistanceKm, seatsCount],
+  );
   const priceModel = useMemo(() => {
     if (hasManualPrice && price) {
       const customSeatFare = parseInt(price, 10) || 0;
@@ -165,7 +188,7 @@ export default function CreateTripScreen() {
   }, [basePriceModel, hasManualPrice, price, seatsCount]);
   const seatPriceFloor = useMemo(
     () => getDriverSeatFloor(basePriceModel.totalTripFare, seatsCount),
-    [basePriceModel.totalTripFare, seatsCount]
+    [basePriceModel.totalTripFare, seatsCount],
   );
 
   useEffect(() => {
@@ -177,13 +200,17 @@ export default function CreateTripScreen() {
   useEffect(() => {
     if (!existingTrip || didHydrateTrip) return;
 
-    const departure = existingTrip.departureTime ? new Date(existingTrip.departureTime) : new Date();
-    setOrigin(existingTrip.origin?.address || existingTrip.origin || '');
-    setDestination(existingTrip.destination?.address || existingTrip.destination || '');
-    setTripNotes(existingTrip.notes || existingTrip.description || '');
+    const departure = existingTrip.departureTime
+      ? new Date(existingTrip.departureTime)
+      : new Date();
+    setOrigin(existingTrip.origin?.address || existingTrip.origin || "");
+    setDestination(
+      existingTrip.destination?.address || existingTrip.destination || "",
+    );
+    setTripNotes(existingTrip.notes || existingTrip.description || "");
     setSelectedDate(departure);
-    setPrice(String(existingTrip.fare || existingTrip.price || ''));
-    setSeats(String(existingTrip.seats || existingTrip.availableSeats || '4'));
+    setPrice(String(existingTrip.fare || existingTrip.price || ""));
+    setSeats(String(existingTrip.seats || existingTrip.availableSeats || "4"));
     setHasManualPrice(true);
     setDidHydrateTrip(true);
   }, [didHydrateTrip, existingTrip]);
@@ -193,33 +220,41 @@ export default function CreateTripScreen() {
     const cleanDestination = destination.trim();
 
     if (cleanOrigin.length < 3 || cleanDestination.length < 3) {
-      setRouteLookupStatus('idle');
+      setRouteLookupStatus("idle");
       setRouteDistanceKm(0);
-      setRouteError('');
-      if (!hasManualPrice) setPrice('');
+      setRouteError("");
+      if (!hasManualPrice) setPrice("");
       return;
     }
 
     const timeout = setTimeout(async () => {
-      setRouteLookupStatus('loading');
-      setRouteError('');
+      setRouteLookupStatus("loading");
+      setRouteError("");
 
       try {
-        const routeMetrics = await fetchRouteMetrics(cleanOrigin, cleanDestination);
+        const routeMetrics = await fetchRouteMetrics(
+          cleanOrigin,
+          cleanDestination,
+        );
         setRouteDistanceKm(routeMetrics.distanceKm);
         setOriginCoords(routeMetrics.originCoords);
         setDestinationCoords(routeMetrics.destinationCoords);
-        setRouteLookupStatus('ready');
+        setRouteLookupStatus("ready");
 
         if (!hasManualPrice) {
-          const nextPriceModel = buildPriceModel(routeMetrics.distanceKm, seatsCount);
-          setPrice(nextPriceModel.seatFare ? String(nextPriceModel.seatFare) : '');
+          const nextPriceModel = buildPriceModel(
+            routeMetrics.distanceKm,
+            seatsCount,
+          );
+          setPrice(
+            nextPriceModel.seatFare ? String(nextPriceModel.seatFare) : "",
+          );
         }
       } catch (error: any) {
-        setRouteLookupStatus('error');
+        setRouteLookupStatus("error");
         setRouteDistanceKm(0);
-        setRouteError(error?.message || 'Could not calculate this route yet.');
-        if (!hasManualPrice) setPrice('');
+        setRouteError(error?.message || "Could not calculate this route yet.");
+        if (!hasManualPrice) setPrice("");
       }
     }, 700);
 
@@ -233,14 +268,18 @@ export default function CreateTripScreen() {
   };
 
   const formatDate = (date: Date) =>
-    date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
   const formatTime = (date: Date) =>
-    date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const onDateChange = (event: any, date?: Date) => {
     Keyboard.dismiss();
-    if (Platform.OS === 'android') setShowDatePicker(false);
-    if (event.type === 'dismissed') return;
+    if (Platform.OS === "android") setShowDatePicker(false);
+    if (event.type === "dismissed") return;
     if (date) {
       setSelectedDate((prev) => {
         const nextDate = new Date(date);
@@ -252,8 +291,8 @@ export default function CreateTripScreen() {
 
   const onTimeChange = (event: any, date?: Date) => {
     Keyboard.dismiss();
-    if (Platform.OS === 'android') setShowTimePicker(false);
-    if (event.type === 'dismissed') return;
+    if (Platform.OS === "android") setShowTimePicker(false);
+    if (event.type === "dismissed") return;
     if (date) {
       setSelectedDate((prev) => {
         const nextDate = new Date(prev);
@@ -280,36 +319,48 @@ export default function CreateTripScreen() {
     setErrors(newErrors);
 
     if (Object.values(newErrors).some(Boolean)) {
-      Alert.alert('Missing details', 'Fill in your route, seats, and seat price first.');
+      Alert.alert(
+        "Missing details",
+        "Fill in your route, seats, and seat price first.",
+      );
       return false;
     }
 
     if (!user) {
-      Alert.alert('Error', 'You must be logged in');
+      Alert.alert("Error", "You must be logged in");
       return false;
     }
 
-    if (routeLookupStatus === 'loading') {
-      Alert.alert('Checking route', 'Hold on while we calculate the route distance.');
+    if (routeLookupStatus === "loading") {
+      Alert.alert(
+        "Checking route",
+        "Hold on while we calculate the route distance.",
+      );
       return false;
     }
 
-    if (routeLookupStatus !== 'ready' || routeDistanceKm <= 0) {
-      Alert.alert('Route not ready', 'We need a valid route distance before this trip can go live.');
+    if (routeLookupStatus !== "ready" || routeDistanceKm <= 0) {
+      Alert.alert(
+        "Route not ready",
+        "We need a valid route distance before this trip can go live.",
+      );
       return false;
     }
 
     const numericSeatPrice = Number(price);
     if (!numericSeatPrice || numericSeatPrice < seatPriceFloor) {
       Alert.alert(
-        'Price too low',
-        `Minimum seat price for this route is ₦${seatPriceFloor.toLocaleString()} to protect trip costs.`
+        "Price too low",
+        `Minimum seat price for this route is ₦${seatPriceFloor.toLocaleString()} to protect trip costs.`,
       );
       return false;
     }
 
-    if (user?.verificationStatus !== 'approved') {
-      Alert.alert('Verification Pending', 'You cannot create a trip until your documents have been verified by an admin.');
+    if (user?.verificationStatus !== "approved") {
+      Alert.alert(
+        "Verification Pending",
+        "You cannot create a trip until your documents have been verified by an admin.",
+      );
       return false;
     }
 
@@ -319,8 +370,12 @@ export default function CreateTripScreen() {
   const buildTripPayload = () => {
     const seatCount = parseInt(seats, 10);
     const seatFare = parseInt(price, 10);
-    const existingAvailableSeats = existingTrip?.availableSeats ?? existingTrip?.seats ?? seatCount;
-    const alreadyBookedSeats = Math.max((existingTrip?.seats ?? seatCount) - existingAvailableSeats, 0);
+    const existingAvailableSeats =
+      existingTrip?.availableSeats ?? existingTrip?.seats ?? seatCount;
+    const alreadyBookedSeats = Math.max(
+      (existingTrip?.seats ?? seatCount) - existingAvailableSeats,
+      0,
+    );
 
     return {
       driverId: user?.id,
@@ -338,20 +393,23 @@ export default function CreateTripScreen() {
       fare: seatFare,
       tripFare: priceModel.totalTripFare,
       distanceKm: routeDistanceKm,
-      tier: user?.carModel || user?.vehicleType || 'Standard',
+      tier: user?.carModel || user?.vehicleType || "Standard",
       seats: seatCount,
       availableSeats: Math.max(seatCount - alreadyBookedSeats, 0),
       notes: tripNotes,
       preferences: { ac: true, luggage: true, smoking: false },
       autoAccept: false,
-      pricingScenario: 'simple_market',
+      pricingScenario: "simple_market",
       pricingBreakdown: {
         baseCost: priceModel.travelCost,
         subtotal: priceModel.travelCost + priceModel.setupCost,
         operationsBuffer: priceModel.returnCover,
         marginAmount: Math.max(
-          priceModel.totalTripFare - (priceModel.travelCost + priceModel.setupCost + priceModel.returnCover),
-          0
+          priceModel.totalTripFare -
+            (priceModel.travelCost +
+              priceModel.setupCost +
+              priceModel.returnCover),
+          0,
         ),
         finalTripFare: priceModel.totalTripFare,
         seatFare,
@@ -374,45 +432,57 @@ export default function CreateTripScreen() {
         await postTrip(payload);
       }
       setShowPreview(false);
-      Alert.alert('Success', isEditMode ? 'Trip updated successfully!' : 'Trip published successfully!', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      Alert.alert(
+        "Success",
+        isEditMode
+          ? "Trip updated successfully!"
+          : "Trip published successfully!",
+        [{ text: "OK", onPress: () => router.back() }],
+      );
     } catch (error: any) {
       Alert.alert(
-        isEditMode ? 'Update failed' : 'Publish failed',
-        error?.message || 'Could not save this trip. Please try again.'
+        isEditMode ? "Update failed" : "Publish failed",
+        error?.message || "Could not save this trip. Please try again.",
       );
     }
   };
 
   const routeStatusText =
-    routeLookupStatus === 'idle'
-      ? 'Distance starts from 0 until both route points are known.'
-      : routeLookupStatus === 'loading'
-        ? 'Calculating driving distance...'
-        : routeLookupStatus === 'ready'
+    routeLookupStatus === "idle"
+      ? "Distance starts from 0 until both route points are known."
+      : routeLookupStatus === "loading"
+        ? "Calculating driving distance..."
+        : routeLookupStatus === "ready"
           ? `${routeDistanceKm} km route confirmed.`
-          : routeError || 'Could not calculate this route yet.';
+          : routeError || "Could not calculate this route yet.";
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar style="dark" backgroundColor="#F7F8F5" />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.iconButton}
+        >
           <Ionicons name="chevron-back" size={24} color="#101828" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isEditMode ? 'Edit trip' : 'Create trip'}</Text>
+        <Text style={styles.headerTitle}>
+          {isEditMode ? "Edit trip" : "Create trip"}
+        </Text>
         <View style={styles.iconButtonGhost} />
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 120 }]}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: tabBarHeight + 120 },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -443,7 +513,8 @@ export default function CreateTripScreen() {
               value={destination}
               onChangeText={(text) => {
                 setDestination(text);
-                if (text) setErrors((prev) => ({ ...prev, destination: false }));
+                if (text)
+                  setErrors((prev) => ({ ...prev, destination: false }));
               }}
               onFocus={() => setShowSuggestions(true)}
             />
@@ -456,8 +527,14 @@ export default function CreateTripScreen() {
                     style={styles.routeSuggestionItem}
                     onPress={() => applySuggestion(route)}
                   >
-                    <Ionicons name="sparkles-outline" size={16} color={COLORS.primary} />
-                    <Text style={styles.routeSuggestionText}>{route.origin} to {route.destination}</Text>
+                    <Ionicons
+                      name="sparkles-outline"
+                      size={16}
+                      color={COLORS.primary}
+                    />
+                    <Text style={styles.routeSuggestionText}>
+                      {route.origin} to {route.destination}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -475,10 +552,16 @@ export default function CreateTripScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>When are you leaving?</Text>
             <View style={styles.quickDateRow}>
-              <TouchableOpacity style={styles.quickDateChip} onPress={() => setQuickDate(0)}>
+              <TouchableOpacity
+                style={styles.quickDateChip}
+                onPress={() => setQuickDate(0)}
+              >
                 <Text style={styles.quickDateChipText}>Today</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.quickDateChip} onPress={() => setQuickDate(1)}>
+              <TouchableOpacity
+                style={styles.quickDateChip}
+                onPress={() => setQuickDate(1)}
+              >
                 <Text style={styles.quickDateChipText}>Tomorrow</Text>
               </TouchableOpacity>
             </View>
@@ -487,34 +570,44 @@ export default function CreateTripScreen() {
                 style={styles.scheduleButton}
                 onPress={() => {
                   if (!DateTimePickerNative) {
-                    Alert.alert('Unavailable', 'Date/Time picker is not available in this runtime. Use a development build.');
+                    Alert.alert(
+                      "Unavailable",
+                      "Date/Time picker is not available in this runtime. Use a development build.",
+                    );
                     return;
                   }
                   setShowDatePicker(true);
                 }}
               >
                 <Text style={styles.scheduleLabel}>Date</Text>
-                <Text style={styles.scheduleValue}>{formatDate(selectedDate)}</Text>
+                <Text style={styles.scheduleValue}>
+                  {formatDate(selectedDate)}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.scheduleButton}
                 onPress={() => {
                   if (!DateTimePickerNative) {
-                    Alert.alert('Unavailable', 'Date/Time picker is not available in this runtime. Use a development build.');
+                    Alert.alert(
+                      "Unavailable",
+                      "Date/Time picker is not available in this runtime. Use a development build.",
+                    );
                     return;
                   }
                   setShowTimePicker(true);
                 }}
               >
                 <Text style={styles.scheduleLabel}>Time</Text>
-                <Text style={styles.scheduleValue}>{formatTime(selectedDate)}</Text>
+                <Text style={styles.scheduleValue}>
+                  {formatTime(selectedDate)}
+                </Text>
               </TouchableOpacity>
             </View>
             {showDatePicker && DateTimePickerNative && (
               <DateTimePickerNative
                 value={selectedDate}
                 mode="date"
-                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                display={Platform.OS === "ios" ? "inline" : "default"}
                 onChange={onDateChange}
                 minimumDate={new Date()}
                 themeVariant="light"
@@ -524,7 +617,7 @@ export default function CreateTripScreen() {
               <DateTimePickerNative
                 value={selectedDate}
                 mode="time"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                display={Platform.OS === "ios" ? "spinner" : "default"}
                 onChange={onTimeChange}
                 themeVariant="light"
               />
@@ -560,7 +653,8 @@ export default function CreateTripScreen() {
             />
 
             <Text style={styles.helpText}>
-              Simple pricing: trip running cost + small return cover + 10% margin, then divided by seats.
+              Simple pricing: trip running cost + small return cover + 10%
+              margin, then divided by seats.
             </Text>
             <Text style={styles.floorText}>
               Minimum allowed seat fare: ₦{seatPriceFloor.toLocaleString()}
@@ -570,7 +664,11 @@ export default function CreateTripScreen() {
               {priceModel.suggestions.map((suggestedPrice, index) => (
                 <TouchableOpacity
                   key={`seat-price-${index}-${suggestedPrice}`}
-                  style={[styles.suggestionChip, Number(price) === suggestedPrice && styles.suggestionChipActive]}
+                  style={[
+                    styles.suggestionChip,
+                    Number(price) === suggestedPrice &&
+                      styles.suggestionChipActive,
+                  ]}
                   disabled={!suggestedPrice}
                   onPress={() => {
                     setHasManualPrice(false);
@@ -580,7 +678,8 @@ export default function CreateTripScreen() {
                   <Text
                     style={[
                       styles.suggestionChipText,
-                      Number(price) === suggestedPrice && styles.suggestionChipTextActive,
+                      Number(price) === suggestedPrice &&
+                        styles.suggestionChipTextActive,
                     ]}
                   >
                     ₦{suggestedPrice.toLocaleString()}
@@ -592,14 +691,21 @@ export default function CreateTripScreen() {
             <View style={styles.pricingSummaryCard}>
               <View style={styles.pricingSummaryRow}>
                 <Text style={styles.pricingSummaryLabel}>Trip total</Text>
-                <Text style={styles.pricingSummaryValue}>₦{priceModel.totalTripFare.toLocaleString()}</Text>
+                <Text style={styles.pricingSummaryValue}>
+                  ₦{priceModel.totalTripFare.toLocaleString()}
+                </Text>
               </View>
               <View style={styles.pricingSummaryRow}>
-                <Text style={styles.pricingSummaryLabel}>Recommended seat price</Text>
-                <Text style={styles.pricingSummaryValue}>₦{priceModel.seatFare.toLocaleString()}</Text>
+                <Text style={styles.pricingSummaryLabel}>
+                  Recommended seat price
+                </Text>
+                <Text style={styles.pricingSummaryValue}>
+                  ₦{priceModel.seatFare.toLocaleString()}
+                </Text>
               </View>
               <Text style={styles.pricingSummaryHint}>
-                Fixed cost here means a small trip setup cost for loading, timing, and route prep.
+                Fixed cost here means a small trip setup cost for loading,
+                timing, and route prep.
               </Text>
             </View>
           </View>
@@ -618,86 +724,133 @@ export default function CreateTripScreen() {
           </View>
         </ScrollView>
 
-        <View style={[styles.footer, { bottom: tabBarHeight, paddingBottom: Math.max(insets.bottom, 11) }]}>
+        <View
+          style={[
+            styles.footer,
+            {
+              bottom: tabBarHeight,
+              paddingBottom: Math.max(insets.bottom, 11),
+            },
+          ]}
+        >
           <View>
             <Text style={styles.footerLabel}>Seat price</Text>
-            <Text style={styles.footerValue}>₦{Number(price || 0).toLocaleString()}</Text>
+            <Text style={styles.footerValue}>
+              ₦{Number(price || 0).toLocaleString()}
+            </Text>
           </View>
           <TouchableOpacity style={styles.footerButton} onPress={openPreview}>
-            <Text style={styles.footerButtonText}>{isEditMode ? 'Preview update' : 'Preview trip'}</Text>
+            <Text style={styles.footerButtonText}>
+              {isEditMode ? "Preview update" : "Preview trip"}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
 
-      <Modal visible={showPreview} transparent animationType="slide" onRequestClose={() => setShowPreview(false)}>
+      <Modal
+        visible={showPreview}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPreview(false)}
+      >
         <View style={styles.previewBackdrop}>
           <View style={styles.previewSheet}>
             <View style={styles.previewHandle} />
-            <Text style={styles.previewTitle}>{isEditMode ? 'Confirm update' : 'Confirm trip'}</Text>
-            <Text style={styles.previewSubtitle}>Review everything before your route goes live.</Text>
+            <Text style={styles.previewTitle}>
+              {isEditMode ? "Confirm update" : "Confirm trip"}
+            </Text>
+            <Text style={styles.previewSubtitle}>
+              Review everything before your route goes live.
+            </Text>
 
             <View style={styles.previewCard}>
               <View style={styles.previewRouteRow}>
                 <View style={styles.previewRouteDot} />
                 <View style={styles.previewRouteTextWrap}>
                   <Text style={styles.previewLabel}>From</Text>
-                  <Text style={styles.previewValue}>{origin || 'Origin'}</Text>
+                  <Text style={styles.previewValue}>{origin || "Origin"}</Text>
                 </View>
               </View>
               <View style={styles.previewRouteDivider} />
               <View style={styles.previewRouteRow}>
-                <View style={[styles.previewRouteDot, styles.previewRouteDotAlt]} />
+                <View
+                  style={[styles.previewRouteDot, styles.previewRouteDotAlt]}
+                />
                 <View style={styles.previewRouteTextWrap}>
                   <Text style={styles.previewLabel}>To</Text>
-                  <Text style={styles.previewValue}>{destination || 'Destination'}</Text>
+                  <Text style={styles.previewValue}>
+                    {destination || "Destination"}
+                  </Text>
                 </View>
               </View>
 
               <View style={styles.previewGrid}>
                 <View style={styles.previewChip}>
                   <Text style={styles.previewChipLabel}>Distance</Text>
-                  <Text style={styles.previewChipValue}>{routeDistanceKm} km</Text>
+                  <Text style={styles.previewChipValue}>
+                    {routeDistanceKm} km
+                  </Text>
                 </View>
                 <View style={styles.previewChip}>
                   <Text style={styles.previewChipLabel}>Departure</Text>
-                  <Text style={styles.previewChipValue}>{formatDate(selectedDate)} • {formatTime(selectedDate)}</Text>
+                  <Text style={styles.previewChipValue}>
+                    {formatDate(selectedDate)} • {formatTime(selectedDate)}
+                  </Text>
                 </View>
                 <View style={styles.previewChip}>
                   <Text style={styles.previewChipLabel}>Vehicle</Text>
-                  <Text style={styles.previewChipValue}>{user?.carModel || 'Registered Vehicle'}</Text>
+                  <Text style={styles.previewChipValue}>
+                    {user?.carModel || "Registered Vehicle"}
+                  </Text>
                 </View>
                 <View style={styles.previewChip}>
                   <Text style={styles.previewChipLabel}>Seats</Text>
-                  <Text style={styles.previewChipValue}>{seatsCount} seat{seatsCount > 1 ? 's' : ''}</Text>
+                  <Text style={styles.previewChipValue}>
+                    {seatsCount} seat{seatsCount > 1 ? "s" : ""}
+                  </Text>
                 </View>
                 <View style={styles.previewChip}>
                   <Text style={styles.previewChipLabel}>Price / seat</Text>
-                  <Text style={styles.previewChipValue}>₦{Number(price || 0).toLocaleString()}</Text>
+                  <Text style={styles.previewChipValue}>
+                    ₦{Number(price || 0).toLocaleString()}
+                  </Text>
                 </View>
                 <View style={styles.previewChip}>
                   <Text style={styles.previewChipLabel}>Trip total</Text>
-                  <Text style={styles.previewChipValue}>₦{priceModel.totalTripFare.toLocaleString()}</Text>
+                  <Text style={styles.previewChipValue}>
+                    ₦{priceModel.totalTripFare.toLocaleString()}
+                  </Text>
                 </View>
               </View>
 
               {!!tripNotes.trim() && (
                 <View style={styles.previewNotesBlock}>
                   <Text style={styles.previewLabel}>Driver note</Text>
-                  <Text style={styles.previewNotesText}>{tripNotes.trim()}</Text>
+                  <Text style={styles.previewNotesText}>
+                    {tripNotes.trim()}
+                  </Text>
                 </View>
               )}
             </View>
 
             <View style={styles.previewActions}>
-              <TouchableOpacity style={styles.previewSecondaryButton} onPress={() => setShowPreview(false)}>
+              <TouchableOpacity
+                style={styles.previewSecondaryButton}
+                onPress={() => setShowPreview(false)}
+              >
                 <Text style={styles.previewSecondaryText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.previewPrimaryButton, isSubmitting && styles.previewPrimaryButtonDisabled]}
+                style={[
+                  styles.previewPrimaryButton,
+                  isSubmitting && styles.previewPrimaryButtonDisabled,
+                ]}
                 onPress={submitTrip}
                 disabled={isSubmitting}
               >
-                <Text style={styles.previewPrimaryText}>{isSubmitting ? 'Saving...' : 'Confirm'}</Text>
+                <Text style={styles.previewPrimaryText}>
+                  {isSubmitting ? "Saving..." : "Confirm"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -710,30 +863,30 @@ export default function CreateTripScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8F5',
+    backgroundColor: "#F7F8F5",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: SPACING.l,
     paddingVertical: SPACING.m,
-    backgroundColor: '#F7F8F5',
+    backgroundColor: "#F7F8F5",
   },
   iconButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
   },
   iconButtonGhost: {
     width: 40,
     height: 40,
   },
   headerTitle: {
-    color: '#101828',
+    color: "#101828",
     fontSize: 20,
     fontFamily: Fonts.semibold,
   },
@@ -743,31 +896,31 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   heroCard: {
-    backgroundColor: '#17321C',
+    backgroundColor: "#17321C",
     borderRadius: 24,
     padding: SPACING.l,
   },
   heroTitle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 24,
     fontFamily: Fonts.bold,
     marginBottom: 6,
   },
   heroText: {
-    color: '#D8F3DC',
+    color: "#D8F3DC",
     fontSize: 14,
     fontFamily: Fonts.rounded,
     lineHeight: 20,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 22,
     padding: SPACING.l,
     borderWidth: 1,
-    borderColor: '#ECEEF0',
+    borderColor: "#ECEEF0",
   },
   cardTitle: {
-    color: '#101828',
+    color: "#101828",
     fontSize: 17,
     fontFamily: Fonts.semibold,
     marginBottom: 12,
@@ -776,16 +929,16 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D0D5DD',
-    backgroundColor: '#FFFFFF',
+    borderColor: "#D0D5DD",
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: 14,
-    color: '#101828',
+    color: "#101828",
     fontFamily: Fonts.rounded,
     fontSize: 15,
     marginBottom: 10,
   },
   inputError: {
-    borderColor: '#D92D20',
+    borderColor: "#D92D20",
   },
   routeSuggestionWrap: {
     marginTop: 4,
@@ -793,11 +946,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   routeSuggestionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     borderRadius: 14,
-    backgroundColor: '#F4FBF6',
+    backgroundColor: "#F4FBF6",
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -809,30 +962,30 @@ const styles = StyleSheet.create({
   routeStatusCard: {
     marginTop: 6,
     borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: "#F8FAFC",
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E4E7EC',
+    borderColor: "#E4E7EC",
     gap: 4,
   },
   metricLabel: {
-    color: '#667085',
+    color: "#667085",
     fontSize: 12,
     fontFamily: Fonts.rounded,
   },
   metricValue: {
-    color: '#101828',
+    color: "#101828",
     fontSize: 24,
     fontFamily: Fonts.bold,
   },
   routeStatusText: {
-    color: '#667085',
+    color: "#667085",
     fontSize: 13,
     fontFamily: Fonts.rounded,
     lineHeight: 18,
   },
   quickDateRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
     marginBottom: 12,
   },
@@ -840,7 +993,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: '#EEF6F0',
+    backgroundColor: "#EEF6F0",
   },
   quickDateChipText: {
     color: COLORS.primary,
@@ -848,31 +1001,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   scheduleRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
   },
   scheduleButton: {
     flex: 1,
     borderRadius: 16,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: "#FAFAFA",
     borderWidth: 1,
-    borderColor: '#E4E7EC',
+    borderColor: "#E4E7EC",
     padding: 14,
   },
   scheduleLabel: {
-    color: '#344054',
+    color: "#344054",
     fontSize: 12,
     fontFamily: Fonts.rounded,
     marginBottom: 4,
   },
   scheduleValue: {
-    color: '#101828',
+    color: "#101828",
     fontSize: 14,
     fontFamily: Fonts.semibold,
   },
   vehicleRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     marginBottom: 12,
   },
@@ -880,80 +1033,80 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: '#F2F4F7',
+    backgroundColor: "#F2F4F7",
   },
   vehicleChipActive: {
-    backgroundColor: '#17321C',
+    backgroundColor: "#17321C",
   },
   vehicleChipText: {
-    color: '#344054',
+    color: "#344054",
     fontSize: 12,
     fontFamily: Fonts.semibold,
   },
   vehicleChipTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   helpText: {
-    color: '#667085',
+    color: "#667085",
     fontSize: 12,
     fontFamily: Fonts.rounded,
     lineHeight: 18,
     marginBottom: 6,
   },
   floorText: {
-    color: '#B54708',
+    color: "#B54708",
     fontSize: 12,
     fontFamily: Fonts.semibold,
     marginBottom: 10,
   },
   suggestionRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
     marginBottom: 12,
   },
   suggestionChip: {
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: '#F2F4F7',
+    backgroundColor: "#F2F4F7",
   },
   suggestionChipActive: {
     backgroundColor: COLORS.primary,
   },
   suggestionChipText: {
-    color: '#344054',
+    color: "#344054",
     fontSize: 12,
     fontFamily: Fonts.semibold,
   },
   suggestionChipTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   pricingSummaryCard: {
     borderRadius: 16,
-    backgroundColor: '#FFFCF5',
+    backgroundColor: "#FFFCF5",
     borderWidth: 1,
-    borderColor: '#F3E3AE',
+    borderColor: "#F3E3AE",
     padding: 14,
     gap: 8,
   },
   pricingSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     gap: 12,
   },
   pricingSummaryLabel: {
-    color: '#7A5200',
+    color: "#7A5200",
     fontSize: 12,
     fontFamily: Fonts.rounded,
   },
   pricingSummaryValue: {
-    color: '#7A5200',
+    color: "#7A5200",
     fontSize: 13,
     fontFamily: Fonts.semibold,
   },
   pricingSummaryHint: {
-    color: '#9A6700',
+    color: "#9A6700",
     fontSize: 11,
     fontFamily: Fonts.rounded,
     lineHeight: 16,
@@ -961,33 +1114,33 @@ const styles = StyleSheet.create({
   noteInput: {
     height: 120,
     minHeight: 120,
-    width: '100%',
+    width: "100%",
     paddingTop: 14,
     paddingBottom: 14,
   },
   footer: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
-    borderTopColor: '#ECEEF0',
+    borderTopColor: "#ECEEF0",
     paddingHorizontal: SPACING.l,
     paddingTop: 12,
     paddingBottom: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
   },
   footerLabel: {
-    color: '#667085',
+    color: "#667085",
     fontSize: 12,
     fontFamily: Fonts.rounded,
   },
   footerValue: {
-    color: '#101828',
+    color: "#101828",
     fontSize: 18,
     fontFamily: Fonts.bold,
   },
@@ -996,37 +1149,37 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 20,
     backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   footerButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 15,
     fontFamily: Fonts.semibold,
   },
   previewBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(15, 23, 42, 0.35)",
+    justifyContent: "flex-end",
   },
   previewSheet: {
-    backgroundColor: '#FFFDF8',
+    backgroundColor: "#FFFDF8",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     padding: SPACING.l,
     paddingBottom: SPACING.xl,
   },
   previewHandle: {
-    alignSelf: 'center',
+    alignSelf: "center",
     width: 44,
     height: 5,
     borderRadius: 999,
-    backgroundColor: '#D0D5DD',
+    backgroundColor: "#D0D5DD",
     marginBottom: SPACING.m,
   },
   previewTitle: {
     fontSize: 22,
-    color: '#142013',
+    color: "#142013",
     fontFamily: Fonts.bold,
     marginBottom: 4,
   },
@@ -1038,14 +1191,14 @@ const styles = StyleSheet.create({
   },
   previewCard: {
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     padding: SPACING.l,
     borderWidth: 1,
-    borderColor: '#E4E7EC',
+    borderColor: "#E4E7EC",
   },
   previewRouteRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 10,
   },
   previewRouteDot: {
@@ -1056,7 +1209,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   previewRouteDotAlt: {
-    backgroundColor: '#F97316',
+    backgroundColor: "#F97316",
   },
   previewRouteTextWrap: {
     flex: 1,
@@ -1064,7 +1217,7 @@ const styles = StyleSheet.create({
   previewRouteDivider: {
     width: 1,
     height: 22,
-    backgroundColor: '#D0D5DD',
+    backgroundColor: "#D0D5DD",
     marginLeft: 5,
     marginVertical: 8,
   },
@@ -1076,18 +1229,18 @@ const styles = StyleSheet.create({
   },
   previewValue: {
     fontSize: 16,
-    color: '#101828',
+    color: "#101828",
     fontFamily: Fonts.semibold,
   },
   previewGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
     marginTop: SPACING.l,
   },
   previewChip: {
-    width: '48%',
-    backgroundColor: '#F8FAFC',
+    width: "48%",
+    backgroundColor: "#F8FAFC",
     borderRadius: 14,
     padding: 12,
   },
@@ -1099,23 +1252,23 @@ const styles = StyleSheet.create({
   },
   previewChipValue: {
     fontSize: 14,
-    color: '#111827',
+    color: "#111827",
     fontFamily: Fonts.semibold,
   },
   previewNotesBlock: {
     marginTop: SPACING.m,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: '#FFF7E8',
+    backgroundColor: "#FFF7E8",
   },
   previewNotesText: {
-    color: '#7A5200',
+    color: "#7A5200",
     fontSize: 13,
     fontFamily: Fonts.rounded,
     lineHeight: 18,
   },
   previewActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     marginTop: SPACING.l,
   },
@@ -1124,13 +1277,13 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D0D5DD',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    borderColor: "#D0D5DD",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
   },
   previewSecondaryText: {
-    color: '#344054',
+    color: "#344054",
     fontFamily: Fonts.semibold,
     fontSize: 14,
   },
@@ -1138,15 +1291,15 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 48,
     borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: COLORS.primary,
   },
   previewPrimaryButtonDisabled: {
     opacity: 0.7,
   },
   previewPrimaryText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontFamily: Fonts.semibold,
     fontSize: 14,
   },
