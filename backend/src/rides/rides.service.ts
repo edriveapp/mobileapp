@@ -122,22 +122,31 @@ export class RidesService {
     }
 
     private sanitizePassengerForDriver(ride: Ride) {
-        if (!ride?.passenger) return ride;
-        const p = ride.passenger as any;
-        // Build a safe plain object — avoids TypeORM class-instance spread issues
-        // Expose only first name to protect passenger privacy
-        const storedName: string = String(p.firstName || p.name || '').trim();
-        const firstName = storedName.split(' ')[0] || p.email || p.phone || 'Passenger';
-        const isActive = [RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS].includes(ride.status);
-        (ride as any).passenger = {
-            id: p.id,
-            firstName,
-            lastName: '',
-            email: isActive ? p.email : null,
-            phone: isActive ? p.phone : null,
-            rating: p.rating,
-            avatarUrl: p.avatarUrl,
+        const sanitize = (p: any, isActive: boolean) => {
+            if (!p) return p;
+            const storedName: string = String(p.firstName || p.name || '').trim();
+            const firstName = storedName.split(' ')[0] || p.email || p.phone || 'Passenger';
+            return {
+                id: p.id,
+                firstName,
+                lastName: '',
+                email: isActive ? p.email : null,
+                phone: isActive ? p.phone : null,
+                rating: p.rating,
+                avatarUrl: p.avatarUrl,
+            };
         };
+
+        const isActive = [RideStatus.ACCEPTED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS].includes(ride.status);
+        if (ride?.passenger) {
+            (ride as any).passenger = sanitize(ride.passenger as any, isActive);
+        }
+        if (Array.isArray((ride as any)?.bookings)) {
+            (ride as any).bookings = (ride as any).bookings.map((booking: any) => ({
+                ...booking,
+                passenger: sanitize(booking?.passenger, isActive),
+            }));
+        }
         return ride;
     }
 
@@ -411,6 +420,7 @@ export class RidesService {
             paymentMethod,
             paymentStatus,
             fareCharged: Number(ride.fare || ride.tripFare || 0),
+            paystackReference: data.paystackReference ?? data.paymentReference ?? null,
         });
         await this.bookingsRepository.save(booking);
 
@@ -560,22 +570,34 @@ export class RidesService {
             throw new BadRequestException(`Cannot cancel a ride that is ${ride.status}`);
         }
 
-        if (isDriver || isMainPassenger) {
+        const isDriverPublishedTrip = !!ride.driverId;
+        if (isDriver) {
             ride.status = RideStatus.CANCELLED;
             await this.ridesRepository.save(ride);
-            
             await this.bookingsRepository.update({ rideId }, { status: BookingStatus.CANCELLED });
             await this.setRideState(rideId, RideStatus.CANCELLED);
-        } else if (booking) {
+        } else if (booking && isDriverPublishedTrip) {
             booking.status = BookingStatus.CANCELLED;
             await this.bookingsRepository.save(booking);
-            
-            ride.availableSeats += booking.seatsBooked;
+
+            ride.availableSeats = Math.min(Number(ride.seats || 1), Number(ride.availableSeats || 0) + Number(booking.seatsBooked || 1));
+            if (ride.passengerId === userId) {
+                const replacement = await this.bookingsRepository.findOne({
+                    where: { rideId, status: BookingStatus.CONFIRMED },
+                    order: { createdAt: 'ASC' },
+                });
+                ride.passengerId = replacement?.passengerId ?? null;
+            }
             if (ride.status === RideStatus.ACCEPTED && ride.availableSeats > 0) {
                 ride.status = RideStatus.SEARCHING;
                 await this.setRideState(rideId, RideStatus.SEARCHING);
             }
             await this.ridesRepository.save(ride);
+        } else if (isMainPassenger) {
+            // Passenger-owned ride request with no driver-published seat booking.
+            ride.status = RideStatus.CANCELLED;
+            await this.ridesRepository.save(ride);
+            await this.setRideState(rideId, RideStatus.CANCELLED);
         }
 
         const result = (await this.findRideById(rideId)) as Ride;
@@ -595,23 +617,29 @@ export class RidesService {
             paystackReference?: string;
             paymentReference?: string;
             estimatedDurationMinutes?: number;
+            grossAmount?: number;
         },
     ): Promise<Ride> {
         const ride = await this.ridesRepository.findOne({ where: { id: rideId }, relations: ['driver'] });
         if (!ride) throw new NotFoundException('Ride not found');
 
-        // Guard against double-payment
-        if (ride.paymentStatus === 'paid') {
+        // Guard against exact duplicate ride-level payment processing while allowing
+        // additional seat payments on a published multi-passenger trip.
+        const incomingReference = details?.paymentReference || details?.paystackReference;
+        if (ride.paymentStatus === 'paid' && (!incomingReference || incomingReference === ride.paymentReference || incomingReference === ride.paystackReference)) {
             return ride;
         }
 
-        // Validate the total paid amount is within 1% of the recorded fare
-        if (status === 'paid' && ride.tripFare != null && ride.tripFare > 0) {
-            const totalPaid = Number(details?.driverNetEarnings || 0) + Number(details?.platformCut || 0) + Number(details?.insuranceReserveAmount || 0);
-            const recordedFare = Number(ride.tripFare);
+        // Validate the total paid amount is within 1% of the actual charged amount.
+        // Published trips charge per seat (ride.fare); passenger-created private rides charge tripFare.
+        if (status === 'paid') {
+            const totalPaid = Number(details?.grossAmount ?? 0) ||
+                Number(details?.driverNetEarnings || 0) + Number(details?.platformCut || 0) + Number(details?.insuranceReserveAmount || 0);
+            const hasSeatBookings = await this.bookingsRepository.exist({ where: { rideId, status: BookingStatus.CONFIRMED } });
+            const recordedFare = Number(hasSeatBookings ? (ride.fare || ride.tripFare || 0) : (ride.tripFare || ride.fare || 0));
             const tolerance = recordedFare * 0.01;
-            if (Math.abs(totalPaid - recordedFare) > Math.max(tolerance, 1)) {
-                throw new BadRequestException(`Payment amount ₦${totalPaid} does not match ride fare ₦${recordedFare}`);
+            if (recordedFare > 0 && Math.abs(totalPaid - recordedFare) > Math.max(tolerance, 1)) {
+                throw new BadRequestException(`Payment amount ₦${totalPaid} does not match expected fare ₦${recordedFare}`);
             }
         }
 
@@ -647,7 +675,7 @@ export class RidesService {
             if (!driver) throw new Error('Driver not found for payment allocation');
 
             const isCash = ride.paymentMethod === 'cash';
-            const grossFare = Number(ride.tripFare || 0);
+            const grossFare = Number(details?.grossAmount ?? ride.tripFare ?? ride.fare ?? 0);
             const platformCut = Number(ride.platformCutAmount ?? ride.platformCut ?? 0);
             const insuranceReserveAmount = Number(ride.insuranceReserveAmount || 0);
             const driverNetEarnings = Number(ride.driverNetEarnings ?? ride.driverEarnings ?? 0);
@@ -792,6 +820,8 @@ export class RidesService {
             .leftJoinAndSelect('ride.driver', 'driver')
             .leftJoinAndSelect('driver.driverProfile', 'driverProfile')
             .leftJoinAndSelect('ride.passenger', 'passenger')
+            .leftJoinAndSelect('ride.bookings', 'booking', 'booking.status != :cancelledBookingStatus', { cancelledBookingStatus: BookingStatus.CANCELLED })
+            .leftJoinAndSelect('booking.passenger', 'bookingPassenger')
             .where('ride.status IN (:...statuses)', { statuses: activeStatuses })
             .orderBy('ride.createdAt', 'DESC');
 

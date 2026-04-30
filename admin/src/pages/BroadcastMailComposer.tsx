@@ -505,12 +505,7 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
           <div style="margin-bottom:12px;text-align:center;font-size:12px;color:#64748b;">Preview with <strong>Alex</strong> as {{firstname}}</div>
           <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;box-shadow:0 12px 30px rgba(15,23,42,0.08);">
             <div style="padding:24px 28px;border-bottom:1px solid #e5e7eb;">
-              <div style="font-size:28px;font-weight:800;letter-spacing:-0.04em;color:#005124;"><span style="display:inline-block;font-style:italic;transform:skew(-14deg) rotate(-8deg);transform-origin:50% 60%;margin-right:1px;">e</span>drive</div>
-              <div style="margin-top:14px;font-size:12px;line-height:1.7;color:#64748b;">
-                <div><strong style="color:#334155;">From:</strong> ${escapeHtml(senderEmail || defaultSenderEmail)}</div>
-                <div><strong style="color:#334155;">Subject:</strong> ${escapeHtml(caption || 'Campaign subject')}</div>
-                ${previewText ? `<div><strong style="color:#334155;">Inbox preview:</strong> ${escapeHtml(previewText)}</div>` : ''}
-              </div>
+              <div style="font-size:28px;font-weight:800;letter-spacing:-0.04em;color:#005124;"><span style="display:inline-block;transform:rotate(-22.26deg);transform-origin:50% 60%;margin-right:1px;">e</span>drive</div>
             </div>
             <div style="padding:28px;">
               <h1 style="margin:0 0 10px;font-size:24px;line-height:1.25;color:#0f172a;">${escapeHtml(caption || 'Campaign subject')}</h1>
@@ -518,6 +513,17 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
               <div style="height:1px;background:#e5e7eb;margin:0 0 22px;"></div>
               <div style="font-size:15px;line-height:1.75;color:#334155;">${safeBody || '<p style="color:#94a3b8">Your message preview appears here.</p>'}</div>
               ${attachmentHtml}
+            </div>
+            <div style="padding:0 28px 24px;text-align:center;background:#ffffff;">
+              <div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Get the edrive app</div>
+              <div>
+                <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="display:inline-block;width:136px;height:auto;margin:0 6px;vertical-align:middle;" />
+                <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" style="display:inline-block;width:122px;height:auto;margin:0 6px;vertical-align:middle;" />
+              </div>
+            </div>
+            <div style="padding:20px 28px;text-align:center;background:#f8fafc;border-top:1px solid #e5e7eb;">
+              <p style="margin:0 0 8px;font-size:12px;color:#64748b;">If you'd like to report an issue, reach out to <span style="color:#047857;text-decoration:underline;">edrive support</span></p>
+              <p style="margin:0;font-size:11px;color:#94a3b8;">© 2026 edrive Technologies. All rights reserved.</p>
             </div>
           </div>
         </div>

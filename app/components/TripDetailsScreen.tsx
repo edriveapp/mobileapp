@@ -749,6 +749,7 @@ export default function TripDetailsScreen() {
               <TouchableOpacity
                 style={styles.modalPrimaryButton}
                 onPress={handleChatDriver}
+                activeOpacity={0.85}
               >
                 <Text style={styles.modalPrimaryText}>Chat</Text>
               </TouchableOpacity>

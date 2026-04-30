@@ -18,6 +18,10 @@ export interface BroadcastEmailProps {
   bodyHtml: string;
   previewText?: string;
   supportEmail?: string;
+  appStoreUrl?: string;
+  googlePlayUrl?: string;
+  appStoreBadgeUrl?: string;
+  googlePlayBadgeUrl?: string;
   year?: number;
 }
 
@@ -98,6 +102,10 @@ export function generateBroadcastEmailHtml({
   bodyHtml,
   previewText = '',
   supportEmail = 'support@edriveapp.com',
+  appStoreUrl = '#',
+  googlePlayUrl = '#',
+  appStoreBadgeUrl = 'https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg',
+  googlePlayBadgeUrl = 'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png',
   year = new Date().getFullYear(),
 }: BroadcastEmailProps): string {
   const safeBody = sanitizeEmailHtml(bodyHtml);
@@ -147,7 +155,7 @@ export function generateBroadcastEmailHtml({
           <tr>
             <td style="background-color:#005124;padding:28px 40px;text-align:center;">
               <p style="margin:0;font-family:'DM Sans',Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;
-                color:#ffffff;letter-spacing:-0.5px;"><span style="display:inline-block;font-style:italic;transform:skew(-14deg) rotate(-8deg);transform-origin:50% 60%;margin-right:1px;">e</span>drive</p>
+                color:#ffffff;letter-spacing:-0.5px;"><span style="display:inline-block;transform:rotate(-22.26deg);transform-origin:50% 60%;margin-right:1px;">e</span>drive</p>
               <p style="margin:6px 0 0;font-size:12px;color:#a3d4b5;letter-spacing:0.8px;text-transform:uppercase;">
                travel with comfort
               </p>
@@ -183,6 +191,29 @@ export function generateBroadcastEmailHtml({
                 ${styledBody}
               </div>
 
+            </td>
+          </tr>
+
+          <!-- APP DOWNLOADS -->
+          <tr>
+            <td style="background-color:#181818;padding:0 40px 32px;text-align:center;">
+              <p style="margin:0 0 14px;font-size:12px;color:#777777;letter-spacing:0.12em;text-transform:uppercase;">
+                Get the edrive app
+              </p>
+              <table cellpadding="0" cellspacing="0" role="presentation" align="center">
+                <tr>
+                  <td style="padding:0 6px;">
+                    <a href="${googlePlayUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">
+                      <img src="${googlePlayBadgeUrl}" width="136" alt="Get it on Google Play" style="display:block;width:136px;max-width:136px;height:auto;border:0;" />
+                    </a>
+                  </td>
+                  <td style="padding:0 6px;">
+                    <a href="${appStoreUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">
+                      <img src="${appStoreBadgeUrl}" width="122" alt="Download on the App Store" style="display:block;width:122px;max-width:122px;height:auto;border:0;" />
+                    </a>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 

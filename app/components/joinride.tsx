@@ -660,8 +660,13 @@ export default function JoinRideView({
   const handleSubmitLiveRequest = async (details: RequestDetails) => {
     try {
       setIsCreatingLiveRequest(true);
-      const currentState = await LocationService.getCurrentState();
-      
+      let currentState = '';
+      try {
+        currentState = await LocationService.getCurrentState();
+      } catch {
+        currentState = '';
+      }
+
       const floorPrice = getRiderOfferFloor(
         estimatedPrivateRequestPrice,
         details.rideMode === 'shared' ? 'shared' : 'solo'

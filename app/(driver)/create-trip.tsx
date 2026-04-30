@@ -265,6 +265,8 @@ export default function CreateTripScreen() {
     const date = new Date();
     date.setDate(date.getDate() + offsetDays);
     setSelectedDate(date);
+    setShowDatePicker(false);
+    setShowTimePicker(false);
   };
 
   const formatDate = (date: Date) =>
@@ -278,7 +280,7 @@ export default function CreateTripScreen() {
 
   const onDateChange = (event: any, date?: Date) => {
     Keyboard.dismiss();
-    if (Platform.OS === "android") setShowDatePicker(false);
+    setShowDatePicker(false);
     if (event.type === "dismissed") return;
     if (date) {
       setSelectedDate((prev) => {
@@ -291,7 +293,7 @@ export default function CreateTripScreen() {
 
   const onTimeChange = (event: any, date?: Date) => {
     Keyboard.dismiss();
-    if (Platform.OS === "android") setShowTimePicker(false);
+    setShowTimePicker(false);
     if (event.type === "dismissed") return;
     if (date) {
       setSelectedDate((prev) => {

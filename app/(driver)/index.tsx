@@ -40,8 +40,9 @@ export default function DriverHome() {
     };
 
     const getPassengerName = (ride: any) => {
-        const firstName = String(ride?.passenger?.firstName || '').trim();
-        return firstName || ride?.passenger?.name || ride?.passenger?.email || ride?.passenger?.phone || 'Passenger';
+        const passenger = ride?.passenger || ride?.bookings?.[0]?.passenger;
+        const firstName = String(passenger?.firstName || '').trim();
+        return firstName || passenger?.name || passenger?.email || passenger?.phone || 'Passenger';
     };
 
     const getRouteAddress = (value: any, fallback: string) => {
@@ -348,7 +349,6 @@ export default function DriverHome() {
                                             </Text>
                                         </View>
                                         <View style={styles.tripStatusPill}>
-                                            <Ionicons name="speedometer-outline" size={12} color="#475467" style={{ marginRight: 4 }} />
                                             <Text style={styles.tripStatusPillText}>{String(trip.status || 'active')}</Text>
                                         </View>
                                     </View>
@@ -359,7 +359,7 @@ export default function DriverHome() {
                                             {Number(trip.fare || trip.price || 0).toLocaleString()}
                                         </Text>
                                     </View>
-                                    {!isSearchTrip && (
+                                    {(trip.passenger || trip.passengerId || trip.bookings?.length) && (
                                         <View style={styles.tripPickupCard}>
                                             <Ionicons name="pin" size={16} color={COLORS.primary} />
                                             <View style={{ flex: 1 }}>

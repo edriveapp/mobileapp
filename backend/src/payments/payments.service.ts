@@ -139,6 +139,7 @@ export class PaymentsService {
       paymentReference: payload?.reference,
       estimatedDurationMinutes,
       pickupLocation,
+      grossAmount: amount,
     };
 
     if (ride.passengerId === userId || ride.driverId === userId) {
