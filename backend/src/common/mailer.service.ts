@@ -1,12 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+export interface EmailAttachment {
+    filename: string;
+    content: Buffer | string;
+    contentType?: string;
+}
+
 export interface BatchEmailMessage {
     to: string;
     subject: string;
     html: string;
     text?: string;
     from: string;
+    attachments?: EmailAttachment[];
+}
+
+export interface SimpleEmailTemplate {
+    title: string;
+    content: string;
+    cta?: { text: string; url: string };
+    footerText?: string;
+    logoUrl?: string;
 }
 
 @Injectable()
@@ -39,12 +54,48 @@ export class MailerService {
         return `"edrive" <${trimmed}>`;
     }
 
+    buildSimpleTemplate(template: SimpleEmailTemplate): string {
+        const { title, content, cta, footerText, logoUrl } = template;
+        const logo = logoUrl
+            ? `<div style="text-align: right; margin-bottom: 24px;"><img src="${logoUrl}" alt="eDrive" style="height: 32px;" /></div>`
+            : '';
+        const ctaHtml = cta
+            ? `<div style="text-align: center; margin: 24px 0;"><a href="${cta.url}" style="display: inline-block; padding: 12px 24px; background: #00A651; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">${cta.text}</a></div>`
+            : '';
+        const footer = footerText
+            ? `<hr style="margin: 24px 0; border: none; border-top: 1px solid #e0e0e0;" /><p style="font-size: 12px; color: #999; margin: 0;">${footerText}</p>`
+            : '';
+
+        return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+        a { color: #00A651; }
+        h1, h2, h3 { margin: 0 0 12px 0; }
+    </style>
+</head>
+<body style="margin: 0; padding: 20px; background: #f9f9f9;">
+    <div style="max-width: 600px; margin: 0 auto; background: white; padding: 32px; border-radius: 8px;">
+        ${logo}
+        <h1 style="margin: 0 0 16px 0; font-size: 24px;">${title}</h1>
+        <div style="color: #555; line-height: 1.8;">${content}</div>
+        ${ctaHtml}
+        ${footer}
+    </div>
+</body>
+</html>
+        `.trim();
+    }
+
     async sendEmail(
         to: string[],
         subject: string,
         html: string,
         text?: string,
-        options?: { from?: string },
+        options?: { from?: string; attachments?: EmailAttachment[] },
     ) {
         const recipients = Array.from(new Set((to || []).map((v) => v?.trim()).filter(Boolean)));
         if (!recipients.length) return { sent: false, reason: 'no_recipients' };
@@ -53,7 +104,7 @@ export class MailerService {
         const from = this.formatFromAddress(options?.from?.trim() || this.getDefaultFromEmail());
 
         if (provider === 'resend') {
-            return this.sendWithResend(recipients, from, subject, html, text);
+            return this.sendWithResend(recipients, from, subject, html, text, options?.attachments);
         }
 
         this.logger.log(
@@ -116,6 +167,7 @@ export class MailerService {
         subject: string,
         html: string,
         text?: string,
+        attachments?: EmailAttachment[],
     ) {
         const apiKey = this.configService.get<string>('RESEND_API_KEY');
         if (!apiKey) {
@@ -124,6 +176,9 @@ export class MailerService {
         }
 
         try {
+            const basePayload = { from, subject, html, ...(text ? { text } : {}) };
+            const payload = attachments ? { ...basePayload, attachments } : basePayload;
+
             if (to.length === 1) {
                 const response = await fetch('https://api.resend.com/emails', {
                     method: 'POST',
@@ -131,7 +186,7 @@ export class MailerService {
                         Authorization: `Bearer ${apiKey}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ from, to: to[0], subject, html, text }),
+                    body: JSON.stringify({ ...payload, to: to[0] }),
                 });
 
                 if (!response.ok) {
@@ -143,7 +198,7 @@ export class MailerService {
             }
 
             // Multiple recipients — batch so each gets their own addressed email
-            const messages = to.map((address) => ({ from, to: [address], subject, html, text }));
+            const messages = to.map((address) => ({ ...payload, to: address }));
             const response = await fetch('https://api.resend.com/emails/batch', {
                 method: 'POST',
                 headers: {

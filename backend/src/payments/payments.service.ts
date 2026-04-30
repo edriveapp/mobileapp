@@ -113,9 +113,13 @@ export class PaymentsService {
 
     const ride = await this.ridesService.findRideById(rideId);
     if (!ride) {
-      this.logger.error(`Paystack success payload: Ride ${rideId} not found`);
+      this.logger.error(`Paystack success: Ride ${rideId} not found | reference=${payload?.reference}`);
       return;
     }
+
+    const driverId = ride.driverId || 'unassigned';
+    const driverInfo = ride.driver ? `${ride.driver.firstName || 'Driver'} (${driverId})` : `Driver ${driverId}`;
+    const tripRoute = `${ride.origin?.address || 'Unknown'} → ${ride.destination?.address || 'Unknown'}`;
 
     const split = await this.calculatePaymentSplit(
       amount,
@@ -140,7 +144,7 @@ export class PaymentsService {
         paymentDetails,
       );
       this.logger.log(
-        `Direct payment confirmed: rideId=${rideId} userId=${userId}`,
+        `Payment done: Driver=${driverInfo} | Route=${tripRoute} | Amount=₦${amount} | Driver earnings=₦${split.driverNetEarnings} | Ref=${payload?.reference}`,
       );
       return;
     }
@@ -159,13 +163,13 @@ export class PaymentsService {
       );
       await this.ridesGateway.broadcastTripBooked(bookedRide);
       this.logger.log(
-        `Shared booking confirmed: rideId=${rideId} userId=${userId}`,
+        `Booking paid: Passenger=${userId} | Driver=${driverInfo} | Route=${tripRoute} | Amount=₦${amount} | Driver earnings=₦${split.driverNetEarnings} | Ref=${payload?.reference}`,
       );
       return;
     }
 
     this.logger.warn(
-      `Paystack success payload missing userId for rideId=${rideId}`,
+      `Paystack success missing userId for rideId=${rideId} | Driver=${driverInfo} | Route=${tripRoute}`,
     );
     await this.ridesService.updatePaymentDetails(
       rideId,

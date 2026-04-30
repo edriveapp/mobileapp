@@ -26,7 +26,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import api from "../services/api";
 import { useAuthStore } from "../stores/authStore";
 
-type PaymentMethod = "card" | "transfer" | "cash";
+type PaymentMethod = "transfer" | "cash";
 type PaymentStep =
   | "method"
   | "transfer"
@@ -37,16 +37,10 @@ type PaymentStep =
 
 const PAYMENT_METHODS = [
   {
-    id: "card" as PaymentMethod,
-    label: "Card",
-    icon: "card-outline" as const,
-    description: "Pay securely with your credit/debit card.",
-  },
-  {
     id: "transfer" as PaymentMethod,
-    label: "Transfer",
-    icon: "swap-horizontal-outline" as const,
-    description: "Pay into the eDrive bank account and we auto-confirm it.",
+    label: "Card / Transfer",
+    icon: "card-outline" as const,
+    description: "Pay with card, bank transfer, or USSD via Paystack.",
   },
   {
     id: "cash" as PaymentMethod,
@@ -361,7 +355,7 @@ export default function TripDetailsScreen() {
     setPaymentError(null);
 
     if (method === "transfer") {
-      // For bank transfer via Paystack, it's the same online flow
+      // Open Paystack checkout (handles card, bank transfer, USSD, etc.)
       return handleCardPayment();
     }
 
@@ -380,10 +374,6 @@ export default function TripDetailsScreen() {
         setPaymentStep("method");
       }
       return;
-    }
-
-    if (method === "card") {
-      return handleCardPayment();
     }
   };
 
