@@ -589,6 +589,51 @@ export class AdminService {
         };
     }
 
+
+    private sanitizeAttachmentFilename(filename: string) {
+        return filename
+            .replace(/[\\/\0<>:"|?*]+/g, '_')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 120) || 'image';
+    }
+
+    private normalizeBroadcastAttachments(
+        rawAttachments?: Array<{ filename?: string; content?: string; contentType?: string; size?: number }>,
+    ) {
+        const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
+        const maxAttachments = 5;
+        const maxBytes = 5 * 1024 * 1024;
+        const attachments = rawAttachments || [];
+
+        if (attachments.length > maxAttachments) {
+            throw new BadRequestException(`A maximum of ${maxAttachments} image attachments is allowed`);
+        }
+
+        return attachments.map((attachment) => {
+            const filename = this.sanitizeAttachmentFilename(String(attachment.filename || 'image'));
+            const contentType = String(attachment.contentType || '').toLowerCase().trim();
+            const content = String(attachment.content || '').replace(/^data:[^;]+;base64,/, '').trim();
+
+            if (!allowedTypes.has(contentType)) {
+                throw new BadRequestException('Only PNG, JPG, WebP, GIF, or SVG image attachments are allowed');
+            }
+            if (!/^[A-Za-z0-9+/]+={0,2}$/.test(content) || content.length % 4 !== 0) {
+                throw new BadRequestException('Attachment content must be valid base64');
+            }
+
+            const decodedSize = Buffer.byteLength(Buffer.from(content, 'base64'));
+            if (decodedSize <= 0 || decodedSize > maxBytes) {
+                throw new BadRequestException('Each image attachment must be 5 MB or smaller');
+            }
+            if (attachment.size && Math.abs(Number(attachment.size) - decodedSize) > 8) {
+                throw new BadRequestException('Attachment size does not match its content');
+            }
+
+            return { filename, content, contentType };
+        });
+    }
+
     async sendBroadcastEmail(
         actorUserId: string,
         payload: {
@@ -599,6 +644,7 @@ export class AdminService {
             previewText?: string;
             segments?: string[];
             manualEmails?: string[];
+            attachments?: Array<{ filename?: string; content?: string; contentType?: string; size?: number }>;
         },
     ) {
         const actor = await this.getActor(actorUserId);
@@ -614,6 +660,8 @@ export class AdminService {
         const manualEmails = Array.from(
             new Set((payload.manualEmails || []).map((v) => String(v).trim().toLowerCase()).filter((v) => this.isValidEmail(v))),
         );
+
+        const attachments = this.normalizeBroadcastAttachments(payload.attachments);
 
         const segmentRecipients = await this.resolveBroadcastRecipients(requestedSegments);
 
@@ -648,6 +696,7 @@ export class AdminService {
                 subject: payload.caption.trim(),
                 html: templateHtml.replace(/\{\{firstname\}\}/gi, name),
                 text: templateText.replace(/\{\{firstname\}\}/gi, name),
+                ...(attachments.length ? { attachments } : {}),
             };
         });
 
@@ -659,6 +708,7 @@ export class AdminService {
             segmentCount: segmentRecipients.length,
             manualCount: manualEmails.length,
             totalRecipients: recipients.length,
+            attachmentCount: attachments.length,
         };
     }
 

@@ -86,7 +86,10 @@ const mapStatus = (status: string): RideStatus => {
   }
 };
 
-const safeRequest = async <T>(fn: () => Promise<T>, retries = 2): Promise<T> => {
+const safeRequest = async <T>(
+  fn: () => Promise<T>,
+  retries = 2,
+): Promise<T> => {
   try {
     return await fn();
   } catch (error) {
@@ -260,7 +263,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isFetchingTrips: false,
             isLoading:
-              state.isMutatingRide || state.isFetchingTrips || state.isFetchingMyTrips,
+              state.isMutatingRide ||
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips,
           }));
         }
       },
@@ -284,7 +289,9 @@ export const useTripStore = create<TripState>()(
 
         set({ isFetchingMyTrips: true, isLoading: true, error: null });
         try {
-          const response = await safeRequest(() => api.get("/rides/my-rides", { timeout: 8000 }));
+          const response = await safeRequest(() =>
+            api.get("/rides/my-rides", { timeout: 8000 }),
+          );
           const active = Array.isArray(response.data.active)
             ? response.data.active.map(normalizeTrip)
             : [];
@@ -338,7 +345,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isFetchingMyTrips: false,
             isLoading:
-              state.isMutatingRide || state.isFetchingTrips || state.isFetchingMyTrips,
+              state.isMutatingRide ||
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips,
           }));
         }
       },
@@ -384,7 +393,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -409,7 +420,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -419,13 +432,17 @@ export const useTripStore = create<TripState>()(
         try {
           let response;
           try {
-            response = await safeRequest(() => api.patch(`/rides/${rideId}/accept`));
+            response = await safeRequest(() =>
+              api.patch(`/rides/${rideId}/accept`),
+            );
           } catch (error: any) {
             const message = String(error?.message || "").toLowerCase();
             const status = Number(error?.response?.status || 0);
 
             if (status === 404 || message.includes("can't patch")) {
-              response = await safeRequest(() => api.post(`/rides/${rideId}/accept`));
+              response = await safeRequest(() =>
+                api.post(`/rides/${rideId}/accept`),
+              );
             } else {
               throw error;
             }
@@ -440,7 +457,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -455,7 +474,9 @@ export const useTripStore = create<TripState>()(
         try {
           let response;
           try {
-            response = await safeRequest(() => api.post(`/rides/${rideId}/book`, payload));
+            response = await safeRequest(() =>
+              api.post(`/rides/${rideId}/book`, payload),
+            );
           } catch (error: any) {
             const message = String(error?.message || "").toLowerCase();
             const status = Number(error?.response?.status || 0);
@@ -484,7 +505,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -501,7 +524,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -513,7 +538,9 @@ export const useTripStore = create<TripState>()(
       updateTrip: async (rideId, tripData) => {
         set({ isMutatingRide: true, isLoading: true, error: null });
         try {
-          const response = await safeRequest(() => api.patch(`/rides/${rideId}`, tripData));
+          const response = await safeRequest(() =>
+            api.patch(`/rides/${rideId}`, tripData),
+          );
           await get().fetchMyTrips();
           await get().fetchAvailableTrips({ role: "rider" });
           return response.data;
@@ -524,7 +551,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -549,7 +578,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -558,7 +589,11 @@ export const useTripStore = create<TripState>()(
         set({ isMutatingRide: true, isLoading: true, error: null });
         try {
           const response = await safeRequest(() =>
-            api.patch(`/rides/${rideId}/status`, { status }, { timeout: 12000 }),
+            api.patch(
+              `/rides/${rideId}/status`,
+              { status },
+              { timeout: 12000 },
+            ),
           );
           // Refetch in the background — don't block the status update on these
           get()
@@ -576,7 +611,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -600,7 +637,9 @@ export const useTripStore = create<TripState>()(
           set((state) => ({
             isMutatingRide: false,
             isLoading:
-              state.isFetchingTrips || state.isFetchingMyTrips || state.isMutatingRide,
+              state.isFetchingTrips ||
+              state.isFetchingMyTrips ||
+              state.isMutatingRide,
           }));
         }
       },
@@ -617,11 +656,12 @@ export const useTripStore = create<TripState>()(
             "in_progress",
           ].includes(String(normalized.status).toLowerCase());
 
-          const updatedCurrentRide = currentId === id
-            ? normalized
-            : !state.currentRide && isActiveUpdate
-            ? normalized
-            : state.currentRide;
+          const updatedCurrentRide =
+            currentId === id
+              ? normalized
+              : !state.currentRide && isActiveUpdate
+                ? normalized
+                : state.currentRide;
 
           const updateList = (list: any[]) =>
             list.map((item) => (getId(item) === id ? normalized : item));

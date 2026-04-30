@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { create } from 'zustand';
-import { useAuthStore } from './authStore';
-import { useSocketStore } from './socketStore';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { create } from "zustand";
+import { useAuthStore } from "./authStore";
+import { useSocketStore } from "./socketStore";
 
 export interface Message {
   _id: string;
@@ -32,7 +32,7 @@ interface ChatState {
 }
 
 const getChatStorageKey = (rideId: string) => `chat_messages_${rideId}`;
-const getUnreadStorageKey = () => 'chat_unread_counts';
+const getUnreadStorageKey = () => "chat_unread_counts";
 
 // Global flags for socket listener and persistence
 let messageListenerAttached = false;
@@ -47,7 +47,7 @@ const schedulePersist = (rideId: string, messages: Message[]) => {
     if (latest) {
       await AsyncStorage.setItem(
         getChatStorageKey(rideId),
-        JSON.stringify(normalizeMessages(latest))
+        JSON.stringify(normalizeMessages(latest)),
       );
       writeQueue.delete(rideId);
     }
@@ -80,11 +80,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   getTotalUnread: () => {
     return Object.values(get().unreadByRide).reduce((sum, count) => {
-      const val = typeof count === 'number' ? count : 0;
+      const val = typeof count === "number" ? count : 0;
       return sum + Math.max(0, val);
     }, 0);
   },
-  
+
   getUnreadChatCount: () => {
     // Only count rides that have a count > 0
     return Object.keys(get().unreadByRide).length;
@@ -135,17 +135,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     set({ currentRideId: rideId });
-    socket.emit('join_chat', { rideId });
+    socket.emit("join_chat", { rideId });
     void get().markRideRead(rideId);
 
     // Reset listener flag on reconnect to prevent stale handlers
-    socket.on('connect', () => {
+    socket.on("connect", () => {
       messageListenerAttached = false;
     });
 
     // Use manual flag instead of unreliable listeners()
     if (!messageListenerAttached) {
-      socket.on('receive_message', (message: Message & { rideId?: string }) => {
+      socket.on("receive_message", (message: Message & { rideId?: string }) => {
         const msgRideId = message.rideId ?? get().currentRideId;
         if (!msgRideId) return;
         void get().addMessage(msgRideId, message);
@@ -159,7 +159,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (socket) {
       // Tell the server to remove us from the room — messages for this ride
       // will no longer be pushed while we're not in the chat screen.
-      socket.emit('leave_chat', { rideId });
+      socket.emit("leave_chat", { rideId });
       // Do NOT remove the 'receive_message' listener — it is shared across all
       // rides and routes incoming messages by rideId. Removing it here would
       // cause messages for other open rides to be dropped.
@@ -178,7 +178,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       _id: clientId,
       text,
       createdAt: new Date().toISOString(),
-      user: { _id: user.id, name: user.name || 'Me' },
+      user: { _id: user.id, name: user.name || "Me" },
       pending: true,
     };
 
@@ -188,15 +188,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // 2. Emit over socket with clientId for correlation
     if (socket && socket.connected) {
-      socket.emit('send_message', {
+      socket.emit("send_message", {
         rideId,
         text,
         senderId: user.id,
-        role: user.role === 'driver' ? 'DRIVER' : 'PASSENGER',
+        role: user.role === "driver" ? "DRIVER" : "PASSENGER",
         clientId, // Add for server echo
       });
     } else {
-      console.warn("Socket not connected, message might not send until reconnected");
+      console.warn(
+        "Socket not connected, message might not send until reconnected",
+      );
     }
   },
 
@@ -209,26 +211,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const withoutOptimistic = state.messages.filter((m) => {
         if (!m.pending) return true;
         // Match pending messages by text and user to replace with server confirmation
-        return !(m.pending && m.text === msg.text && m.user._id === msg.user._id);
+        return !(
+          m.pending &&
+          m.text === msg.text &&
+          m.user._id === msg.user._id
+        );
       });
 
-      const alreadyConfirmed = withoutOptimistic.some((m) => !m.pending && m._id === msg._id);
+      const alreadyConfirmed = withoutOptimistic.some(
+        (m) => !m.pending && m._id === msg._id,
+      );
       if (!alreadyConfirmed) {
-        const nextMessages = normalizeMessages([...withoutOptimistic, { ...msg, pending: false }]);
+        const nextMessages = normalizeMessages([
+          ...withoutOptimistic,
+          { ...msg, pending: false },
+        ]);
         set({ messages: nextMessages });
         schedulePersist(incomingRideId, nextMessages);
       }
     } else {
       // Message arrived for a different ride — persist it silently under the correct key
       try {
-        const cached = await AsyncStorage.getItem(getChatStorageKey(incomingRideId));
+        const cached = await AsyncStorage.getItem(
+          getChatStorageKey(incomingRideId),
+        );
         const existing: Message[] = cached ? JSON.parse(cached) : [];
         const alreadyHave = existing.some((m) => m._id === msg._id);
         if (!alreadyHave) {
-          const updated = normalizeMessages([...existing, { ...msg, pending: false }]);
+          const updated = normalizeMessages([
+            ...existing,
+            { ...msg, pending: false },
+          ]);
           schedulePersist(incomingRideId, updated);
         }
-      } catch { /* non-fatal */ }
+      } catch {
+        /* non-fatal */
+      }
     }
 
     const user = useAuthStore.getState().user;
@@ -246,21 +264,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       [rideId]: (get().unreadByRide[rideId] || 0) + 1,
     };
     set({ unreadByRide: nextUnread });
-    await AsyncStorage.setItem(getUnreadStorageKey(), JSON.stringify(nextUnread));
+    await AsyncStorage.setItem(
+      getUnreadStorageKey(),
+      JSON.stringify(nextUnread),
+    );
   },
 
   markRideRead: async (rideId) => {
     if (!rideId) return;
     const nextUnread = { ...get().unreadByRide };
     if (!(rideId in nextUnread)) return;
-    
+
     delete nextUnread[rideId];
     set({ unreadByRide: nextUnread });
-    
+
     try {
-      await AsyncStorage.setItem(getUnreadStorageKey(), JSON.stringify(nextUnread));
+      await AsyncStorage.setItem(
+        getUnreadStorageKey(),
+        JSON.stringify(nextUnread),
+      );
     } catch (err) {
-      console.error('Failed to persist unread counts', err);
+      console.error("Failed to persist unread counts", err);
     }
   },
 }));

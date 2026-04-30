@@ -113,13 +113,17 @@ export class PaymentsService {
 
     const ride = await this.ridesService.findRideById(rideId);
     if (!ride) {
-      this.logger.error(`Paystack success: Ride ${rideId} not found | reference=${payload?.reference}`);
+      this.logger.error(
+        `Paystack success: Ride ${rideId} not found | reference=${payload?.reference}`,
+      );
       return;
     }
 
-    const driverId = ride.driverId || 'unassigned';
-    const driverInfo = ride.driver ? `${ride.driver.firstName || 'Driver'} (${driverId})` : `Driver ${driverId}`;
-    const tripRoute = `${ride.origin?.address || 'Unknown'} → ${ride.destination?.address || 'Unknown'}`;
+    const driverId = ride.driverId || "unassigned";
+    const driverInfo = ride.driver
+      ? `${ride.driver.firstName || "Driver"} (${driverId})`
+      : `Driver ${driverId}`;
+    const tripRoute = `${ride.origin?.address || "Unknown"} → ${ride.destination?.address || "Unknown"}`;
 
     const split = await this.calculatePaymentSplit(
       amount,

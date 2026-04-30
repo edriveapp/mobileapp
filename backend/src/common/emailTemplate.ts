@@ -147,7 +147,7 @@ export function generateBroadcastEmailHtml({
           <tr>
             <td style="background-color:#005124;padding:28px 40px;text-align:center;">
               <p style="margin:0;font-family:'DM Sans',Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;
-                color:#ffffff;letter-spacing:-0.5px;">edrive</p>
+                color:#ffffff;letter-spacing:-0.5px;"><span style="display:inline-block;font-style:italic;transform:skew(-14deg) rotate(-8deg);transform-origin:50% 60%;margin-right:1px;">e</span>drive</p>
               <p style="margin:6px 0 0;font-size:12px;color:#a3d4b5;letter-spacing:0.8px;text-transform:uppercase;">
                travel with comfort
               </p>

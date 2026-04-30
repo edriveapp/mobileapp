@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import {
   Eye,
+  Image as ImageIcon,
   Link2,
   Mail,
   Send,
@@ -27,6 +28,13 @@ export interface AudienceSegment {
   color?: string;
 }
 
+export interface BroadcastAttachment {
+  filename: string;
+  content: string;
+  contentType: string;
+  size: number;
+}
+
 export interface BroadcastPayload {
   senderEmail: string;
   caption: string;
@@ -36,6 +44,7 @@ export interface BroadcastPayload {
   segments: string[];
   manualEmails: string[];
   estimatedTotal: number;
+  attachments?: BroadcastAttachment[];
 }
 
 interface BroadcastMailComposerProps {
@@ -46,6 +55,9 @@ interface BroadcastMailComposerProps {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_IMAGE_ATTACHMENTS = 5;
+const MAX_IMAGE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
 
 function parseEmailsFromText(text: string): string[] {
   return Array.from(
@@ -56,6 +68,21 @@ function parseEmailsFromText(text: string): string[] {
         .filter((s) => EMAIL_RE.test(s)),
     ),
   );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${bytes} B`;
 }
 
 function fmt(n: number): string {
@@ -189,6 +216,8 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
   const [linkUrl, setLinkUrl] = useState('');
   const [previewMode, setPreviewMode] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
+  const [attachments, setAttachments] = useState<BroadcastAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -373,6 +402,50 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
     setActiveTemplate(id);
   };
 
+
+  const handleImageFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setError('');
+
+    const remainingSlots = MAX_IMAGE_ATTACHMENTS - attachments.length;
+    if (remainingSlots <= 0) {
+      setError(`You can attach up to ${MAX_IMAGE_ATTACHMENTS} images.`);
+      return;
+    }
+
+    const selected = Array.from(files).slice(0, remainingSlots);
+    const rejected = Array.from(files).length - selected.length;
+    const next: BroadcastAttachment[] = [];
+
+    for (const file of selected) {
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        setError('Only PNG, JPG, WebP, GIF, or SVG images can be attached.');
+        continue;
+      }
+      if (file.size > MAX_IMAGE_ATTACHMENT_BYTES) {
+        setError(`Each image must be ${fmtBytes(MAX_IMAGE_ATTACHMENT_BYTES)} or smaller.`);
+        continue;
+      }
+
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('Failed to read image'));
+        reader.readAsDataURL(file);
+      });
+      const content = dataUrl.split(',')[1] || '';
+      next.push({ filename: file.name, content, contentType: file.type, size: file.size });
+    }
+
+    setAttachments((prev) => [...prev, ...next]);
+    if (rejected > 0) setError(`Only ${MAX_IMAGE_ATTACHMENTS} images can be attached. ${rejected} file(s) skipped.`);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (filename: string, index: number) => {
+    setAttachments((prev) => prev.filter((item, i) => !(i === index && item.filename === filename)));
+  };
+
   const handleSend = async () => {
     if (!EMAIL_RE.test(senderEmail.trim().toLowerCase())) {
       setError('Sender email is invalid.');
@@ -403,6 +476,7 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
         segments: Array.from(selectedSegments),
         manualEmails,
         estimatedTotal,
+        attachments,
       });
       setSent(true);
       setTimeout(() => setSent(false), 5000);
@@ -418,20 +492,32 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
     // Replace {{firstname}} with a sample name so the preview shows personalisation
     const personalised = bodyHtml.replace(/\{\{firstname\}\}/gi, 'Alex');
     const safeBody = personalised.replace(/<a\s/gi, '<a style="color:#16a34a;text-decoration:underline;font-weight:600;" ');
+    const attachmentHtml = attachments.length
+      ? `<div style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:16px;">
+          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Attachments</div>
+          ${attachments.map((file) => `<div style="display:inline-block;margin:0 8px 8px 0;padding:8px 10px;border:1px solid #dbe4ea;border-radius:999px;background:#f8fafc;color:#334155;font-size:12px;">${escapeHtml(file.filename)} · ${fmtBytes(file.size)}</div>`).join('')}
+        </div>`
+      : '';
+
     setPreviewHtml(`
-      <div style="font-family:Inter,Helvetica Neue,sans-serif;background:#f1f5f9;min-height:100vh;padding:40px 16px;">
+      <div style="font-family:Inter,Helvetica Neue,Arial,sans-serif;background:#f8fafc;min-height:100vh;padding:32px 16px;color:#0f172a;">
         <div style="max-width:640px;margin:0 auto;">
-          <p style="text-align:center;font-size:11px;color:#94a3b8;margin:0 0 12px;letter-spacing:0.1em;text-transform:uppercase;">Preview — {{firstname}} shown as <strong style="color:#64748b">Alex</strong></p>
-          <div style="background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 20px 50px rgba(15,23,42,0.08);">
-            <div style="padding:28px 32px;background:linear-gradient(135deg,#052e16,#166534);color:#fff;">
-              <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.78;">edrive campaign</div>
-              <div style="margin-top:10px;font-size:28px;font-weight:700;">${caption || 'Campaign subject'}</div>
-              <div style="margin-top:8px;font-size:14px;opacity:0.88;">From ${senderEmail || defaultSenderEmail}</div>
+          <div style="margin-bottom:12px;text-align:center;font-size:12px;color:#64748b;">Preview with <strong>Alex</strong> as {{firstname}}</div>
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;box-shadow:0 12px 30px rgba(15,23,42,0.08);">
+            <div style="padding:24px 28px;border-bottom:1px solid #e5e7eb;">
+              <div style="font-size:28px;font-weight:800;letter-spacing:-0.04em;color:#005124;"><span style="display:inline-block;font-style:italic;transform:skew(-14deg) rotate(-8deg);transform-origin:50% 60%;margin-right:1px;">e</span>drive</div>
+              <div style="margin-top:14px;font-size:12px;line-height:1.7;color:#64748b;">
+                <div><strong style="color:#334155;">From:</strong> ${escapeHtml(senderEmail || defaultSenderEmail)}</div>
+                <div><strong style="color:#334155;">Subject:</strong> ${escapeHtml(caption || 'Campaign subject')}</div>
+                ${previewText ? `<div><strong style="color:#334155;">Inbox preview:</strong> ${escapeHtml(previewText)}</div>` : ''}
+              </div>
             </div>
-            <div style="padding:32px;">
-              ${previewText ? `<div style="font-size:12px;color:#64748b;margin-bottom:16px;">${previewText}</div>` : ''}
-              ${subheading ? `<p style="margin:0 0 14px;font-size:16px;font-weight:600;color:#16a34a;">${subheading}</p>` : ''}
-              <div style="font-size:15px;line-height:1.8;color:#334155;">${safeBody || '<p style="color:#94a3b8">Your message preview appears here.</p>'}</div>
+            <div style="padding:28px;">
+              <h1 style="margin:0 0 10px;font-size:24px;line-height:1.25;color:#0f172a;">${escapeHtml(caption || 'Campaign subject')}</h1>
+              ${subheading ? `<p style="margin:0 0 20px;font-size:15px;font-weight:700;color:#047857;">${escapeHtml(subheading)}</p>` : ''}
+              <div style="height:1px;background:#e5e7eb;margin:0 0 22px;"></div>
+              <div style="font-size:15px;line-height:1.75;color:#334155;">${safeBody || '<p style="color:#94a3b8">Your message preview appears here.</p>'}</div>
+              ${attachmentHtml}
             </div>
           </div>
         </div>
@@ -769,6 +855,47 @@ export const BroadcastMailComposer: React.FC<BroadcastMailComposerProps> = ({
                   className="min-h-[300px] rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4 text-[15px] leading-8 text-slate-700 outline-none transition focus:border-emerald-500"
                 />
               </div>
+            </div>
+
+
+            <div className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Image attachments</label>
+                  <p className="mt-1 text-sm text-slate-500">Attach up to 5 images. PNG, JPG, WebP, GIF, or SVG. Max 5 MB each.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-emerald-400 hover:text-emerald-700"
+                >
+                  <ImageIcon className="h-4 w-4" /> Add images
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => void handleImageFiles(e.target.files)}
+                />
+              </div>
+
+              {attachments.length > 0 && (
+                <div className="mt-4 grid gap-2">
+                  {attachments.map((file, index) => (
+                    <div key={`${file.filename}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-800">{file.filename}</p>
+                        <p className="text-xs text-slate-500">{file.contentType} · {fmtBytes(file.size)}</p>
+                      </div>
+                      <button onClick={() => removeAttachment(file.filename, index)} className="rounded-xl p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600" title="Remove attachment">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4">

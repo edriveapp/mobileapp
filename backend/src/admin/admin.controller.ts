@@ -180,6 +180,7 @@ export class AdminController {
             previewText?: string;
             segments?: string[];
             manualEmails?: string[];
+            attachments?: Array<{ filename?: string; content?: string; contentType?: string; size?: number }>;
         },
     ) {
         return this.adminService.sendBroadcastEmail(req.user.userId, body);

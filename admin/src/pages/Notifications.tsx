@@ -1,14 +1,31 @@
-import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Bell, Plus, Send, Trash2, Pause, Play, Calendar,
-  Clock, Repeat, Megaphone, X, Edit2, CheckCircle, Mail, Inbox,
-} from 'lucide-react';
-import { apiRequest } from '../lib/api.ts';
-import { useAuth } from '../lib/auth.tsx';
-import { BroadcastMailComposer, type AudienceSegment, type BroadcastPayload } from './BroadcastMailComposer';
+    Bell,
+    Calendar,
+    CheckCircle,
+    Clock,
+    Edit2,
+    Inbox,
+    Mail,
+    Megaphone,
+    Pause,
+    Play,
+    Plus,
+    Repeat,
+    Send,
+    Trash2,
+    X,
+} from "lucide-react";
+import React, { useCallback, useEffect, useState } from "react";
+import { apiRequest } from "../lib/api.ts";
+import { useAuth } from "../lib/auth.tsx";
+import {
+    BroadcastMailComposer,
+    type AudienceSegment,
+    type BroadcastPayload,
+} from "./BroadcastMailComposer";
 
-type RepeatOption = 'once' | 'daily' | 'weekly' | 'weekdays' | 'weekends';
-type CampaignStatus = 'active' | 'paused' | 'expired';
+type RepeatOption = "once" | "daily" | "weekly" | "weekdays" | "weekends";
+type CampaignStatus = "active" | "paused" | "expired";
 
 type Campaign = {
   id: string;
@@ -30,25 +47,25 @@ type BroadcastAudienceSummary = {
 
 const FALLBACK_EMAIL_SEGMENTS: AudienceSegment[] = [
   {
-    id: 'all',
-    label: 'All Recipients',
+    id: "all",
+    label: "All Recipients",
     count: 0,
-    description: 'All passenger and driver emails from the backend',
-    color: '#16a34a',
+    description: "All passenger and driver emails from the backend",
+    color: "#16a34a",
   },
   {
-    id: 'passengers',
-    label: 'Passengers',
+    id: "passengers",
+    label: "Passengers",
     count: 0,
-    description: 'Passenger accounts only',
-    color: '#2563eb',
+    description: "Passenger accounts only",
+    color: "#2563eb",
   },
   {
-    id: 'drivers',
-    label: 'Drivers',
+    id: "drivers",
+    label: "Drivers",
     count: 0,
-    description: 'Driver accounts only',
-    color: '#7c3aed',
+    description: "Driver accounts only",
+    color: "#7c3aed",
   },
 ];
 
@@ -64,7 +81,7 @@ type SupportTicketSummary = {
   creatorName?: string;
   createdAt: string;
   updatedAt: string;
-  status: 'open' | 'in_progress' | 'resolved';
+  status: "open" | "in_progress" | "resolved";
 };
 
 type SupportTicketDetail = SupportTicketSummary & {
@@ -81,19 +98,27 @@ type SupportTicketDetail = SupportTicketSummary & {
 };
 
 const REPEAT_LABELS: Record<RepeatOption, string> = {
-  once: 'Send Once',
-  daily: 'Every Day',
-  weekly: 'Weekly',
-  weekdays: 'Weekdays (Mon-Fri)',
-  weekends: 'Weekends',
+  once: "Send Once",
+  daily: "Every Day",
+  weekly: "Weekly",
+  weekdays: "Weekdays (Mon-Fri)",
+  weekends: "Weekends",
 };
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 const STATUS_STYLES: Record<CampaignStatus, string> = {
-  active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  paused: 'bg-amber-50 text-amber-700 border-amber-200',
-  expired: 'bg-gray-100 text-gray-500 border-gray-200',
+  active: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  paused: "bg-amber-50 text-amber-700 border-amber-200",
+  expired: "bg-gray-100 text-gray-500 border-gray-200",
 };
 
 const STATUS_ICONS: Record<CampaignStatus, React.ReactNode> = {
@@ -115,13 +140,16 @@ function InboundEmailModal({
 }) {
   const [detail, setDetail] = useState<SupportTicketDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [reply, setReply] = useState('');
+  const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
 
   const loadDetail = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiRequest<SupportTicketDetail>(`/support/tickets/${ticketId}`, { token });
+      const data = await apiRequest<SupportTicketDetail>(
+        `/support/tickets/${ticketId}`,
+        { token },
+      );
       setDetail(data);
     } finally {
       setLoading(false);
@@ -132,8 +160,12 @@ function InboundEmailModal({
     loadDetail();
   }, [loadDetail]);
 
-  const updateStatus = async (status: 'open' | 'in_progress' | 'resolved') => {
-    await apiRequest(`/support/tickets/${ticketId}/status`, { method: 'PATCH', token, body: { status } });
+  const updateStatus = async (status: "open" | "in_progress" | "resolved") => {
+    await apiRequest(`/support/tickets/${ticketId}/status`, {
+      method: "PATCH",
+      token,
+      body: { status },
+    });
     await loadDetail();
     await onUpdated();
   };
@@ -143,11 +175,11 @@ function InboundEmailModal({
     setSending(true);
     try {
       await apiRequest(`/support/tickets/${ticketId}/messages`, {
-        method: 'POST',
+        method: "POST",
         token,
         body: { text: reply.trim() },
       });
-      setReply('');
+      setReply("");
       await loadDetail();
       await onUpdated();
     } finally {
@@ -161,21 +193,52 @@ function InboundEmailModal({
         <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-gray-900">{detail?.subject || 'Inbound Email'}</h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium uppercase tracking-wide">inbound</span>
-              {detail ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium uppercase tracking-wide">{detail.status}</span> : null}
+              <h2 className="text-lg font-bold text-gray-900">
+                {detail?.subject || "Inbound Email"}
+              </h2>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium uppercase tracking-wide">
+                inbound
+              </span>
+              {detail ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium uppercase tracking-wide">
+                  {detail.status}
+                </span>
+              ) : null}
             </div>
-            <p className="text-sm text-gray-500 mt-1">From {detail?.createdByEmail || detail?.creatorName || 'Unknown sender'}</p>
+            <p className="text-sm text-gray-500 mt-1">
+              From{" "}
+              {detail?.createdByEmail ||
+                detail?.creatorName ||
+                "Unknown sender"}
+            </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-400"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-5 border-b border-gray-100 flex items-center gap-2">
-          <button onClick={() => updateStatus('open')} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium">Open</button>
-          <button onClick={() => updateStatus('in_progress')} className="px-3 py-2 bg-amber-100 hover:bg-amber-200 rounded-xl text-sm font-medium">In Progress</button>
-          <button onClick={() => updateStatus('resolved')} className="px-3 py-2 bg-emerald-100 hover:bg-emerald-200 rounded-xl text-sm font-medium">Resolve</button>
+          <button
+            onClick={() => updateStatus("open")}
+            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium"
+          >
+            Open
+          </button>
+          <button
+            onClick={() => updateStatus("in_progress")}
+            className="px-3 py-2 bg-amber-100 hover:bg-amber-200 rounded-xl text-sm font-medium"
+          >
+            In Progress
+          </button>
+          <button
+            onClick={() => updateStatus("resolved")}
+            className="px-3 py-2 bg-emerald-100 hover:bg-emerald-200 rounded-xl text-sm font-medium"
+          >
+            Resolve
+          </button>
         </div>
 
         <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
@@ -183,17 +246,31 @@ function InboundEmailModal({
             <p className="text-sm text-gray-400">Loading email…</p>
           ) : (
             detail?.messages?.map((message) => {
-              const isAdmin = message.senderRole === 'admin';
+              const isAdmin = message.senderRole === "admin";
               return (
-                <div key={message.id} className={`rounded-2xl p-4 ${isAdmin ? 'bg-emerald-50' : 'bg-gray-50 border border-gray-100'}`}>
+                <div
+                  key={message.id}
+                  className={`rounded-2xl p-4 ${isAdmin ? "bg-emerald-50" : "bg-gray-50 border border-gray-100"}`}
+                >
                   <div className="flex items-center justify-between gap-3 mb-2">
-                    <p className="text-xs font-semibold text-gray-700">{message.senderName || message.senderEmail || message.senderRole}</p>
-                    <p className="text-[11px] text-gray-400">{new Date(message.createdAt).toLocaleString()}</p>
+                    <p className="text-xs font-semibold text-gray-700">
+                      {message.senderName ||
+                        message.senderEmail ||
+                        message.senderRole}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      {new Date(message.createdAt).toLocaleString()}
+                    </p>
                   </div>
                   {message.html ? (
-                    <div className="prose prose-sm max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: message.html }} />
+                    <div
+                      className="prose prose-sm max-w-none text-gray-700"
+                      dangerouslySetInnerHTML={{ __html: message.html }}
+                    />
                   ) : (
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.text}</p>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                      {message.text}
+                    </p>
                   )}
                 </div>
               );
@@ -215,7 +292,7 @@ function InboundEmailModal({
               disabled={sending || !reply.trim()}
               className="self-end px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50"
             >
-              {sending ? 'Sending…' : 'Send Reply'}
+              {sending ? "Sending…" : "Send Reply"}
             </button>
           </div>
         </div>
@@ -237,11 +314,15 @@ function CampaignComposer({
   token: string | null;
   editCampaign?: Campaign | null;
 }) {
-  const [title, setTitle] = useState(editCampaign?.title || '');
-  const [body, setBody] = useState(editCampaign?.body || '');
-  const [repeat, setRepeat] = useState<RepeatOption>(editCampaign?.repeat || 'once');
-  const [dayOfWeek, setDayOfWeek] = useState<number>(editCampaign?.dayOfWeek ?? 5); // Friday default
-  const [sendTime, setSendTime] = useState(editCampaign?.sendTime || '09:00');
+  const [title, setTitle] = useState(editCampaign?.title || "");
+  const [body, setBody] = useState(editCampaign?.body || "");
+  const [repeat, setRepeat] = useState<RepeatOption>(
+    editCampaign?.repeat || "once",
+  );
+  const [dayOfWeek, setDayOfWeek] = useState<number>(
+    editCampaign?.dayOfWeek ?? 5,
+  ); // Friday default
+  const [sendTime, setSendTime] = useState(editCampaign?.sendTime || "09:00");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -252,17 +333,24 @@ function CampaignComposer({
         title: title.trim(),
         body: body.trim(),
         repeat,
-        dayOfWeek: repeat === 'weekly' ? dayOfWeek : null,
+        dayOfWeek: repeat === "weekly" ? dayOfWeek : null,
         sendTime,
       };
       let result: Campaign;
       if (editCampaign) {
-        result = await apiRequest<Campaign>(`/admin/campaigns/${editCampaign.id}`, {
-          method: 'PATCH', token, body: payload,
-        });
+        result = await apiRequest<Campaign>(
+          `/admin/campaigns/${editCampaign.id}`,
+          {
+            method: "PATCH",
+            token,
+            body: payload,
+          },
+        );
       } else {
-        result = await apiRequest<Campaign>('/admin/campaigns', {
-          method: 'POST', token, body: payload,
+        result = await apiRequest<Campaign>("/admin/campaigns", {
+          method: "POST",
+          token,
+          body: payload,
         });
       }
       onSave(result);
@@ -282,10 +370,13 @@ function CampaignComposer({
               <Megaphone className="w-5 h-5 text-violet-600" />
             </div>
             <h2 className="text-lg font-bold text-gray-900">
-              {editCampaign ? 'Edit Campaign' : 'New Campaign'}
+              {editCampaign ? "Edit Campaign" : "New Campaign"}
             </h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-400"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -293,7 +384,9 @@ function CampaignComposer({
         <div className="p-6 space-y-4">
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Notification Title</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Notification Title
+            </label>
             <input
               type="text"
               value={title}
@@ -305,28 +398,56 @@ function CampaignComposer({
 
           {/* Body */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Message</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Message
+            </label>
             <textarea
               rows={3}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="e.g. It's Friday! Book a safe ride home with eDrive tonight. 🚗"
+              placeholder="e.g. It's Friday! Book a safe ride home with edrive tonight. 🚗"
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none"
             />
-            <p className="text-xs text-gray-400 mt-1">{body.length} characters</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {body.length} characters
+            </p>
           </div>
 
-          {/* Preview */}
+          {/* Email Preview */}
           {(title || body) && (
-            <div className="bg-gray-900 text-white rounded-xl p-4 text-sm">
-              <p className="text-xs text-gray-400 mb-1">Preview</p>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shrink-0">
-                  <Bell className="w-4 h-4 text-white" />
+            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+              <p className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border-b border-gray-200">
+                Email Preview
+              </p>
+              <div className="bg-white p-6 text-sm space-y-4">
+                {/* Logo at top right */}
+                <div className="text-right pb-2">
+                  <span className="text-emerald-600 font-bold text-lg">
+                    edrive
+                  </span>
                 </div>
-                <div>
-                  <p className="font-semibold text-white">{title || 'Title…'}</p>
-                  <p className="text-gray-400 text-xs mt-0.5">{body || 'Your message…'}</p>
+                {/* Title */}
+                <h1 className="text-xl font-semibold text-gray-900">
+                  {title || "Title…"}
+                </h1>
+                {/* Content */}
+                <div className="text-gray-700 leading-relaxed">
+                  <p>{body || "Your message…"}</p>
+                </div>
+                {/* CTA Button */}
+                <div className="pt-2">
+                  <a
+                    href="#"
+                    className="inline-block px-6 py-2 bg-emerald-600 text-white rounded-md font-medium text-sm hover:bg-emerald-700 no-underline"
+                  >
+                    Learn more
+                  </a>
+                </div>
+                {/* Footer */}
+                <div className="border-t border-gray-200 pt-4 mt-6">
+                  <p className="text-xs text-gray-500">
+                    edrive Transportation Technologies
+                  </p>
                 </div>
               </div>
             </div>
@@ -335,19 +456,25 @@ function CampaignComposer({
           {/* Schedule */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Repeat</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Repeat
+              </label>
               <select
                 value={repeat}
                 onChange={(e) => setRepeat(e.target.value as RepeatOption)}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
               >
                 {Object.entries(REPEAT_LABELS).map(([val, label]) => (
-                  <option key={val} value={val}>{label}</option>
+                  <option key={val} value={val}>
+                    {label}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Send Time</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Send Time
+              </label>
               <input
                 type="time"
                 value={sendTime}
@@ -357,9 +484,11 @@ function CampaignComposer({
             </div>
           </div>
 
-          {repeat === 'weekly' && (
+          {repeat === "weekly" && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Day of Week</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Day of Week
+              </label>
               <div className="flex flex-wrap gap-2">
                 {DAYS.map((day, idx) => (
                   <button
@@ -367,8 +496,8 @@ function CampaignComposer({
                     onClick={() => setDayOfWeek(idx)}
                     className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
                       dayOfWeek === idx
-                        ? 'bg-violet-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        ? "bg-violet-600 text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                     }`}
                   >
                     {day.slice(0, 3)}
@@ -385,9 +514,16 @@ function CampaignComposer({
             onClick={handleSave}
             className="flex-1 bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50"
           >
-            {saving ? 'Saving…' : editCampaign ? 'Update Campaign' : 'Create Campaign'}
+            {saving
+              ? "Saving…"
+              : editCampaign
+                ? "Update Campaign"
+                : "Create Campaign"}
           </button>
-          <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-600 text-sm rounded-xl hover:bg-gray-200 transition-colors">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 bg-gray-100 text-gray-600 text-sm rounded-xl hover:bg-gray-200 transition-colors"
+          >
             Cancel
           </button>
         </div>
@@ -407,17 +543,27 @@ export default function Notifications() {
   const [sending, setSending] = useState<string | null>(null);
   const [emailComposerOpen, setEmailComposerOpen] = useState(false);
   const [emailSegments, setEmailSegments] = useState<AudienceSegment[]>([]);
-  const [defaultSenderEmail, setDefaultSenderEmail] = useState('support@edriveapp.com');
-  const [inboundEmails, setInboundEmails] = useState<SupportTicketSummary[]>([]);
-  const [activeInboundEmailId, setActiveInboundEmailId] = useState<string | null>(null);
+  const [defaultSenderEmail, setDefaultSenderEmail] = useState(
+    "support@edriveapp.com",
+  );
+  const [inboundEmails, setInboundEmails] = useState<SupportTicketSummary[]>(
+    [],
+  );
+  const [activeInboundEmailId, setActiveInboundEmailId] = useState<
+    string | null
+  >(null);
 
   const handleEmailSend = async (payload: BroadcastPayload) => {
-    await apiRequest('/admin/broadcast/send', { method: 'POST', token, body: payload });
+    await apiRequest("/admin/broadcast/send", {
+      method: "POST",
+      token,
+      body: payload,
+    });
   };
 
   const loadCampaigns = useCallback(async () => {
     try {
-      const data = await apiRequest<Campaign[]>('/admin/campaigns', { token });
+      const data = await apiRequest<Campaign[]>("/admin/campaigns", { token });
       setCampaigns(data);
     } catch (e) {
       console.error(e);
@@ -426,14 +572,23 @@ export default function Notifications() {
     }
   }, [token]);
 
-  useEffect(() => { loadCampaigns(); }, [loadCampaigns]);
+  useEffect(() => {
+    loadCampaigns();
+  }, [loadCampaigns]);
 
   useEffect(() => {
     const loadAudienceSummary = async () => {
       try {
-        const data = await apiRequest<BroadcastAudienceSummary>('/admin/broadcast/audience-summary', { token });
-        setEmailSegments(data.segments?.length ? data.segments : FALLBACK_EMAIL_SEGMENTS);
-        setDefaultSenderEmail(data.defaultSenderEmail || 'support@edriveapp.com');
+        const data = await apiRequest<BroadcastAudienceSummary>(
+          "/admin/broadcast/audience-summary",
+          { token },
+        );
+        setEmailSegments(
+          data.segments?.length ? data.segments : FALLBACK_EMAIL_SEGMENTS,
+        );
+        setDefaultSenderEmail(
+          data.defaultSenderEmail || "support@edriveapp.com",
+        );
       } catch (e) {
         console.error(e);
         setEmailSegments(FALLBACK_EMAIL_SEGMENTS);
@@ -445,7 +600,10 @@ export default function Notifications() {
 
   const loadInboundEmails = useCallback(async () => {
     try {
-      const tickets = await apiRequest<SupportTicketSummary[]>('/support/tickets/admin?category=inbound_email&includeInbound=true', { token });
+      const tickets = await apiRequest<SupportTicketSummary[]>(
+        "/support/tickets/admin?category=inbound_email&includeInbound=true",
+        { token },
+      );
       setInboundEmails((tickets || []).slice(0, 8));
     } catch (e) {
       console.error(e);
@@ -471,37 +629,55 @@ export default function Notifications() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this campaign?')) return;
+    if (!confirm("Delete this campaign?")) return;
     try {
-      await apiRequest(`/admin/campaigns/${id}`, { method: 'DELETE', token });
+      await apiRequest(`/admin/campaigns/${id}`, { method: "DELETE", token });
       setCampaigns((prev) => prev.filter((c) => c.id !== id));
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   const handleToggleStatus = async (campaign: Campaign) => {
-    const newStatus = campaign.status === 'active' ? 'paused' : 'active';
+    const newStatus = campaign.status === "active" ? "paused" : "active";
     try {
-      const updated = await apiRequest<Campaign>(`/admin/campaigns/${campaign.id}`, {
-        method: 'PATCH', token, body: { status: newStatus },
-      });
-      setCampaigns((prev) => prev.map((c) => c.id === updated.id ? updated : c));
-    } catch (e: any) { alert(e.message); }
+      const updated = await apiRequest<Campaign>(
+        `/admin/campaigns/${campaign.id}`,
+        {
+          method: "PATCH",
+          token,
+          body: { status: newStatus },
+        },
+      );
+      setCampaigns((prev) =>
+        prev.map((c) => (c.id === updated.id ? updated : c)),
+      );
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   const handleSendNow = async (id: string) => {
     setSending(id);
     try {
-      await apiRequest(`/admin/campaigns/${id}/send-now`, { method: 'POST', token });
-      alert('Notification sent to all users!');
+      await apiRequest(`/admin/campaigns/${id}/send-now`, {
+        method: "POST",
+        token,
+      });
+      alert("Notification sent to all users!");
       loadCampaigns();
-    } catch (e: any) { alert(e.message); }
-    finally { setSending(null); }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSending(null);
+    }
   };
 
-  const activeCampaigns = campaigns.filter((c) => c.status === 'active');
-  const pausedCampaigns = campaigns.filter((c) => c.status === 'paused');
-  const expiredCampaigns = campaigns.filter((c) => c.status === 'expired');
-  const availableEmailSegments = emailSegments.length > 0 ? emailSegments : FALLBACK_EMAIL_SEGMENTS;
+  const activeCampaigns = campaigns.filter((c) => c.status === "active");
+  const pausedCampaigns = campaigns.filter((c) => c.status === "paused");
+  const expiredCampaigns = campaigns.filter((c) => c.status === "expired");
+  const availableEmailSegments =
+    emailSegments.length > 0 ? emailSegments : FALLBACK_EMAIL_SEGMENTS;
 
   return (
     <div className="p-8 space-y-6">
@@ -509,7 +685,10 @@ export default function Notifications() {
         <CampaignComposer
           token={token}
           onSave={handleSaved}
-          onClose={() => { setComposerOpen(false); setEditCampaign(null); }}
+          onClose={() => {
+            setComposerOpen(false);
+            setEditCampaign(null);
+          }}
           editCampaign={editCampaign}
         />
       )}
@@ -539,7 +718,9 @@ export default function Notifications() {
       {/* Header */}
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">OTA Notifications</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            OTA Notifications
+          </h1>
           <p className="text-gray-500 mt-1">
             Compose and schedule push notifications to all app users.
           </p>
@@ -565,12 +746,34 @@ export default function Notifications() {
       {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Active', count: activeCampaigns.length, color: 'text-emerald-600 bg-emerald-50', icon: <Play className="w-5 h-5 text-emerald-500" /> },
-          { label: 'Paused', count: pausedCampaigns.length, color: 'text-amber-600 bg-amber-50', icon: <Pause className="w-5 h-5 text-amber-500" /> },
-          { label: 'Expired', count: expiredCampaigns.length, color: 'text-gray-500 bg-gray-100', icon: <CheckCircle className="w-5 h-5 text-gray-400" /> },
+          {
+            label: "Active",
+            count: activeCampaigns.length,
+            color: "text-emerald-600 bg-emerald-50",
+            icon: <Play className="w-5 h-5 text-emerald-500" />,
+          },
+          {
+            label: "Paused",
+            count: pausedCampaigns.length,
+            color: "text-amber-600 bg-amber-50",
+            icon: <Pause className="w-5 h-5 text-amber-500" />,
+          },
+          {
+            label: "Expired",
+            count: expiredCampaigns.length,
+            color: "text-gray-500 bg-gray-100",
+            icon: <CheckCircle className="w-5 h-5 text-gray-400" />,
+          },
         ].map(({ label, count, color, icon }) => (
-          <div key={label} className="bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 shadow-sm">
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${color.split(' ')[1]}`}>{icon}</div>
+          <div
+            key={label}
+            className="bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 shadow-sm"
+          >
+            <div
+              className={`w-11 h-11 rounded-xl flex items-center justify-center ${color.split(" ")[1]}`}
+            >
+              {icon}
+            </div>
             <div>
               <p className="text-2xl font-bold text-gray-900">{count}</p>
               <p className="text-sm text-gray-400">{label} Campaigns</p>
@@ -588,7 +791,9 @@ export default function Notifications() {
             </div>
             <div>
               <h2 className="font-semibold text-gray-900">Inbound Emails</h2>
-              <p className="text-sm text-gray-500">Recent emails received into the support inbox.</p>
+              <p className="text-sm text-gray-500">
+                Recent emails received into the support inbox.
+              </p>
             </div>
           </div>
           <button
@@ -602,19 +807,29 @@ export default function Notifications() {
         {inboundEmails.length === 0 ? (
           <div className="p-8 text-center">
             <Mail className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-            <p className="text-sm font-medium text-gray-500">No inbound emails yet</p>
-            <p className="text-xs text-gray-400 mt-1">Incoming support emails will appear here automatically.</p>
+            <p className="text-sm font-medium text-gray-500">
+              No inbound emails yet
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Incoming support emails will appear here automatically.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
             {inboundEmails.map((email) => (
-              <button key={email.id} onClick={() => setActiveInboundEmailId(email.id)} className="p-5 flex items-start gap-4 w-full text-left hover:bg-gray-50 transition-colors">
+              <button
+                key={email.id}
+                onClick={() => setActiveInboundEmailId(email.id)}
+                className="p-5 flex items-start gap-4 w-full text-left hover:bg-gray-50 transition-colors"
+              >
                 <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
                   <Mail className="w-4 h-4 text-gray-500" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-semibold text-gray-900 truncate">{email.subject}</h3>
+                    <h3 className="font-semibold text-gray-900 truncate">
+                      {email.subject}
+                    </h3>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium uppercase tracking-wide">
                       inbound
                     </span>
@@ -623,7 +838,10 @@ export default function Notifications() {
                     </span>
                   </div>
                   <p className="text-sm text-gray-500 mt-1">
-                    From {email.createdByEmail || email.creatorName || 'Unknown sender'}
+                    From{" "}
+                    {email.createdByEmail ||
+                      email.creatorName ||
+                      "Unknown sender"}
                   </p>
                   <p className="text-sm text-gray-500 mt-2 line-clamp-3">
                     {email.description}
@@ -645,34 +863,47 @@ export default function Notifications() {
         <div className="bg-white rounded-2xl border border-gray-100 p-16 text-center">
           <Megaphone className="w-12 h-12 text-gray-200 mx-auto mb-3" />
           <p className="text-gray-400 font-medium">No campaigns yet</p>
-          <p className="text-sm text-gray-300 mt-1">Create your first push notification campaign above.</p>
+          <p className="text-sm text-gray-300 mt-1">
+            Create your first push notification campaign above.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           {campaigns.map((campaign) => (
-            <div key={campaign.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+            <div
+              key={campaign.id}
+              className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-start gap-4"
+            >
               <div className="w-11 h-11 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
                 <Bell className="w-5 h-5 text-violet-500" />
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-semibold text-gray-900">{campaign.title}</h3>
-                  <span className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[campaign.status]}`}>
+                  <h3 className="font-semibold text-gray-900">
+                    {campaign.title}
+                  </h3>
+                  <span
+                    className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[campaign.status]}`}
+                  >
                     {STATUS_ICONS[campaign.status]} {campaign.status}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 mt-1 line-clamp-2">{campaign.body}</p>
+                <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                  {campaign.body}
+                </p>
                 <div className="flex items-center gap-4 mt-2 text-xs text-gray-400 flex-wrap">
                   <span className="flex items-center gap-1">
                     <Repeat className="w-3 h-3" />
                     {REPEAT_LABELS[campaign.repeat]}
-                    {campaign.repeat === 'weekly' && campaign.dayOfWeek != null && ` — ${DAYS[campaign.dayOfWeek]}`}
+                    {campaign.repeat === "weekly" &&
+                      campaign.dayOfWeek != null &&
+                      ` — ${DAYS[campaign.dayOfWeek]}`}
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" /> {campaign.sendTime}
                   </span>
-                  {campaign.nextSendAt && campaign.status === 'active' && (
+                  {campaign.nextSendAt && campaign.status === "active" && (
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
                       Next: {new Date(campaign.nextSendAt).toLocaleString()}
@@ -696,13 +927,17 @@ export default function Notifications() {
                 >
                   <Send className="w-4 h-4" />
                 </button>
-                {campaign.status !== 'expired' && (
+                {campaign.status !== "expired" && (
                   <button
                     onClick={() => handleToggleStatus(campaign)}
-                    title={campaign.status === 'active' ? 'Pause' : 'Resume'}
+                    title={campaign.status === "active" ? "Pause" : "Resume"}
                     className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
                   >
-                    {campaign.status === 'active' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                    {campaign.status === "active" ? (
+                      <Pause className="w-4 h-4" />
+                    ) : (
+                      <Play className="w-4 h-4" />
+                    )}
                   </button>
                 )}
                 <button
